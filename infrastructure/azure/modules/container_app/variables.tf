@@ -251,6 +251,22 @@ variable "entra_authorize_prompt" {
   default     = "select_account"
 }
 
+variable "trusted_proxy_hops" {
+  description = <<-EOT
+    Number of reverse proxies in front of the app that each append the address they received the
+    connection from to X-Forwarded-For (read as TRUSTED_PROXY_HOPS by shared/client_ip.py). The client is
+    taken that many entries from the END of the header, because a client can put anything at the front.
+
+    0 means none are configured. That is safe but not useful behind Front Door: with a proxy header and an
+    internal peer address the client address is treated as unknown, so per-client rate limits do not apply
+    (per-tenant and per-username ones still do) and audit logs record no address. Set it to the VERIFIED hop
+    count (likely 2: Front Door, then the Container Apps ingress) after checking a real request's header.
+    Too low lumps every user into one client; too high lets a client choose its own address.
+  EOT
+  type        = number
+  default     = 0
+}
+
 variable "app_base_url" {
   description = <<-EOT
     Public base URL of the SPA, used to build activation and password links in
@@ -349,4 +365,86 @@ variable "claims_min_replicas" {
 variable "claims_max_replicas" {
   type    = number
   default = 2
+}
+
+# ---------------------------------------------------------------------------
+# Notification channels — SMS and WhatsApp
+#
+# These were absent from the Azure deployment entirely. Email worked (ACS, via
+# acs_sender_address → SES_FROM_ADDRESS) but SMS and WhatsApp had no
+# credentials at all, so every send logged "not configured" and returned
+# without error. WhatsApp is the primary customer channel here.
+# ---------------------------------------------------------------------------
+
+variable "customer_portal_base_url" {
+  description = "Override base URL for customer invite links if the customer portal is hosted separately. Falls back to app_base_url."
+  type        = string
+  default     = ""
+}
+
+variable "africastalking_api_key" {
+  description = "Africa's Talking API key for SMS. Delivered as a Container App secret; gated on africastalking_username being set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "africastalking_username" {
+  description = "Africa's Talking username. Must be the live username in production — the application default is 'sandbox', which accepts messages and delivers nothing. Also gates whether the API key secret is created."
+  type        = string
+  default     = ""
+}
+
+variable "africastalking_sender_id" {
+  description = "Africa's Talking sender ID / short code, if one is registered."
+  type        = string
+  default     = ""
+}
+
+variable "meta_whatsapp_access_token" {
+  description = "Meta Cloud API access token for WhatsApp Business. Delivered as a Container App secret; gated on meta_whatsapp_phone_id being set."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "meta_whatsapp_phone_id" {
+  description = "Meta Cloud API phone number ID. Also gates whether the WhatsApp secrets are created."
+  type        = string
+  default     = ""
+}
+
+variable "meta_whatsapp_template_lang" {
+  description = "Language code the WhatsApp templates were approved under (e.g. en, en_US, zh_CN). Must match Meta exactly or every send 404s."
+  type        = string
+  default     = ""
+}
+
+variable "whatsapp_verify_token" {
+  description = "Shared secret Meta echoes when verifying the WhatsApp webhook subscription."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "front_door_id" {
+  description = <<-EOT
+    This deployment's Front Door id (the profile's resource_guid), sent by Front Door as X-Azure-FDID on every
+    request it forwards. The app takes the client's address from Front Door's own stamp (X-Azure-SocketIP) only
+    on requests carrying this id, so rate limits and audit logs get the real address without anyone having to
+    count proxies. Empty when there is no Front Door: the app then falls back to trusted_proxy_hops.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "require_front_door" {
+  description = <<-EOT
+    Refuse API requests that did not come through this deployment's Front Door (403), so nothing can go around
+    it by calling the container app's own hostname. Costs nothing. Off by default because anything configured to
+    call that hostname directly (a payment or WhatsApp webhook URL, a smoke test) would start failing: point
+    those at the Front Door host first, then turn this on. /health stays open for the platform's probes.
+  EOT
+  type        = bool
+  default     = false
 }

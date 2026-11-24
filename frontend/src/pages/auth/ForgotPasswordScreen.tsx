@@ -6,9 +6,9 @@
  * the reset screen together with the new password. Copy adjusted accordingly.
  */
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { forgotPassword } from '../../auth/authClient'
-import { Banner, Button, Field, Icon } from '../../design/components'
+import { Banner, Button, Field, Icon, Pressable } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -16,39 +16,58 @@ export function ForgotPasswordScreen(): JSX.Element {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [resentNote, setResentNote] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault()
+  async function requestCode(): Promise<boolean> {
     setError(null)
-    setSubmitting(true)
     try {
       await forgotPassword(email)
-      setSent(true)
+      return true
     } catch (err) {
       // Do not reveal whether the address exists — same success UX on
       // UserNotFoundException (Cognito already behaves this way when the
       // pool's prevent-user-existence-errors setting is on).
       const code = err instanceof Error ? err.name : ''
       if (code === 'UserNotFoundException') {
-        setSent(true)
+        return true
       } else if (code === 'LimitExceededException') {
         setError('Too many attempts. Wait a few minutes and try again.')
       } else {
         setError('Could not start the password reset. Please try again.')
       }
-    } finally {
-      setSubmitting(false)
+      return false
     }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    setSubmitting(true)
+    const ok = await requestCode()
+    if (ok) {
+      setSent(true)
+      setResentNote(false)
+    }
+    setSubmitting(false)
+  }
+
+  async function handleResend(): Promise<void> {
+    if (resending) return
+    setResending(true)
+    setResentNote(false)
+    const ok = await requestCode()
+    if (ok) setResentNote(true)
+    setResending(false)
   }
 
   if (sent) {
     return (
       <AuthShell>
-        <button type="button" className={styles.link} style={{ marginBottom: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => navigate('/login')}>
+        <Link to="/login" className={styles.link} style={{ marginBottom: 'var(--space-8)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <Icon name="arrowleft" size={14} /> Back to sign in
-        </button>
+        </Link>
         <div style={{ textAlign: 'center' }}>
           <div
             style={{
@@ -59,18 +78,28 @@ export function ForgotPasswordScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="mail" size={38} color="var(--color-primary)" stroke={2} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Check your email</h2>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email</h2>
           <p className={styles.formSub}>We sent a verification code to</p>
-          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-ink)', margin: '0 0 24px' }}>{email}</p>
+          <p style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--color-ink)', margin: '0 0 var(--space-6)' }}>{email}</p>
+          {error && (
+            <div style={{ marginBottom: 'var(--space-4)', textAlign: 'left' }}>
+              <Banner variant="error">{error}</Banner>
+            </div>
+          )}
+          {resentNote && (
+            <div style={{ marginBottom: 'var(--space-4)', textAlign: 'left' }}>
+              <Banner variant="success">A fresh verification code has been sent to your email.</Banner>
+            </div>
+          )}
           <Banner variant="info" title="Code expires in 60 minutes">
             Enter the code on the next screen together with your new password.
           </Banner>
-          <div style={{ marginTop: 24 }}>
+          <div style={{ marginTop: 'var(--space-6)' }}>
             <Button
               variant="accent"
               size="lg"
@@ -80,11 +109,26 @@ export function ForgotPasswordScreen(): JSX.Element {
               Enter code &amp; set new password
             </Button>
           </div>
-          <p className={styles.footerLine} style={{ marginTop: 20 }}>
+          <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
             Didn&apos;t receive it?{' '}
-            <button type="button" className={styles.footerLinkStrong} onClick={() => setSent(false)}>
-              Resend code
-            </button>
+            <Pressable
+              className={styles.footerLinkStrong}
+              disabled={resending}
+              onClick={() => void handleResend()}
+            >
+              {resending ? 'Sending…' : 'Resend code'}
+            </Pressable>
+            {' · '}
+            <Pressable
+              className={styles.link}
+              onClick={() => {
+                setSent(false)
+                setResentNote(false)
+                setError(null)
+              }}
+            >
+              Use another email
+            </Pressable>
           </p>
         </div>
       </AuthShell>
@@ -93,16 +137,16 @@ export function ForgotPasswordScreen(): JSX.Element {
 
   return (
     <AuthShell>
-      <button type="button" className={styles.link} style={{ marginBottom: 32, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => navigate('/login')}>
-        <Icon name="arrowleft" size={14} /> Back to sign in
-      </button>
+      <Link to="/login" className={styles.link} style={{ marginBottom: 'var(--space-8)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Icon name="arrowleft" size={14} /> Back to sign in
+        </Link>
       <FormHead
         title="Reset your password"
         sub="Enter the email associated with your account. We'll send a verification code."
       />
 
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Something went wrong">{error}</Banner>
         </div>
       )}
@@ -124,11 +168,9 @@ export function ForgotPasswordScreen(): JSX.Element {
         </Button>
       </form>
 
-      <p className={styles.footerLine} style={{ marginTop: 20 }}>
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Remember your password?{' '}
-        <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/login')}>
-          Sign in →
-        </button>
+        <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
       </p>
     </AuthShell>
   )

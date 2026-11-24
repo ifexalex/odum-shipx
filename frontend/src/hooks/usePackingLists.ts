@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { packingListKeys } from '../api/keys'
 import { packingListApi, type PackingListListParams, type RejectPackingListInput, type UpdatePackingListInput } from '../api/packingList'
 import { useCursorPagination } from './useCursorPagination'
+import { FRESH_ON_OPEN } from './useSeedOnce'
 
 export function usePackingListList(params: PackingListListParams = {}) {
   return useCursorPagination(
@@ -15,6 +16,19 @@ export function usePackingList(id: string) {
     queryKey: packingListKeys.detail(id),
     queryFn: () => packingListApi.get(id),
     enabled: !!id,
+  })
+}
+
+/**
+ * A packing list for the edit form: read again every time the form opens, so the form is never filled from a cached
+ * copy that someone has since approved or changed (FRESH_ON_OPEN). Disabled without an id (the create form).
+ */
+export function usePackingListForEdit(id: string | undefined) {
+  return useQuery({
+    queryKey: packingListKeys.detail(id ?? ''),
+    queryFn: () => packingListApi.get(id!),
+    enabled: !!id,
+    ...FRESH_ON_OPEN,
   })
 }
 

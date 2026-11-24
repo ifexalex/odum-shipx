@@ -20,12 +20,15 @@ Routes:
   PATCH /v1/release-notes/{id}/release          — warehouse_attendant
   POST  /v1/release-notes/{id}/split            — tenant_admin, nigeria_office_staff
   POST  /v1/release-notes/{id}/reissue          — tenant_admin, nigeria_office_staff
+  POST  /v1/release-notes/{id}/pickup-code      — tenant_admin, nigeria_office_staff (a fresh code, sent to the
+                                                  customer; the response says where, never what)
   GET   /v1/warehouses                          — tenant_admin, nigeria_office_staff, warehouse_attendant
   POST  /v1/warehouses                          — tenant_admin
   PATCH /v1/warehouses/{id}/set-default         — tenant_admin
   POST  /v1/webhooks/payment                    — no JWT auth; HMAC-verified gateway webhook
 """
 
+import base64
 import json
 import logging
 import time
@@ -33,12 +36,15 @@ import uuid
 from typing import Any
 
 from shared.auth import get_tenant_context
-from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.client_ip import client_ip
+from shared.exceptions import BusinessRuleViolationError, LogisticsBaseError, ResourceNotFoundError
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.responses import created, error_response, success
+from shared.pagination import parse_pagination_params
+from shared.responses import created, error_response, paginated, success
+from shared.staff_notifications import notify_staff
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
 
@@ -130,7 +136,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
@@ -160,18 +166,33 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
 
-        # Idempotency for payment confirmation (POST only)
+        # Idempotency for mutating POST routes, scoped to caller + route + payload
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -234,7 +255,7 @@ def _payment_routes(
     # distinguished from /v1/payments/{billing_id}/... by the literal "claims"
     # segment (a billing_id is a UUID and can never collide with it).
     if len(parts) > 2 and parts[2] == "claims":
-        return _payment_claim_routes(event, parts, method, ctx, request_id)
+        return _payment_claim_routes(event, parts, method, ctx, request_id, ip_address)
 
     billing_id = parts[2] if len(parts) > 2 else None
     action = parts[3] if len(parts) > 3 else None
@@ -246,7 +267,13 @@ def _payment_routes(
             body = _parse_body(event)
             req = parse_validated(SubmitPaymentClaimRequest, body)
             result: Any = service.submit_payment_claim(
-                ctx.tenant_id, billing_id, req, actor_id=ctx.user_id, ctx=ctx, request_id=request_id
+                ctx.tenant_id,
+                billing_id,
+                req,
+                actor_id=ctx.user_id,
+                ctx=ctx,
+                request_id=request_id,
+                ip_address=ip_address,
             )
             return created(result, location=f"/v1/payments/{billing_id}/claims/{result['id']}", request_id=request_id)
         if method == "GET":
@@ -299,13 +326,16 @@ def _payment_routes(
             actor_id=ctx.user_id,
             ctx=ctx,
             request_id=request_id,
+            ip_address=ip_address,
         )
         return created(result, location=f"/v1/payments/{billing_id}/confirm", request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
 
 
-def _payment_claim_routes(event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str) -> dict[str, Any]:
+def _payment_claim_routes(
+    event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str, ip_address: str | None = None
+) -> dict[str, Any]:
     """Routes under /v1/payments/claims/... — see _payment_routes for the
     billing-scoped submit/list routes under /v1/payments/{billing_id}/claims.
     """
@@ -327,7 +357,9 @@ def _payment_claim_routes(event: dict[str, Any], parts: list[str], method: str, 
                 "billing_id, filename, and content_type are required",
                 field_errors={"body": "billing_id, filename, and content_type are required"},
             )
-        result = service.generate_payment_claim_upload_url(ctx.tenant_id, billing_id, filename, content_type, ctx)
+        result = service.generate_payment_claim_upload_url(
+            ctx.tenant_id, billing_id, filename, content_type, ctx, size_bytes=body.get("size_bytes")
+        )
         return success(result, request_id=request_id)
 
     claim_id = sub
@@ -335,14 +367,18 @@ def _payment_claim_routes(event: dict[str, Any], parts: list[str], method: str, 
 
     if claim_id and action == "confirm" and method == "PATCH":
         ctx.assert_role(*_CLAIM_REVIEW_ROLES)
-        result = service.confirm_payment_claim(ctx.tenant_id, claim_id, actor_id=ctx.user_id, ctx=ctx, request_id=request_id)
+        result = service.confirm_payment_claim(
+            ctx.tenant_id, claim_id, actor_id=ctx.user_id, ctx=ctx, request_id=request_id, ip_address=ip_address
+        )
         return success(result, request_id=request_id)
 
     if claim_id and action == "reject" and method == "PATCH":
         ctx.assert_role(*_CLAIM_REVIEW_ROLES)
         body = _parse_body(event)
         req = parse_validated(RejectPaymentClaimRequest, body)
-        result = service.reject_payment_claim(ctx.tenant_id, claim_id, req, actor_id=ctx.user_id, ctx=ctx, request_id=request_id)
+        result = service.reject_payment_claim(
+            ctx.tenant_id, claim_id, req, actor_id=ctx.user_id, ctx=ctx, request_id=request_id, ip_address=ip_address
+        )
         return success(result, request_id=request_id)
 
     # GET /v1/payments/claims/{id}/evidence-url — staff need to actually see
@@ -381,13 +417,8 @@ def _release_note_routes(
             if _qp(event, "reference"):
                 # Warehouse scan-or-type lookup (P2-2) — exact reference match.
                 filters["reference"] = _qp(event, "reference")
-            from shared.pagination import decode_cursor
-
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_release_notes(ctx.tenant_id, filters, limit, cursor, ctx)
-            from shared.responses import paginated
-
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
         # POST /v1/release-notes
@@ -401,6 +432,7 @@ def _release_note_routes(
                 actor_id=ctx.user_id,
                 ctx=ctx,
                 request_id=request_id,
+                ip_address=ip_address,
             )
             return created(result, location=f"/v1/release-notes/{result['id']}", request_id=request_id)
 
@@ -433,6 +465,7 @@ def _release_note_routes(
                     actor_id=ctx.user_id,
                     ctx=ctx,
                     request_id=request_id,
+                    ip_address=ip_address,
                 )
                 return success(result, request_id=request_id)
 
@@ -448,8 +481,22 @@ def _release_note_routes(
                     actor_id=ctx.user_id,
                     ctx=ctx,
                     request_id=request_id,
+                    ip_address=ip_address,
                 )
                 return created(result, location=f"/v1/release-notes/{result['id']}", request_id=request_id)
+
+            # POST /v1/release-notes/{id}/pickup-code — a fresh pickup code, sent to the customer (audit UX-09)
+            if action == "pickup-code" and method == "POST":
+                ctx.assert_role(*_REISSUE_ROLES)
+                result = service.reissue_pickup_code(
+                    ctx.tenant_id,
+                    note_id,
+                    actor_id=ctx.user_id,
+                    ctx=ctx,
+                    request_id=request_id,
+                    ip_address=ip_address,
+                )
+                return success(result, request_id=request_id)
 
             # POST /v1/release-notes/{id}/reissue
             if action == "reissue" and method == "POST":
@@ -460,6 +507,7 @@ def _release_note_routes(
                     actor_id=ctx.user_id,
                     ctx=ctx,
                     request_id=request_id,
+                    ip_address=ip_address,
                 )
                 return created(result, location=f"/v1/release-notes/{result['id']}", request_id=request_id)
 
@@ -549,9 +597,19 @@ def _webhook_routes(event: dict[str, Any], parts: list[str], method: str, reques
     resource = parts[2] if len(parts) > 2 else None
 
     if resource == "payment" and method == "POST":
-        headers = event.get("headers") or {}
-        raw_body: bytes = (event.get("body") or "").encode()
-        payload = _parse_body(event)
+        headers = {str(k).lower(): v for k, v in (event.get("headers") or {}).items()}
+        body_raw = event.get("body") or ""
+        if event.get("isBase64Encoded") and isinstance(body_raw, str):
+            try:
+                raw_body: bytes = base64.b64decode(body_raw)
+            except Exception:
+                return {"statusCode": 200, "body": ""}
+        else:
+            raw_body = body_raw.encode("utf-8") if isinstance(body_raw, str) else bytes(body_raw)
+        try:
+            payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = {}
 
         paystack_sig = headers.get("x-paystack-signature", "")
         flutterwave_hash = headers.get("verif-hash", "")
@@ -581,10 +639,6 @@ def _webhook_routes(event: dict[str, Any], parts: list[str], method: str, reques
                 return {"statusCode": 200, "body": ""}
 
         elif flutterwave_hash:
-            # Out of scope for the Paystack multi-tenant migration — no
-            # frontend integration exists for Flutterwave, kept on its
-            # original single env-var secret. Tenant is still resolved the
-            # old way (after verification), since it has no per-tenant key.
             if not wh.verify_flutterwave_signature(flutterwave_hash):
                 logger.warning("Invalid Flutterwave verif-hash — rejecting webhook")
                 return {"statusCode": 200, "body": ""}
@@ -601,15 +655,43 @@ def _webhook_routes(event: dict[str, Any], parts: list[str], method: str, reques
             logger.warning("Webhook missing gateway signature headers — rejecting")
             return {"statusCode": 200, "body": ""}
 
-        result = service.process_webhook_payment(
-            tenant_id=tenant_id,
-            billing_id=billing_id,
-            amount_ngn=extracted["amount_ngn"],
-            payment_method=extracted["payment_method"],
-            payment_reference=extracted["payment_reference"],
-            gateway_transaction_id=extracted["gateway_transaction_id"],
-            request_id=request_id,
-        )
+        try:
+            result = service.process_webhook_payment(
+                tenant_id=tenant_id,
+                billing_id=billing_id,
+                amount_ngn=extracted["amount_ngn"],
+                payment_method=extracted["payment_method"],
+                payment_reference=extracted["payment_reference"],
+                gateway_transaction_id=extracted["gateway_transaction_id"],
+                request_id=request_id,
+            )
+        except BusinessRuleViolationError as exc:
+            # Signature was verified and money may have moved at the gateway, but the
+            # invoice cannot accept payment (e.g. cancelled/waived). Acknowledge 200 so
+            # the gateway does not retry forever and alert staff to reconcile/refund.
+            logger.error(
+                "Verified webhook payment rejected by business rule for billing=%s gateway_tx=%s: %s",
+                billing_id,
+                extracted["gateway_transaction_id"],
+                exc.message,
+            )
+            try:
+                for role in ("nigeria_office_staff", "tenant_admin"):
+                    notify_staff(
+                        tenant_id=tenant_id,
+                        event_type="webhook_payment_unapplied",
+                        entity_type="billing",
+                        entity_id=billing_id,
+                        title="Gateway payment received for non-payable invoice",
+                        body=(
+                            f"Payment of NGN {extracted['amount_ngn']} (ref {extracted['payment_reference']}) "
+                            f"could not be applied: {exc.message}"
+                        ),
+                        target_role=role,
+                    )
+            except Exception:
+                logger.exception("Failed to notify staff of unapplied webhook payment")
+            return {"statusCode": 200, "body": ""}
 
         logger.info(
             "Webhook payment processed: billing=%s gateway_tx=%s result=%s",

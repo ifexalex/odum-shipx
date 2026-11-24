@@ -26,12 +26,15 @@ import hashlib
 import hmac
 import logging
 import os
-from decimal import Decimal
+import uuid
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from shared.db import execute_with_tenant
 from shared.exceptions import BusinessRuleViolationError
 from shared.tenant_context import PLATFORM_TENANT_ID
+
+from . import paystack
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +79,8 @@ def verify_flutterwave_signature(hash_header: str) -> bool:
 def extract_paystack_payment(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Extract billing_id, amount_ngn, and reference from a Paystack charge event.
 
-    Returns None if the event is not a successful charge.
-    Paystack amount is in kobo (1/100 NGN).
+    Returns None if the event is not a successful charge, or if the charge is not a positive naira amount
+    (`paystack.charge_amount_ngn`): a charge in another currency must never be read as naira.
     """
     event = payload.get("event", "")
     if event != "charge.success":
@@ -88,9 +91,10 @@ def extract_paystack_payment(payload: dict[str, Any]) -> dict[str, Any] | None:
     if data.get("status") != "success":
         return None
 
-    reference = data.get("reference", "")
-    amount_kobo = data.get("amount", 0)
-    amount_ngn = Decimal(str(amount_kobo)) / Decimal("100")
+    amount_ngn = paystack.charge_amount_ngn(data)
+    if amount_ngn is None:
+        return None
+    reference = str(data.get("reference", ""))
 
     # References are issued as "{billing_id}.{nonce}" (paystack.py) so a
     # customer can retry after an abandoned attempt — Paystack rejects
@@ -98,12 +102,15 @@ def extract_paystack_payment(payload: dict[str, Any]) -> dict[str, Any] | None:
     # dot separator). Bare billing-UUID references still parse.
     billing_id = reference.split(".", 1)[0]
 
+    raw_tx_id = data.get("id")
+    gateway_tx_id = str(raw_tx_id).strip() if raw_tx_id is not None and str(raw_tx_id).strip() else None
+
     return {
         "billing_id": billing_id,
         "amount_ngn": amount_ngn,
         "payment_method": "paystack",
         "payment_reference": reference,
-        "gateway_transaction_id": data.get("id", ""),
+        "gateway_transaction_id": gateway_tx_id,
     }
 
 
@@ -122,18 +129,28 @@ def extract_flutterwave_payment(payload: dict[str, Any]) -> dict[str, Any] | Non
         return None
 
     tx_ref = data.get("tx_ref", "")
-    amount_ngn = Decimal(str(data.get("amount", 0)))
-    currency = data.get("currency", "")
-    if currency != "NGN":
-        logger.warning("Unexpected Flutterwave currency: %s — skipping", currency)
+    currency = str(data.get("currency") or "")
+    if currency != paystack.SETTLEMENT_CURRENCY:
+        logger.warning("Unexpected Flutterwave currency: %r — skipping", currency[:8])
         return None
+    try:
+        amount_ngn = Decimal(str(data.get("amount")))
+    except InvalidOperation:
+        logger.warning("Ignoring Flutterwave charge: amount is not a number")
+        return None
+    if not amount_ngn.is_finite() or amount_ngn <= 0:
+        logger.warning("Ignoring Flutterwave charge: amount is not positive")
+        return None
+
+    raw_tx_id = data.get("id")
+    gateway_tx_id = str(raw_tx_id).strip() if raw_tx_id is not None and str(raw_tx_id).strip() else None
 
     return {
         "billing_id": tx_ref,
         "amount_ngn": amount_ngn,
         "payment_method": "flutterwave",
         "payment_reference": tx_ref,
-        "gateway_transaction_id": str(data.get("id", "")),
+        "gateway_transaction_id": gateway_tx_id,
     }
 
 
@@ -145,8 +162,13 @@ def extract_flutterwave_payment(payload: dict[str, Any]) -> dict[str, Any] | Non
 def get_billing_tenant(billing_id: str) -> str | None:
     """Look up tenant_id for a billing record using PLATFORM scope.
 
-    Returns tenant_id or None if the billing record doesn't exist.
+    Returns tenant_id or None if the billing record doesn't exist or the ID is
+    not a valid UUID.
     """
+    try:
+        uuid.UUID(str(billing_id))
+    except (ValueError, TypeError, AttributeError):
+        return None
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT tenant_id FROM billing WHERE id = %s LIMIT 1",

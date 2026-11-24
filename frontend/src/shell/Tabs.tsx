@@ -4,6 +4,7 @@ import styles from './Tabs.module.css'
 export interface TabItem {
   key: string
   label: string
+  count?: number
 }
 
 export interface TabsProps {
@@ -14,7 +15,7 @@ export interface TabsProps {
 
 export function Tabs({ items, active, onChange }: TabsProps): JSX.Element {
   return (
-    <div className={styles.tabs} role="tablist">
+    <div className={styles.tabs} role="tablist" data-scroll-strip="">
       {items.map((item) => (
         <button
           key={item.key}
@@ -25,6 +26,11 @@ export function Tabs({ items, active, onChange }: TabsProps): JSX.Element {
           className={[styles.tab, item.key === active ? styles.tabActive : ''].filter(Boolean).join(' ')}
         >
           {item.label}
+          {item.count != null && (
+            <span className={styles.count} aria-hidden="true">
+              {item.count}
+            </span>
+          )}
         </button>
       ))}
     </div>

@@ -78,6 +78,10 @@ export interface ReleaseNote {
   picked_up_at?: string | null
   /** Outstanding storage fees on the linked billing record — shown on expired UI. Detail responses only. */
   storage_fees_ngn?: string
+  /** The warehouse must ask the collector for the pickup code sent to the customer (audit UX-09). */
+  pickup_code_required?: boolean
+  /** Too many wrong codes: no pickup until staff send a new code. */
+  pickup_code_locked?: boolean
   /** ID of the note this was reissued from (or the parent split note). Detail responses only. */
   parent_release_note_id?: string | null
 }
@@ -134,6 +138,14 @@ export interface RecordPickupInput {
   accounting_officer_id?: string
   warehouse_attendant_id?: string
   notes?: string
+  /** The code the collector gives. Needed when the note has `pickup_code_required`. */
+  pickup_code?: string
+}
+
+/** Where a newly issued pickup code was sent. The code itself is never returned. */
+export interface PickupCodeSent {
+  release_note_id: string
+  sent_via: string[]
 }
 
 export interface SplitReleaseNoteInput {
@@ -189,6 +201,10 @@ export const releaseNotesApi = {
   /** PDF export — opens in new browser tab (printable pickup authorisation). */
   pdf: (id: string) =>
     apiDownloadFile(`/v1/release-notes/${id}/pdf`, 'pdf', `release-note-${id}.pdf`),
+
+  /** Send the customer a fresh pickup code. The old code stops working and a locked note is unlocked. */
+  sendPickupCode: (id: string) =>
+    apiRequest<PickupCodeSent>({ method: 'POST', path: `/v1/release-notes/${id}/pickup-code`, body: {} }),
 
   /** Re-issue an expired release note with a fresh 14-day validity window. */
   reissue: (id: string) =>

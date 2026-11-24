@@ -52,24 +52,59 @@ function renderPage(role = 'nigeria_office_staff', routeState: object | null = {
 }
 
 beforeEach(() => {
-  vi.mocked(claimsApi.get).mockReset()
+  vi.mocked(claimsApi.get).mockReset().mockResolvedValue(CLAIM_STUB)
   vi.mocked(claimsApi.startInspection).mockReset()
   vi.mocked(claimsApi.resolve).mockReset()
 })
 
 describe('ClaimDetail', () => {
-  it('renders claim from router state without API fetch', async () => {
+  it('renders claim from router state immediately and fetches detail-only fields', async () => {
+    vi.mocked(claimsApi.get).mockResolvedValue({
+      ...CLAIM_STUB,
+      status: 'resolved',
+      inspection_method: 'customer_evidence',
+      evidence: [
+        {
+          id: 'ev1',
+          file_name: 'damaged-carton.jpg',
+          file_type: 'image/jpeg',
+          file_size_bytes: 245760,
+          uploaded_at: '2026-06-15T11:00:00Z',
+          download_url: 'https://files.example.com/damaged-carton.jpg',
+        },
+      ],
+      resolution: {
+        resolution_type: 'refund',
+        amount_ngn: '30000',
+        discount_percentage: null,
+        resolved_at: '2026-06-16T09:00:00Z',
+        reason: 'Confirmed water damage during transit',
+      },
+      refund: {
+        id: 'ref-42',
+        status: 'pending_review',
+        amount_ngn: '30000',
+      },
+    })
     renderPage()
-    await waitFor(() => expect(screen.getByText('c1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Damage claim DC-20260601-001' })).toBeInTheDocument())
+    expect(screen.queryByText('c1')).toBeNull() // titled by its reference, never its database id (FD-17)
     expect(screen.getByText('C001')).toBeInTheDocument()
-    expect(claimsApi.get).not.toHaveBeenCalled()
+    await waitFor(() => expect(claimsApi.get).toHaveBeenCalledWith('c1'))
+    expect(await screen.findByText('damaged-carton.jpg')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open damaged-carton.jpg' })).toHaveAttribute(
+      'href',
+      'https://files.example.com/damaged-carton.jpg',
+    )
+    expect(screen.getByText('Confirmed water damage during transit')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /View refund/i })).toHaveAttribute('href', '/refunds/ref-42')
   })
 
   it('falls back to API fetch when no router state', async () => {
     vi.mocked(claimsApi.get).mockResolvedValue(CLAIM_STUB)
     renderPage('nigeria_office_staff', null)
     await waitFor(() => expect(claimsApi.get).toHaveBeenCalledWith('c1'))
-    await waitFor(() => expect(screen.getByText('c1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Damage claim DC-20260601-001' })).toBeInTheDocument())
   })
 
   it('shows Start inspection button for nigeria on filed claim', async () => {
@@ -79,7 +114,7 @@ describe('ClaimDetail', () => {
 
   it('hides Start inspection for tenant_admin', async () => {
     renderPage('tenant_admin')
-    await waitFor(() => expect(screen.getByText('c1')).toBeInTheDocument())
+    await screen.findByRole('heading', { name: 'Damage claim DC-20260601-001' })
     expect(screen.queryByRole('button', { name: 'Start inspection' })).not.toBeInTheDocument()
   })
 
@@ -94,8 +129,31 @@ describe('ClaimDetail', () => {
     await waitFor(() => expect(claimsApi.startInspection).toHaveBeenCalledWith('c1', { inspection_method: 'delegate_visit' }))
   })
 
+  it('tells staff the customer will read the reason when the claim is closed without a payout, and not otherwise', async () => {
+    const pendingClaim = { ...CLAIM_STUB, status: 'pending_resolution' as const }
+    vi.mocked(claimsApi.get).mockResolvedValue(pendingClaim)
+    renderPage('nigeria_office_staff', { claim: pendingClaim })
+    await userEvent.click(await screen.findByRole('button', { name: 'Resolve claim' }))
+    const dialog = screen.getByRole('dialog')
+    // "No action" is the default pick: the reason goes to the customer, and nothing can be sent without one.
+    expect(within(dialog).getByText(/Reason \(the customer will see this\)/)).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Resolve claim' })).toBeDisabled()
+
+    await userEvent.click(within(dialog).getByText('Refund'))
+    expect(within(dialog).getByText(/Reason \(internal, not shown to the customer\)/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/the customer will see this/)).toBeNull()
+
+    // Refund requires both a positive amount and a reason
+    await userEvent.type(within(dialog).getByLabelText(/Reason/i), 'Approved payout')
+    expect(within(dialog).getByRole('button', { name: 'Resolve claim' })).toBeDisabled()
+    await userEvent.type(within(dialog).getByLabelText(/Amount \(₦\)/i), '15000')
+    expect(within(dialog).getByRole('button', { name: 'Resolve claim' })).toBeEnabled()
+  })
+
   it('shows no action buttons on terminal claim', async () => {
-    renderPage('nigeria_office_staff', { claim: { ...CLAIM_STUB, status: 'resolved' } })
+    const resolvedClaim = { ...CLAIM_STUB, status: 'resolved' as const }
+    vi.mocked(claimsApi.get).mockResolvedValue(resolvedClaim)
+    renderPage('nigeria_office_staff', { claim: resolvedClaim })
     // 'Resolved' appears as hero badge + stepper step — use getAllByText
     await waitFor(() => expect(screen.getAllByText('Resolved').length).toBeGreaterThanOrEqual(1))
     expect(screen.queryByRole('button', { name: 'Start inspection' })).not.toBeInTheDocument()

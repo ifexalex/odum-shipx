@@ -88,28 +88,34 @@ def decode_cursor(cursor: str | None) -> dict[str, Any] | None:
         return None
 
 
-def parse_pagination_params(query_params: dict[str, Any]) -> tuple[dict[str, Any] | None, int]:
+def parse_pagination_params(
+    query_params: dict[str, Any] | None,
+    *,
+    default_limit: int = _DEFAULT_LIMIT,
+) -> tuple[dict[str, Any] | None, int]:
     """Extract and validate pagination parameters from a query string dict.
 
     Args:
         query_params: The event["queryStringParameters"] dict (may be None).
+        default_limit: Default page size when `limit` is omitted or invalid.
 
     Returns:
         Tuple of (cursor_dict | None, limit).
         cursor_dict is None for the first page.
-        limit is clamped between 1 and _MAX_LIMIT, defaulting to _DEFAULT_LIMIT.
+        limit is clamped between 1 and _MAX_LIMIT, defaulting to default_limit.
     """
+    safe_default = max(1, min(default_limit, _MAX_LIMIT))
     if not query_params:
-        return None, _DEFAULT_LIMIT
+        return None, safe_default
 
     cursor_str: str | None = query_params.get("cursor")
     cursor_dict = decode_cursor(cursor_str)
 
     try:
-        limit = int(query_params.get("limit", _DEFAULT_LIMIT))
+        limit = int(query_params.get("limit", safe_default))
         limit = max(1, min(limit, _MAX_LIMIT))
     except (ValueError, TypeError):
-        limit = _DEFAULT_LIMIT
+        limit = safe_default
 
     return cursor_dict, limit
 
@@ -126,7 +132,13 @@ def build_paginated_query(
     The base_query should NOT include ORDER BY or LIMIT. It may include
     a WHERE clause; this function appends additional conditions using AND.
 
-    Cursor structure expected: {"sort_value": <value>, "id": "<uuid>"}
+    Cursor structure expected: {"sort_value": <value>, "id": "<uuid>"}, plus ``"sort_is_null": true`` when the last
+    row's sort value was empty.
+
+    Empty sort values come last in both directions (``NULLS LAST``), and the cursor carries "it was empty", so paging
+    through them continues by ``id`` instead of starting over. Before 2026-11-19 a cursor whose sort value was NULL was
+    ignored, and the next page of, say, invoices sorted by billed date restarted at the first page once it reached the
+    unbilled ones.
 
     Args:
         base_query: SQL query without ORDER BY / LIMIT.
@@ -150,6 +162,11 @@ def build_paginated_query(
     direction = "DESC" if sort_direction.upper() == "DESC" else "ASC"
     # Comparison operator flips with direction
     op = "<" if direction == "DESC" else ">"
+    # The id tiebreaker is qualified with the sort field's table alias. A bare `id` is ambiguous the moment the query
+    # joins another table (they all have one), and the cursor condition sits in WHERE, where an output column name
+    # cannot stand in: the first page worked and every later page failed with "column reference "id" is ambiguous".
+    alias = clean_field.rpartition(".")[0]
+    id_column = f"{alias}.id" if alias else "id"
 
     params: dict[str, Any] = {"limit": limit + 1}  # fetch one extra to determine has_more
     query = base_query
@@ -158,15 +175,21 @@ def build_paginated_query(
         sort_value = cursor.get("sort_value")
         cursor_id = cursor.get("id")
         if sort_value is not None and cursor_id:
-            # Safe to inject sort_field and direction as they are allowlisted
+            # Safe to inject sort_field and direction as they are allowlisted. Rows with an empty sort value all come
+            # after any value (NULLS LAST), so they are still ahead of this cursor.
             query += (
                 f" AND ({clean_field} {op} %(cursor_sort_value)s"
-                f" OR ({clean_field} = %(cursor_sort_value)s AND id {op} %(cursor_id)s))"
+                f" OR ({clean_field} = %(cursor_sort_value)s AND {id_column} {op} %(cursor_id)s)"
+                f" OR {clean_field} IS NULL)"
             )
             params["cursor_sort_value"] = sort_value
             params["cursor_id"] = cursor_id
+        elif cursor.get("sort_is_null") and cursor_id:
+            # The last row had an empty sort value: only empty ones remain, in id order.
+            query += f" AND ({clean_field} IS NULL AND {id_column} {op} %(cursor_id)s)"
+            params["cursor_id"] = cursor_id
 
-    query += f" ORDER BY {clean_field} {direction}, id {direction} LIMIT %(limit)s"
+    query += f" ORDER BY {clean_field} {direction} NULLS LAST, {id_column} {direction} LIMIT %(limit)s"
     return query, params
 
 
@@ -182,7 +205,9 @@ def extract_page(
     Args:
         rows: Raw rows from DB (may contain limit+1 rows).
         limit: The requested page size.
-        sort_field: Field used for sorting — must be present in each row.
+        sort_field: The column the query was sorted by, as a bare name (no table alias). It must be present in each row:
+            the next cursor carries its value, so passing a different column makes the next page compare the wrong
+            thing. Lists the user can sort pass the column they sorted by; the rest sort by `created_at`.
 
     Returns:
         Tuple of (page_data, next_cursor | None, has_more).
@@ -192,10 +217,12 @@ def extract_page(
 
     if has_more and page:
         last = page[-1]
+        sort_value = last.get(sort_field)
         next_cursor = encode_cursor(
             {
-                "sort_value": last.get(sort_field),
+                "sort_value": sort_value,
                 "id": last.get("id"),
+                **({"sort_is_null": True} if sort_value is None else {}),
             }
         )
     else:

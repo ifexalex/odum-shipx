@@ -1,5 +1,5 @@
 import { type JSX, useRef, useState } from 'react'
-import { Banner, Button } from '../../design/components'
+import { Banner, Button, FileInput } from '../../design/components'
 import { useFileUpload, UPLOAD_ALLOWED_TYPES, type PresignedResponse } from '../../hooks/useFileUpload'
 import styles from './EvidenceUploader.module.css'
 
@@ -13,11 +13,14 @@ interface EvidenceUploaderProps {
   /** Resolves a presigned S3 POST for the chosen file. Lets the same uploader
    *  serve claims evidence, manifest verification photos, etc. */
   getPresignedUrl: (file: File) => Promise<PresignedResponse>
+  /** Confirms the upload with the API once the file has landed (claim and manifest evidence). Until it is confirmed
+   *  the API does not list the file; a refused file (over the limit) shows the API's message. */
+  confirmUpload?: (evidenceId: string) => Promise<unknown>
   onUploaded: (evidence: UploadedEvidence) => void
   disabled?: boolean
 }
 
-export function EvidenceUploader({ getPresignedUrl, onUploaded, disabled }: EvidenceUploaderProps): JSX.Element {
+export function EvidenceUploader({ getPresignedUrl, confirmUpload, onUploaded, disabled }: EvidenceUploaderProps): JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null)
   // The ref carries the filename between the two upload callbacks, which need it
   // synchronously. Rendering it is separate: a ref read during render is not
@@ -31,6 +34,12 @@ export function EvidenceUploader({ getPresignedUrl, onUploaded, disabled }: Evid
       pendingFilename.current = file.name
       return getPresignedUrl(file)
     },
+    confirmUpload: confirmUpload
+      ? (presigned) => {
+          if (!presigned.evidence_id) throw new Error('The upload could not be recorded. Please try again.')
+          return confirmUpload(presigned.evidence_id)
+        }
+      : undefined,
     onSuccess: (result) => {
       setUploadedFilename(pendingFilename.current)
       onUploaded({
@@ -47,11 +56,10 @@ export function EvidenceUploader({ getPresignedUrl, onUploaded, disabled }: Evid
 
   return (
     <div className={styles.uploader}>
-      <input
+      <FileInput
         ref={inputRef}
-        type="file"
+        label="Attach a file"
         accept={UPLOAD_ALLOWED_TYPES.join(',')}
-        className={styles.hiddenInput}
         disabled={disabled || uploading}
         onChange={(e) => {
           const file = e.target.files?.[0]
@@ -73,7 +81,7 @@ export function EvidenceUploader({ getPresignedUrl, onUploaded, disabled }: Evid
         >
           {uploading ? 'Uploading…' : 'Attach file'}
         </Button>
-        <span className={styles.hint}>JPEG, PNG or PDF · max 10 MB</span>
+        <span className={styles.hint}>JPEG, PNG or PDF · max 5 MB</span>
       </div>
 
       {/* Determinate progress bar — only shown for files above the threshold */}

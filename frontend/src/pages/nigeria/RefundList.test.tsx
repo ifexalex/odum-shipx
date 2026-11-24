@@ -6,7 +6,6 @@ import * as refundsModule from '../../api/refunds'
 import { SessionContext } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { RefundList } from './RefundList'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 
 const SESSION: Session = {
   userId: 'u-001',
@@ -28,7 +27,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={__qc()}><MemoryRouter>
       <SessionContext.Provider value={{ session: SESSION, status: 'authenticated', login: vi.fn(), logout: vi.fn(), refreshNow: vi.fn(), setActiveRole: vi.fn(), startImpersonation: vi.fn(), exitImpersonation: vi.fn() }}>
-        <TopBarTestWrapper><RefundList /></TopBarTestWrapper>
+        <><RefundList /></>
       </SessionContext.Provider>
     </MemoryRouter></QueryClientProvider>,
   )

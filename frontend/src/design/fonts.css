@@ -1,0 +1,31 @@
+/*
+ * The app's fonts, all served from its own origin (audit FD-06): no request to a font service, and the CSP allows
+ * fonts from 'self' only.
+ *
+ * Brand face: Manrope (owner decision 2026-11-19; Averta would need a commercial licence). Body: Kumbh Sans. Codes,
+ * references and tabular numbers: JetBrains Mono. Each is one variable file per script subset, so every weight comes
+ * from the same file; a subset downloads only when the page uses a character in it (unicode-range).
+ *
+ * None of the three has the naira sign (U+20A6), so the browser drew ₦ in a system font, heavier than the digits
+ * beside it. "ShipX Naira" is that one glyph from Plus Jakarta Sans (SIL OFL 1.1, see fonts/LICENSE-plus-jakarta-sans.txt),
+ * a geometric face like Manrope with a variable weight axis (200-800), so ₦ follows the weight of the text around it.
+ * It is listed first in every font stack; its unicode-range means it is used for ₦ and nothing else. size-adjust
+ * scales its capital height to the three faces' (0.720-0.733 of the em against its 0.745).
+ *
+ * Regenerate the subset with:
+ *   pyftsubset plus-jakarta-sans-latin-ext-wght-normal.woff2 --unicodes=U+20A6 --flavor=woff2 \
+ *     --layout-features='' --no-hinting --desubroutinize --output-file=naira-plus-jakarta-sans.woff2
+ */
+@import '@fontsource-variable/manrope';
+@import '@fontsource-variable/kumbh-sans';
+@import '@fontsource-variable/jetbrains-mono';
+
+@font-face {
+  font-family: 'ShipX Naira';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  size-adjust: 97.5%;
+  src: url('./fonts/naira-plus-jakarta-sans.woff2') format('woff2-variations');
+  unicode-range: U+20A6;
+}

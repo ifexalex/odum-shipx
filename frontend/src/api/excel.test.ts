@@ -41,12 +41,13 @@ describe('excelApi', () => {
     )
     const result = await excelApi.getImportPresignedUrl(
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      20480,
     )
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('/v1/packing-lists/import/presigned-url')
     expect(init.method).toBe('POST')
     expect(init.body).toBe(
-      JSON.stringify({ content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      JSON.stringify({ content_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', size_bytes: 20480 }),
     )
     expect(result.file_key).toBe('t1/imports/x.xlsx')
   })

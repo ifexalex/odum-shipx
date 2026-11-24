@@ -8,6 +8,7 @@ import pytest
 
 from services.tenant_management import service
 from shared.exceptions import ResourceNotFoundError
+from tests.patching import patch_tenant_management
 
 _TENANT = "11111111-1111-1111-1111-111111111111"
 _USER = "22222222-2222-2222-2222-222222222222"
@@ -65,7 +66,7 @@ class TestActivateAccount:
         with (
             patch("shared.activation.get_activation_by_token", return_value=_valid_row()),
             patch.object(service.repo, "get_user_by_id", return_value={"id": _USER, "email": "admin@acme.com"}),
-            patch.object(service, "get_identity_provider", return_value=idp),
+            patch_tenant_management("get_identity_provider", return_value=idp),
             patch("shared.activation.consume_activation") as consume,
         ):
             result = service.activate_account("tok", "N3wPassw0rd!")
@@ -90,7 +91,7 @@ class TestResendActivation:
     def test_reissues_for_existing_user(self):
         with (
             patch.object(service.repo, "get_user_by_id", return_value={"id": _USER, "email": "a@b.com", "full_name": "A B"}),
-            patch.object(service, "issue_activation") as issue,
+            patch_tenant_management("issue_activation") as issue,
         ):
             result = service.resend_activation(_TENANT, _USER, actor_id="admin-1")
         issue.assert_called_once()

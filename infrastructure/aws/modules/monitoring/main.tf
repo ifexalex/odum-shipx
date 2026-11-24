@@ -132,6 +132,98 @@ resource "aws_cloudwatch_metric_alarm" "lambda_duration_p95" {
 }
 
 # ---------------------------------------------------------------------------
+# Swallowed failures (audit OPS-04)
+#
+# Invoice generation, notification enqueueing, audit writes and scheduled jobs' per-tenant steps catch errors and
+# carry on, so Lambda "Errors" never sees them. shared/observability.py counts each one as an Embedded Metric Format
+# log line: namespace ShipX, metric Failures (and Attempts for notification sends), dimensions Environment and
+# Operation. CloudWatch builds the metrics from the logs; no data means nothing failed. Runbook: "Failure alarms".
+# Cost: one custom metric per operation (about USD 0.30 each a month) and USD 0.10 per alarm.
+# ---------------------------------------------------------------------------
+
+locals {
+  failure_alarms = {
+    invoice-generation = {
+      operation   = "invoice_generation"
+      period      = 300
+      description = "A customer on a cleared container was not invoiced (generation raised). They are not billed until someone generates it again."
+    }
+    audit-write = {
+      operation   = "audit_write"
+      period      = 300
+      description = "An audit record (tenant or platform) could not be written; the action itself went ahead without one."
+    }
+    scheduled-job-step = {
+      operation   = "scheduled_job_step"
+      period      = 3600
+      description = "A scheduled job failed for a tenant or a record (storage fees, reminders, escalations, expiry, usage, cleanup, offboarding export) and moved on."
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "failures" {
+  for_each = local.failure_alarms
+
+  alarm_name          = "${local.name_prefix}-${each.key}-failures"
+  alarm_description   = each.value.description
+  namespace           = var.metric_namespace
+  metric_name         = "Failures"
+  dimensions          = { Environment = var.environment, Operation = each.value.operation }
+  statistic           = "Sum"
+  period              = each.value.period
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+  tags                = local.common_tags
+}
+
+# Notifications fail for reasons outside the app (a gateway down, credit exhausted), so a single failure is noise; a
+# rate is the signal. Only judged once there are enough sends in the window to mean something.
+resource "aws_cloudwatch_metric_alarm" "notification_failure_rate" {
+  alarm_name          = "${local.name_prefix}-notification-failure-rate"
+  alarm_description   = "More than ${var.notification_failure_rate_percent}% of notification sends failed in 15 minutes (at least ${var.notification_rate_min_attempts} sends)."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  threshold           = var.notification_failure_rate_percent
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+  tags                = local.common_tags
+
+  metric_query {
+    id = "attempts"
+    metric {
+      namespace   = var.metric_namespace
+      metric_name = "Attempts"
+      dimensions  = { Environment = var.environment, Operation = "notification_send" }
+      period      = 900
+      stat        = "Sum"
+    }
+  }
+
+  metric_query {
+    id = "failures"
+    metric {
+      namespace   = var.metric_namespace
+      metric_name = "Failures"
+      dimensions  = { Environment = var.environment, Operation = "notification_send" }
+      period      = 900
+      stat        = "Sum"
+    }
+  }
+
+  metric_query {
+    id          = "rate"
+    expression  = "IF(attempts >= ${var.notification_rate_min_attempts}, 100 * failures / attempts, 0)"
+    label       = "Notification send failure %"
+    return_data = true
+  }
+}
+
+# ---------------------------------------------------------------------------
 # CloudWatch Dashboard
 # ---------------------------------------------------------------------------
 

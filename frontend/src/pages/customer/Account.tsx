@@ -11,15 +11,19 @@
  * The customer's own record is resolved via GET /v1/customers, which the
  * backend scopes to [own record] for the customer role.
  */
-import { useEffect, useState, type JSX } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useSession } from '../../auth/useSession'
-import { Avatar, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch } from '../../design/components'
+import { OWN_CUSTOMER_KEY, useOwnCustomer } from '../../hooks/useCustomers'
+import { Avatar, Badge, Banner, Button, Card, Field, Icon, PhoneField, ToggleSwitch, RadioGroup, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './customer.module.css'
+import { todayIso, formatDate, plural } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 type TabKey = 'Profile' | 'Notifications' | 'Privacy'
 
@@ -27,18 +31,21 @@ const CHANNELS = [
   {
     key: 'sms',
     label: 'SMS',
-    sub: 'Important transactional alerts — payment due, status changes, claims',
+    icon: 'bell' as const,
+    sub: 'Text messages, for optional announcements and offers',
   },
   {
     key: 'whatsapp',
     label: 'WhatsApp',
-    sub: 'Richer formatting with carton details · most reliable',
+    icon: 'phone' as const,
+    sub: 'Richer formatting · most reliable, for optional announcements and offers',
     recommended: true,
   },
   {
     key: 'email',
     label: 'Email',
-    sub: 'Receipts, invoices, monthly statements',
+    icon: 'mail' as const,
+    sub: 'For optional announcements and offers',
   },
 ] as const
 
@@ -51,18 +58,16 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
   const [whatsapp, setWhatsapp] = useState(customer.whatsapp ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
   const dirty = phone !== (customer.phone ?? '') || whatsapp !== (customer.whatsapp ?? '')
 
   async function handleSave(): Promise<void> {
     setSaving(true)
     setError(null)
-    setSaved(false)
     try {
       const updated = await customersApi.update(customer.id, { phone, whatsapp })
       onSaved(updated)
-      setSaved(true)
+      toast.success('Contact details saved')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update your profile.')
     } finally {
@@ -71,53 +76,59 @@ function ProfileTab({ customer, onSaved }: { customer: Customer; onSaved: (c: Cu
   }
 
   return (
-    <Card padding={28}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-        <Avatar size={72} name={customer.name ?? 'Customer'} />
-        <div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18 }}>{customer.name}</div>
-          <div style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>
-            {customer.shipment_count != null ? `${customer.shipment_count} shipments` : 'Customer'}
+    <Card padding="none">
+      <div className={styles.profileHero}>
+        <Avatar size={64} name={customer.name ?? 'Customer'} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className={styles.profileName}>{customer.name}</div>
+          <div className={styles.profileMeta}>
+            {customer.email && <span>{customer.email}</span>}
+            {customer.created_at && <span>· Member since {formatDate(customer.created_at)}</span>}
+            {customer.shipment_count != null && (
+              <Badge variant="primary" size="sm" dot={false}>
+                {plural(customer.shipment_count, 'shipment')}
+              </Badge>
+            )}
           </div>
         </div>
       </div>
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Update failed">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 16 }}><Banner variant="success" title="Profile updated">Your contact details were saved.</Banner></div>}
+      <div className={styles.profileBody}>
+        {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Update failed">{error}</Banner></div>}
 
-      <SectionHead title="Contact info" sub="Name and email are locked once an account is created. Other fields can be updated." />
-      <div style={{ height: 16 }} />
-      <div className={styles.twoCol}>
-        <Field label="Full name" name="name" value={customer.name ?? ''} disabled />
-        <Field
-          label="Email address"
-          name="email"
-          icon="mail"
-          value={customer.email ?? ''}
-          disabled
-          helper="Contact support to change your email."
-        />
-      </div>
-      <div className={styles.twoCol}>
-        <PhoneField label="Phone number" name="phone" required value={phone} onChange={setPhone} />
-        <Field
-          label="WhatsApp number"
-          name="whatsapp"
-          icon="phone"
-          optional
-          value={whatsapp}
-          onChange={(e) => setWhatsapp(e.target.value)}
-          helper="Leave blank to use your phone number."
-        />
-      </div>
+        <SectionHead title="Contact info" sub="Name and email are locked once an account is created. Phone and WhatsApp can be updated anytime." />
+        <div style={{ height: 12 }} />
+        <div className={styles.twoCol}>
+          <Field label="Full name" name="name" icon="lock" value={customer.name ?? ''} disabled />
+          <Field
+            label="Email address"
+            name="email"
+            icon="mail"
+            value={customer.email ?? ''}
+            disabled
+            helper="Contact support to change your email."
+          />
+        </div>
+        <div className={styles.twoCol}>
+          <PhoneField label="Phone number" name="phone" required value={phone} onChange={setPhone} />
+          <PhoneField
+            label="WhatsApp number"
+            name="whatsapp"
+            optional
+            value={whatsapp}
+            onChange={setWhatsapp}
+            helper="Leave blank to use your phone number."
+          />
+        </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8, paddingTop: 16, borderTop: '1px solid var(--color-line-soft)' }}>
-        <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setPhone(customer.phone ?? ''); setWhatsapp(customer.whatsapp ?? '') }}>
-          Discard
-        </Button>
-        <Button variant="primary" icon="check" loading={saving} disabled={!dirty} onClick={() => void handleSave()}>
-          Update profile
-        </Button>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-2)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-line-soft)' }}>
+          <Button variant="ghost" disabled={!dirty || saving} onClick={() => { setPhone(customer.phone ?? ''); setWhatsapp(customer.whatsapp ?? '') }}>
+            Discard
+          </Button>
+          <Button variant="primary" icon="check" loading={saving} disabled={!dirty} onClick={() => void handleSave()}>
+            Update profile
+          </Button>
+        </div>
       </div>
     </Card>
   )
@@ -132,7 +143,6 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
   const [locale, setLocale] = useState<'en' | 'zh'>(customer.locale ?? 'en')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
   const consentDirty =
     JSON.stringify([...consent].sort()) !== JSON.stringify([...(customer.notification_consent ?? [])].sort())
@@ -145,11 +155,16 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
   async function handleSave(): Promise<void> {
     setSaving(true)
     setError(null)
-    setSaved(false)
     try {
-      const updated = await customersApi.update(customer.id, { notification_consent: consent, locale })
+      // Send only what changed. Saving notification_consent is what records that the customer made a
+      // choice (shared/notification_consent.py), so a customer who only switches language must not be
+      // recorded as having chosen the channel list they never touched, empty or not.
+      const body: { notification_consent?: string[]; locale?: 'en' | 'zh' } = {}
+      if (consentDirty) body.notification_consent = consent
+      if (locale !== (customer.locale ?? 'en')) body.locale = locale
+      const updated = await customersApi.update(customer.id, body)
       onSaved(updated)
-      setSaved(true)
+      toast.success('Notification preferences saved')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save your preferences.')
     } finally {
@@ -158,14 +173,16 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
   }
 
   return (
-    <Card padding={28}>
-      <SectionHead title="How would you like updates?" sub="Choose which channels we use to keep you informed" />
+    <Card padding="large">
+      <SectionHead
+        title="How would you like updates?"
+        sub="Choose the channels for optional messages such as announcements and offers. Updates about your own shipments, invoices and claims, and emails about your account, are always sent."
+      />
       <div style={{ height: 12 }} />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
-      {saved && <div style={{ marginBottom: 16 }}><Banner variant="success" title="Preferences saved">Your notification channels were updated.</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Save failed">{error}</Banner></div>}
 
-      {CHANNELS.map(({ key, label, sub, ...rest }, i) => {
+      {CHANNELS.map(({ key, label, icon, sub, ...rest }, i) => {
         const enabled = consent.includes(key)
         return (
           <div
@@ -173,8 +190,8 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 16,
-              padding: '16px 0',
+              gap: 'var(--space-4)',
+              padding: 'var(--space-4) 0',
               borderBottom: i === CHANNELS.length - 1 ? 'none' : '1px solid var(--color-line-soft)',
             }}
           >
@@ -182,71 +199,54 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
               style={{
                 width: 40,
                 height: 40,
-                borderRadius: 10,
-                background: enabled ? 'var(--color-primary-soft)' : 'var(--color-line-soft)',
-                color: enabled ? 'var(--color-primary)' : 'var(--color-ink-4)',
+                borderRadius: 'var(--radius-lg)',
+                background: enabled ? 'var(--color-primary-soft)' : 'var(--color-surface-muted)',
+                border: enabled ? '1px solid color-mix(in srgb, var(--color-primary) 22%, transparent)' : '1px solid var(--color-line-soft)',
+                color: enabled ? 'var(--color-primary-on-soft)' : 'var(--color-ink-4)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}
             >
-              <Icon name={key === 'email' ? 'mail' : 'phone'} size={16} stroke={2} />
+              <Icon name={icon} size={16} stroke={2} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14 }}>{label}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)' }}>{label}</span>
                 {'recommended' in rest && (
-                  <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-primary-deep)', background: 'var(--color-primary-soft)', borderRadius: 999, padding: '2px 8px' }}>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)', color: 'var(--color-primary-on-soft)', background: 'var(--color-primary-soft)', borderRadius: 'var(--radius-full)', padding: 'var(--space-0-5) var(--space-2)' }}>
                     Recommended
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginTop: 3 }}>{sub}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 'var(--space-1)' }}>{sub}</div>
             </div>
-            <ToggleSwitch checked={enabled} onChange={() => toggle(key)} />
+            <ToggleSwitch checked={enabled} onChange={() => toggle(key)} label={label} />
           </div>
         )
       })}
 
       {/* Notification language (P2-1) — selects the EN/ZH template set for SMS/WhatsApp/email */}
-      <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--color-line-soft)' }}>
+      <div style={{ marginTop: 'var(--space-6)', paddingTop: 'var(--space-5)', borderTop: '1px solid var(--color-line-soft)' }}>
         <SectionHead title="Message language" sub="The language we use for SMS, WhatsApp and email updates" />
-        <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-          {([
-            { value: 'en', label: 'English', sub: 'EN — default' },
-            { value: 'zh', label: '中文 (简体)', sub: 'ZH — Simplified Chinese' },
-          ] as const).map(({ value, label, sub }) => {
-            const active = locale === value
-            return (
-              <label
-                key={value}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 10, flex: 1,
-                  border: `1px solid ${active ? 'var(--color-primary)' : 'var(--color-line)'}`,
-                  background: active ? 'var(--color-primary-soft)' : 'transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                <input
-                  type="radio"
-                  name="locale"
-                  value={value}
-                  checked={active}
-                  onChange={() => setLocale(value)}
-                  style={{ accentColor: 'var(--color-primary)' }}
-                />
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'block', fontWeight: 600, fontSize: 14 }}>{label}</span>
-                  <span style={{ display: 'block', fontSize: 12, color: 'var(--color-ink-4)' }}>{sub}</span>
-                </span>
-              </label>
-            )
-          })}
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          <RadioGroup
+            label="Message language"
+            hideLabel
+            name="locale"
+            layout="cards"
+            value={locale}
+            onChange={setLocale}
+            options={[
+              { value: 'en', label: 'English', hint: 'EN — default' },
+              { value: 'zh', label: '中文 (简体)', hint: 'ZH — Simplified Chinese' },
+            ]}
+          />
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--color-line-soft)' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-6)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-line-soft)' }}>
         <Button variant="primary" icon="check" loading={saving} disabled={!dirty} onClick={() => void handleSave()}>
           Save preferences
         </Button>
@@ -259,7 +259,13 @@ function NotificationsTab({ customer, onSaved }: { customer: Customer; onSaved: 
 // Privacy tab (GDPR / NDPR)
 // ---------------------------------------------------------------------------
 
-function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
+function PrivacyTab({
+  customer,
+  onOpenNotifications,
+}: {
+  customer: Customer
+  onOpenNotifications: () => void
+}): JSX.Element {
   const { logout } = useSession()
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -276,7 +282,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `my-data-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `my-data-export-${todayIso()}.json`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
@@ -300,65 +306,72 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
   }
 
   return (
-    <Card padding={28}>
+    <Card padding="large">
       <SectionHead
         title="Your data, your choice"
         sub="Under Nigeria's NDPR and the EU's GDPR, you have full control over your personal data."
       />
       <div style={{ height: 16 }} />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Action failed">{error}</Banner></div>}
 
       {customer.consent_given_at && (
         <Banner variant="success" title="Consent on file">
-          You consented to data processing on <strong>{customer.consent_given_at.slice(0, 10)}</strong>. Lawful
+          You consented to data processing on <strong>{formatDate(customer.consent_given_at)}</strong>. Lawful
           basis: contract performance (NDPR Art. 2.2). You can withdraw at any time below.
         </Banner>
       )}
 
-      <div className={styles.twoCol} style={{ margin: '24px 0' }}>
-        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 10, padding: 18 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+      <div className={styles.twoCol} style={{ margin: 'var(--space-6) 0' }}>
+        <div className={styles.privacyTile}>
+          <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'var(--color-primary-soft)', color: 'var(--color-primary-on-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
             <Icon name="download" size={16} />
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Download your data</div>
-          <div style={{ fontSize: 12, color: 'var(--color-ink-3)', lineHeight: 1.5, marginBottom: 12 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>Download your data</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 'var(--space-3)' }}>
             Get a JSON export of everything we hold — profile, shipments, billing, claims, consents.
           </div>
-          <Button variant="ghost" size="sm" icon="download" loading={exporting} onClick={() => void handleExport()}>
-            Request my data export
-          </Button>
+          <div className={styles.privacyTileAction}>
+            <Button variant="ghost" size="sm" icon="download" loading={exporting} onClick={() => void handleExport()}>
+              Request my data export
+            </Button>
+          </div>
         </div>
-        <div style={{ background: 'var(--color-surface-muted)', border: '1px solid var(--color-line-soft)', borderRadius: 10, padding: 18 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--color-primary-soft)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+        <div className={styles.privacyTile}>
+          <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-md)', background: 'var(--color-primary-soft)', color: 'var(--color-primary-on-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
             <Icon name="settings" size={16} />
           </div>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Update consent preferences</div>
-          <div style={{ fontSize: 12, color: 'var(--color-ink-3)', lineHeight: 1.5, marginBottom: 12 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-md)', marginBottom: 'var(--space-1)' }}>Update consent preferences</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)', marginBottom: 'var(--space-3)' }}>
             Change which channels you&apos;ve consented to on the Notifications tab. Transactional messages always go through.
+          </div>
+          <div className={styles.privacyTileAction}>
+            <Button variant="ghost" size="sm" trailingIcon="arrowright" onClick={onOpenNotifications}>
+              Open notification preferences
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Danger zone */}
-      <div style={{ background: '#fff8f6', border: '1px solid rgba(220,38,38,0.2)', borderLeft: '4px solid var(--color-error)', borderRadius: 10, padding: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--color-error-soft)', color: 'var(--color-error)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div style={{ background: 'color-mix(in srgb, var(--color-error) 4%, var(--color-surface))', border: '1px solid color-mix(in srgb, var(--color-error) 20%, transparent)', borderLeft: '4px solid var(--color-error)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-4)' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-lg)', background: 'var(--color-error-soft)', color: 'var(--color-error)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Icon name="suspend" size={18} stroke={2.2} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15, color: 'var(--color-error)' }}>Delete my account</div>
-            <p style={{ fontSize: 13, color: 'var(--color-ink-2)', margin: '6px 0 12px', lineHeight: 1.55 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-lg)', color: 'var(--color-error)' }}>Delete my account</div>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', margin: 'var(--space-2) 0 var(--space-3)', lineHeight: 'var(--leading-body)' }}>
               Permanently erase your personal data — name, phone, email and address. Your{' '}
               <strong>billing and shipment records are kept</strong> as required by law, but they will no longer be
               linked to you. <strong>This cannot be undone.</strong>
             </p>
             {!showDelete ? (
-              <Button variant="danger-outline" icon="suspend" onClick={() => setShowDelete(true)}>
+              <Button variant="danger-ghost" icon="suspend" onClick={() => setShowDelete(true)}>
                 Delete my account
               </Button>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 <Field
                   label='Type "DELETE" to confirm'
                   name="confirm_delete"
@@ -366,7 +379,7 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value)}
                 />
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                   <Button variant="ghost" size="sm" onClick={() => { setShowDelete(false); setConfirmText('') }} disabled={deleting}>
                     Cancel
                   </Button>
@@ -390,36 +403,24 @@ function PrivacyTab({ customer }: { customer: Customer }): JSX.Element {
 export function Account(): JSX.Element {
   const { session } = useSession()
   const [tab, setTab] = useState<TabKey>('Profile')
-  const [customer, setCustomer] = useState<Customer | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        // Customer role gets exactly [own record] from the list endpoint.
-        const result = await customersApi.list()
-        setCustomer(result.data[0] ?? null)
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load your account.')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
+  const qc = useQueryClient()
+  const own = useOwnCustomer()
+  const customer = own.data ?? null
+  const loading = own.isLoading
+  const error = own.error ? (own.error instanceof ApiError ? own.error.message : 'Could not load your account.') : null
+  // A tab that saves hands back the updated record: show it at once (the write also invalidates the query).
+  const setCustomer = (updated: Customer): void => {
+    qc.setQueryData(OWN_CUSTOMER_KEY, updated)
+  }
 
   if (!session) return <></>
 
   return (
     <div className={styles.page}>
-      <PageHeader
-        eyebrow="Account"
-        title="Your details and preferences"
-        subtitle="Update your contact info, notification channels, and privacy choices."
-      />
+      <PageHeader title="Account" meta="Your details, how we contact you, and your privacy choices." />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load your account">{error}</Banner></div>}
-      {loading && <p style={{ color: 'var(--color-ink-3)' }}>Loading your account…</p>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load your account">{error}</Banner></div>}
+      {loading && <LinesSkeleton label="Loading your account" />}
 
       {!loading && !customer && !error && (
         <Banner variant="info" title="No customer profile linked">
@@ -440,7 +441,7 @@ export function Account(): JSX.Element {
           />
           {tab === 'Profile' && <ProfileTab customer={customer} onSaved={setCustomer} />}
           {tab === 'Notifications' && <NotificationsTab customer={customer} onSaved={setCustomer} />}
-          {tab === 'Privacy' && <PrivacyTab customer={customer} />}
+          {tab === 'Privacy' && <PrivacyTab customer={customer} onOpenNotifications={() => setTab('Notifications')} />}
         </>
       )}
     </div>

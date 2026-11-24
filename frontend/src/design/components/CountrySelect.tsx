@@ -13,6 +13,7 @@ export interface CountrySelectProps {
   onChange: (countryName: string) => void
   name?: string
   id?: string
+  /** Accepted for parity with the other fields; required fields carry no mark (FD-11: only optional ones do). */
   required?: boolean
   optional?: boolean
   helper?: string
@@ -38,7 +39,6 @@ export function CountrySelect({
   onChange,
   name,
   id,
-  required = false,
   optional = false,
   helper,
   disabled = false,
@@ -71,7 +71,6 @@ export function CountrySelect({
         <label className={styles.label} htmlFor={fieldId}>
           <span>
             {label}
-            {required && <span className={styles.required}>*</span>}
           </span>
           {optional && <span className={styles.optionalTag}>Optional</span>}
         </label>

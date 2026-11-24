@@ -14,7 +14,7 @@ import { useEffect, useState, type FormEvent, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { inviteApi, type InviteDetail } from '../../api/customer'
-import { Banner, Button, Field, Icon } from '../../design/components'
+import { Banner, Button, Field, Icon, IconButton, LinesSkeleton } from '../../design/components'
 import { AuthShell, FormHead, PasswordStrength } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -94,8 +94,8 @@ export function InviteClaimScreen(): JSX.Element {
   if (loadState === 'loading') {
     return (
       <AuthShell>
-        <div style={{ textAlign: 'center', padding: '40px 0' }}>
-          <p className={styles.formSub}>Loading your invite…</p>
+        <div style={{ textAlign: 'center', padding: 'var(--space-12) 0' }}>
+          <LinesSkeleton label="Loading your invite" />
         </div>
       </AuthShell>
     )
@@ -114,13 +114,13 @@ export function InviteClaimScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="alert" size={42} color="var(--color-error)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>This link is no longer valid.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 24 }}>
+          <h1 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>This link is no longer valid.</h1>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             It may have expired or already been used. Contact your shipping company to request a new one.
           </p>
           <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
@@ -144,17 +144,17 @@ export function InviteClaimScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Account created.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 24 }}>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Account created.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             Sign in with <strong>{email}</strong> and the password you just chose to track your shipments.
           </p>
-          <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
-            Sign in →
+          <Button variant="primary" size="lg" full trailingIcon="arrowright" onClick={() => navigate('/login')}>
+            Sign in
           </Button>
         </div>
       </AuthShell>
@@ -173,7 +173,7 @@ export function InviteClaimScreen(): JSX.Element {
       />
 
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Could not create account">{error}</Banner>
         </div>
       )}
@@ -202,19 +202,18 @@ export function InviteClaimScreen(): JSX.Element {
           autoComplete="new-password"
           required
           trailing={
-            <button
-              type="button"
+            <IconButton
               className={styles.trailingButton}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              size="sm"
+              icon={showPassword ? 'eyeoff' : 'eye'}
+              label={showPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowPassword((v) => !v)}
-            >
-              <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
-            </button>
+            />
           }
         />
         <PasswordStrength password={password} />
 
-        <div style={{ marginTop: 16, marginBottom: 8 }}>
+        <div style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' }}>
           <Field
             label="Confirm password"
             type={showPassword ? 'text' : 'password'}
@@ -233,20 +232,20 @@ export function InviteClaimScreen(): JSX.Element {
           style={{
             background: 'var(--color-surface-muted)',
             border: '1px solid var(--color-line-soft)',
-            borderRadius: 8,
-            padding: '12px 14px',
-            margin: '8px 0 24px',
-            fontSize: 12,
-            lineHeight: 1.7,
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-3) var(--space-4)',
+            margin: 'var(--space-2) 0 var(--space-6)',
+            fontSize: 'var(--text-xs)',
+            lineHeight: 'var(--leading-body)',
           }}
         >
-          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
             Password requirements
           </div>
           {REQUIREMENTS.map((r) => {
             const met = r.ok(password)
             return (
-              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 6, color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}>
+              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}>
                 <Icon name={met ? 'check' : 'minus'} size={12} stroke={3} />
                 {r.label}
               </div>

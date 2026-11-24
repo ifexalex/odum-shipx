@@ -113,13 +113,16 @@ def is_invite_valid(invite: dict[str, Any] | None) -> bool:
 
 
 def consume_invite(tenant_id: str, invite_id: str) -> dict[str, Any] | None:
-    """Stamp `consumed_at` on an invite. Only succeeds if it is still unconsumed."""
+    """Stamp `consumed_at` on an invite. Only succeeds if it is still unconsumed and unexpired."""
     return execute_write_with_tenant(
         tenant_id,
         """
         UPDATE customer_invite
         SET consumed_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND consumed_at IS NULL
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND consumed_at IS NULL
+          AND expires_at > NOW()
         RETURNING *
         """,
         {"tenant_id": tenant_id, "id": invite_id},

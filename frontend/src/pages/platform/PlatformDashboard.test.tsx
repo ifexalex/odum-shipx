@@ -8,12 +8,19 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { platformApi } from '../../api/tenantManagement'
 import { PlatformDashboard } from './PlatformDashboard'
+import { withQuery } from '../../test/queryWrapper'
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
   return {
     ...original,
-    platformApi: { ...original.platformApi, dashboard: vi.fn(), listTenants: vi.fn(), auditLog: vi.fn() },
+    platformApi: {
+      ...original.platformApi,
+      dashboard: vi.fn(),
+      listTenants: vi.fn(),
+      auditLog: vi.fn(),
+      listOnboardingRequests: vi.fn().mockResolvedValue([]),
+    },
   }
 })
 
@@ -28,7 +35,7 @@ const TENANTS = [
 ]
 
 function renderPage() {
-  return render(
+  return render(withQuery(
     <MemoryRouter initialEntries={['/platform/dashboard']}>
       <Routes>
         <Route path="/platform/dashboard" element={<PlatformDashboard />} />
@@ -36,7 +43,7 @@ function renderPage() {
         <Route path="/platform/tenants/new" element={<div>Onboard tenant page</div>} />
       </Routes>
     </MemoryRouter>,
-  )
+  ))
 }
 
 describe('PlatformDashboard (B1)', () => {
@@ -79,7 +86,7 @@ describe('PlatformDashboard (B1)', () => {
   it('activity feed footer links to the full audit log', async () => {
     renderPage()
     await screen.findByText('24 / 50')
-    await userEvent.click(screen.getByRole('button', { name: /view full audit log/i }))
+    await userEvent.click(screen.getByRole('link', { name: /view full audit log/i }))
     expect(await screen.findByText('Audit log page')).toBeInTheDocument()
   })
 })

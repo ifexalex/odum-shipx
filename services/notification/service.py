@@ -9,17 +9,27 @@ All send functions raise on hard failures so that the SQS handler can
 return the message ID in batchItemFailures and let SQS retry / DLQ.
 """
 
+import html
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
+from shared.observability import record_outcome
 from shared.providers import get_email_provider, get_queue_provider
 
-from .tenant_branding import get_company_name, get_primary_color
+from .tenant_branding import (
+    get_company_name,
+    get_document_footer,
+    get_primary_color,
+    get_support_email,
+    get_support_whatsapp,
+    get_tagline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +44,10 @@ _SMS_TEMPLATES: dict[str, str] = {
         "{company_name}: Container {container_number} arrived. Amount: {currency} {amount}. Pickup: {warehouse_address}"
     ),
     "release_note_generated": ("{company_name}: Release note ready. Ref: {reference_number}. Collect {carton_count} cartons."),
+    "pickup_code_issued": (
+        "{company_name}: Pickup code for release note {reference_number}: {pickup_code}. "
+        "Give it to the person collecting your goods. Do not share it with anyone else."
+    ),
     "container_arrived": (
         "{company_name}: Your goods have arrived at our warehouse! Container {container_number}. Your invoice is being prepared."
     ),
@@ -50,7 +64,20 @@ _SMS_TEMPLATES: dict[str, str] = {
         "Reason: {reason}. Please contact us or resubmit with correct evidence."
     ),
     "damage_claim_update": ("{company_name}: Your damage claim {claim_reference} is now {status}."),
+    "cbm_dispute_update": ("{company_name}: Your CBM dispute {reference_number} is now {status}."),
     "packing_list_approved": ("{company_name}: Your packing list {reference} has been approved."),
+    "storage_first_reminder": (
+        "{company_name}: Reminder: Release note {reference_number} ({carton_count} cartons) is ready for pickup. "
+        "{days_remaining} days of free storage remaining."
+    ),
+    "storage_final_reminder": (
+        "{company_name}: Final reminder: Release note {reference_number} ({carton_count} cartons) has 1 day of free "
+        "storage remaining. Storage fees begin tomorrow."
+    ),
+    "release_note_expired": (
+        "{company_name}: Release note {reference_number} expired on {valid_until}. "
+        "Please contact us to reissue your release note."
+    ),
 }
 
 _DEFAULT_SMS_TEMPLATE = "{company_name}: You have a new notification."
@@ -61,6 +88,9 @@ _SMS_TEMPLATES_ZH: dict[str, str] = {
         "{company_name}: 集装箱 {container_number} 已抵达。应付金额：{currency} {amount}。提货地址：{warehouse_address}"
     ),
     "release_note_generated": "{company_name}: 提货单已生成。单号：{reference_number}，共 {carton_count} 件。",
+    "pickup_code_issued": (
+        "{company_name}: 提货单 {reference_number} 的取货码：{pickup_code}。请仅告知前来提货的人，切勿告知他人。"
+    ),
     "container_arrived": "{company_name}: 您的货物已到达仓库！集装箱 {container_number}，正在准备账单。",
     "customer_registered": "{company_name}: 欢迎！您的账户已创建。请查收邮件以设置密码。",
     "customer_invite": "{company_name}: 您好 {name}，创建账户以跟踪您的货物：{invite_link}（链接48小时后失效）",
@@ -70,7 +100,15 @@ _SMS_TEMPLATES_ZH: dict[str, str] = {
         "{company_name}: 您的付款申报 NGN {amount_ngn} 未通过确认。原因：{reason}。请联系我们或重新提交正确的凭证。"
     ),
     "damage_claim_update": "{company_name}: 您的损坏索赔 {claim_reference} 当前状态：{status}。",
+    "cbm_dispute_update": "{company_name}: 您的CBM争议 {reference_number} 当前状态：{status}。",
     "packing_list_approved": "{company_name}: 您的装箱单 {reference} 已获批准。",
+    "storage_first_reminder": (
+        "{company_name}: 提醒：提货单 {reference_number}（共 {carton_count} 件）待提货，免费仓储还剩 {days_remaining} 天。"
+    ),
+    "storage_final_reminder": (
+        "{company_name}: 最后提醒：提货单 {reference_number}（共 {carton_count} 件）免费仓储明日结束，明日起将产生仓储费。"
+    ),
+    "release_note_expired": "{company_name}: 提货单 {reference_number} 已于 {valid_until} 过期，请联系我们重新签发。",
 }
 _DEFAULT_SMS_TEMPLATE_ZH = "{company_name}: 您有一条新通知。"
 
@@ -89,6 +127,9 @@ WA_TEMPLATE_MAP_ZH: dict[str, str] = {
     "customer_invite": "customer_invite_zh",
     "payment_claim_confirmed": "payment_claim_confirmed_zh",
     "payment_claim_rejected": "payment_claim_rejected_zh",
+    "storage_first_reminder": "storage_first_reminder_zh",
+    "storage_final_reminder": "storage_final_reminder_zh",
+    "release_note_expired": "release_note_expired_zh",
 }
 
 
@@ -97,6 +138,20 @@ class _SafeFormatMap(dict):  # type: ignore[type-arg]
 
     def __missing__(self, key: str) -> str:
         return f"{{{key}}}"
+
+
+_PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z0-9_]+)\}")
+
+
+def _safe_substitute(template: str, data: dict[str, Any]) -> str:
+    """Safely substitute {identifier} placeholders without attribute or index traversal."""
+    stripped = _PLACEHOLDER_RE.sub("", template)
+    if "{" in stripped or "}" in stripped:
+        raise ValueError("Malformed or disallowed placeholder in template")
+    return _PLACEHOLDER_RE.sub(
+        lambda m: str(data[m.group(1)]) if m.group(1) in data and data[m.group(1)] is not None else m.group(0),
+        template,
+    )
 
 
 def format_sms(
@@ -117,9 +172,9 @@ def format_sms(
         template = _SMS_TEMPLATES_ZH.get(event_type, _DEFAULT_SMS_TEMPLATE_ZH)
     else:
         template = _SMS_TEMPLATES.get(event_type, _DEFAULT_SMS_TEMPLATE)
-    data = _SafeFormatMap({"company_name": get_company_name(branding), **template_data})
+    data = {"company_name": get_company_name(branding), **template_data}
     try:
-        return template.format_map(data)
+        return _safe_substitute(template, data)
     except Exception:
         # A malformed template (bad placeholder/format spec) must never block a
         # notification — fall back to a safe generic message, but surface the
@@ -152,6 +207,34 @@ def _assert_deliverable(phone_or_email: str, channel: str, tenant_id: str) -> bo
     return False
 
 
+_AT_SANDBOX_USERNAME = "sandbox"
+_PLACEHOLDER_FROM_ADDRESS = "notifications@logistics.example.com"
+
+# Matches the AWS/Azure guards and shared/notifications.py: every tfvars file
+# sets environment = "prod", and that value also feeds resource name prefixes,
+# so it cannot be renamed. Both spellings are accepted deliberately.
+_PRODUCTION_ENVIRONMENTS = frozenset({"production", "prod"})
+
+# Digit runs long enough to be a phone number. Provider error payloads echo the
+# recipient, and a phone number in CloudWatch is a GDPR problem regardless of
+# which vendor put it there.
+_LONG_DIGIT_RUN = re.compile(r"\+?\d[\d\s-]{6,}\d")
+
+
+def _is_production() -> bool:
+    """True when this is a production deployment (see _PRODUCTION_ENVIRONMENTS)."""
+    return os.environ.get("ENVIRONMENT", "").strip().lower() in _PRODUCTION_ENVIRONMENTS
+
+
+def _redact_provider_error(body: str) -> str:
+    """Strip anything phone-number-shaped from a provider error body.
+
+    Truncated as well as redacted: these payloads can be an entire HTML error
+    page, and a log line is not the place for one.
+    """
+    return _LONG_DIGIT_RUN.sub("[redacted]", body)[:400]
+
+
 def send_sms(phone: str, message: str, tenant_id: str) -> bool:
     """Send an SMS via Africa's Talking. Raises on API errors.
 
@@ -160,12 +243,23 @@ def send_sms(phone: str, message: str, tenant_id: str) -> bool:
     if not _assert_deliverable(phone, "sms", tenant_id):
         return False
     api_key = os.environ.get("AFRICASTALKING_API_KEY", "")
-    username = os.environ.get("AFRICASTALKING_USERNAME", "sandbox")
+    username = os.environ.get("AFRICASTALKING_USERNAME", "").strip() or _AT_SANDBOX_USERNAME
     sender_id = os.environ.get("AFRICASTALKING_SENDER_ID", "")
 
     if not api_key:
-        logger.warning(
-            "AFRICASTALKING_API_KEY not configured — SMS not sent",
+        logger.error(
+            "AFRICASTALKING_API_KEY not configured — no SMS can be sent in this environment",
+            extra={"tenant_id": tenant_id},
+        )
+        return False
+
+    if username == _AT_SANDBOX_USERNAME and _is_production():
+        # Africa's Talking accepts sandbox traffic and delivers none of it, with
+        # a success-shaped response. In production that is indistinguishable
+        # from working until a customer says they got nothing, so refuse.
+        logger.error(
+            "AFRICASTALKING_USERNAME is '%s' in production — refusing to send, nothing would be delivered",
+            _AT_SANDBOX_USERNAME,
             extra={"tenant_id": tenant_id},
         )
         return False
@@ -204,11 +298,15 @@ def send_sms(phone: str, message: str, tenant_id: str) -> bool:
             )
             return False
     except urllib.error.HTTPError as exc:
+        # Africa's Talking echoes the recipient MSISDN in its error payloads, so
+        # the body is not loggable: phone numbers are PII and must never reach
+        # CloudWatch. The status code plus the provider's own error name is what
+        # an operator needs anyway.
         body = exc.read().decode("utf-8", errors="replace")
         logger.error(
             "Africa's Talking HTTP error %s: %s",
             exc.code,
-            body,
+            _redact_provider_error(body),
             extra={"tenant_id": tenant_id},
         )
         raise
@@ -252,6 +350,9 @@ WA_TEMPLATE_MAP: dict[str, str] = {
     "customer_invite": "customer_invite",
     "payment_claim_confirmed": "payment_claim_confirmed",
     "payment_claim_rejected": "payment_claim_rejected",
+    "storage_first_reminder": "storage_first_reminder",
+    "storage_final_reminder": "storage_final_reminder",
+    "release_note_expired": "release_note_expired",
 }
 
 _WA_MAX_PARAMS = 5
@@ -282,6 +383,9 @@ WA_TEMPLATE_PARAMS: dict[str, tuple[str, ...]] = {
     "tenant_suspended": ("reason",),
     "payment_claim_confirmed": ("amount_ngn",),
     "payment_claim_rejected": ("amount_ngn", "reason"),
+    "storage_first_reminder": ("reference_number", "carton_count", "days_remaining"),
+    "storage_final_reminder": ("reference_number", "carton_count"),
+    "release_note_expired": ("reference_number", "valid_until"),
 }
 
 
@@ -349,8 +453,10 @@ def send_whatsapp(
     access_token = os.environ.get("META_WHATSAPP_ACCESS_TOKEN", "")
 
     if not phone_id or not access_token:
-        logger.warning(
-            "WhatsApp credentials not configured — message not sent",
+        # ERROR, not WARNING: WhatsApp is the primary customer channel here, so
+        # "not configured" means the main way customers are contacted is dead.
+        logger.error(
+            "WhatsApp credentials not configured — no WhatsApp message can be sent in this environment",
             extra={"tenant_id": tenant_id},
         )
         return ""
@@ -420,6 +526,7 @@ EMAIL_SUBJECTS: dict[str, str] = {
     "shipment_update": "Shipment status update",
     "payment_due": "Payment due for your shipment",
     "release_note_generated": "Release note ready for collection",
+    "pickup_code_issued": "Your pickup code",
     "damage_claim_update": "Update on your damage claim",
     "cbm_dispute_update": "CBM dispute update",
     "packing_list_approved": "Your packing list has been approved",
@@ -429,8 +536,12 @@ EMAIL_SUBJECTS: dict[str, str] = {
     "customer_registered": "Welcome — your account is ready",
     "customer_invite": "Create your account to track your shipment",
     "account_activation": "Activate your account — set your password",
+    "registration_existing_account": "You already have an account",
     "payment_claim_confirmed": "Your payment has been confirmed",
     "payment_claim_rejected": "Your payment claim needs attention",
+    "storage_first_reminder": "Reminder: Goods ready for pickup",
+    "storage_final_reminder": "Final reminder: Storage fees begin tomorrow",
+    "release_note_expired": "Release note expired",
 }
 
 _DEFAULT_EMAIL_SUBJECT = "Notification from your logistics provider"
@@ -439,6 +550,7 @@ EMAIL_SUBJECTS_ZH: dict[str, str] = {
     "shipment_update": "货运状态更新",
     "payment_due": "您的货物付款通知",
     "release_note_generated": "提货单已生成",
+    "pickup_code_issued": "您的取货码",
     "damage_claim_update": "损坏索赔更新",
     "cbm_dispute_update": "CBM争议更新",
     "packing_list_approved": "装箱单已审批",
@@ -448,10 +560,258 @@ EMAIL_SUBJECTS_ZH: dict[str, str] = {
     "customer_registered": "欢迎 — 您的账户已准备就绪",
     "customer_invite": "创建账户以跟踪您的货物",
     "account_activation": "激活账户 — 设置您的密码",
+    "registration_existing_account": "您已拥有账户",
     "payment_claim_confirmed": "您的付款已确认",
     "payment_claim_rejected": "您的付款申报需要关注",
+    "storage_first_reminder": "提货提醒：免费仓储即将到期",
+    "storage_final_reminder": "最后提醒：明日起将产生仓储费",
+    "release_note_expired": "提货单已过期",
 }
 _DEFAULT_EMAIL_SUBJECT_ZH = "来自您的物流服务商的通知"
+
+
+# Lead paragraph per event. Email was previously a greeting, a CTA button and a
+# raw dump of every template_data key as "Label: value" rows — so a customer
+# being invited to create an account received a header, a button and the single
+# row "Name: Ngozi", with nothing saying what the message was about or why they
+# had received it. These say it, in the recipient's own terms.
+#
+# Plain text, never HTML: values are HTML-escaped before substitution, so a
+# template that carried its own markup would have no safe way to be rendered.
+_EMAIL_BODIES: dict[str, str] = {
+    "customer_invite": (
+        "{company_name} has created an account for you so you can track your shipments, "
+        "see what you owe and download your release notes. "
+        "Use the button below to choose a password and finish setting it up. "
+        "The link expires in 48 hours — if it does, ask us to send a new one."
+    ),
+    # The code itself is in the details table below this paragraph. The wording is about what it is for, because
+    # the person reading it may be handing it to someone else.
+    "pickup_code_issued": (
+        "{company_name} has issued a pickup code for your release note. Whoever collects your goods must give the "
+        "warehouse this code, so give it only to the person you send to collect them. Keep it private: we will "
+        "never ask you for it."
+    ),
+    "account_activation": (
+        "An account has been created for you on {company_name}'s logistics portal. "
+        "Use the button below to set your password and sign in. "
+        "The link expires in 48 hours."
+    ),
+    "customer_registered": (
+        "Welcome to {company_name}. Your account is ready — check your email for the link to set your password."
+    ),
+    # Sent when someone signs up with an address that already has an account. The sign-up form
+    # answers identically either way (so it cannot be used to find out who is a customer), and this is
+    # how the person who owns the address finds out. Deliberately says nothing about who tried.
+    "registration_existing_account": (
+        "Someone, possibly you, tried to create an account on {company_name}'s logistics portal with this "
+        "email address, which already has one. You do not need to do anything. "
+        'To get in, use the button below; if you have forgotten your password, choose "Forgot password" '
+        "on the sign-in page. If this was not you, you can ignore this message."
+    ),
+    "shipment_update": "There is an update on your shipment with {company_name}. The details are below.",
+    "container_arrived": (
+        "Your goods have arrived at {company_name}'s warehouse. "
+        "We are preparing your invoice and will be in touch about collection."
+    ),
+    "payment_due": (
+        "Your shipment with {company_name} has arrived and payment is now due. The amount and collection address are below."
+    ),
+    "release_note_generated": (
+        "Your release note is ready. Bring it with you — or quote the reference below — "
+        "when you collect your goods from {company_name}."
+    ),
+    "packing_list_approved": "{company_name} has approved your packing list. The details are below.",
+    "damage_claim_update": "There is an update on the damage claim you raised with {company_name}.",
+    "cbm_dispute_update": "There is an update on the CBM measurement you queried with {company_name}.",
+    "payment_claim_confirmed": ("{company_name} has confirmed your payment. Thank you — nothing further is needed."),
+    "payment_claim_rejected": (
+        "{company_name} could not confirm the payment you reported. The reason is below. "
+        "Please get in touch, or resubmit with the correct proof of payment."
+    ),
+    "tenant_onboarded": "Your company's {company_name} account is set up and ready to use.",
+    "tenant_suspended": "Your company's {company_name} account has been suspended. Please contact support.",
+    "storage_first_reminder": (
+        "Your goods with {company_name} are ready for collection. Please collect them before your free storage period ends."
+    ),
+    "storage_final_reminder": (
+        "Your free storage period with {company_name} ends today. "
+        "Storage fees will begin accruing tomorrow for uncollected cartons."
+    ),
+    "release_note_expired": (
+        "Your release note with {company_name} has expired. Please contact us to have it reissued before collecting your goods."
+    ),
+}
+_DEFAULT_EMAIL_BODY = "You have a new notification from {company_name}. The details are below."
+
+_EMAIL_BODIES_ZH: dict[str, str] = {
+    "customer_invite": (
+        "{company_name} 已为您创建账户，您可以查询货物状态、应付金额并下载提货单。"
+        "请点击下方按钮设置密码以完成开通。链接将在48小时后失效——如已失效，请联系我们重新发送。"
+    ),
+    "account_activation": ("{company_name} 物流平台已为您创建账户。请点击下方按钮设置密码并登录。链接将在48小时后失效。"),
+    "pickup_code_issued": (
+        "{company_name} 已为您的提货单生成取货码。提货人须向仓库出示此码，"
+        "请仅告知您派去提货的人，并妥善保管：我们绝不会向您索要。"
+    ),
+    "customer_registered": "欢迎使用 {company_name}。您的账户已就绪——请查收邮件以设置密码。",
+    "registration_existing_account": (
+        "有人（可能是您本人）尝试使用此邮箱地址在 {company_name} 物流平台创建账户，但该邮箱已有账户。"
+        "您无需任何操作。请点击下方按钮登录；如忘记密码，请在登录页选择“忘记密码”。如果这不是您本人操作，请忽略此邮件。"
+    ),
+    "shipment_update": "您在 {company_name} 的货物有新状态更新，详情如下。",
+    "container_arrived": "您的货物已抵达 {company_name} 仓库。我们正在准备账单，并将与您联系提货事宜。",
+    "payment_due": "您在 {company_name} 的货物已抵达，现需付款。金额与提货地址如下。",
+    "release_note_generated": "您的提货单已生成。提货时请携带提货单或提供下方单号。",
+    "packing_list_approved": "{company_name} 已批准您的装箱单，详情如下。",
+    "damage_claim_update": "您向 {company_name} 提交的损坏索赔有新进展。",
+    "cbm_dispute_update": "您向 {company_name} 提出的CBM测量异议有新进展。",
+    "payment_claim_confirmed": "{company_name} 已确认您的付款。谢谢——无需其他操作。",
+    "payment_claim_rejected": "{company_name} 未能确认您申报的付款，原因如下。请联系我们或重新提交正确的付款凭证。",
+    "tenant_onboarded": "您公司的 {company_name} 账户已开通并可以使用。",
+    "tenant_suspended": "您公司的 {company_name} 账户已被暂停，请联系客服。",
+    "storage_first_reminder": "您在 {company_name} 的货物已可提货，请在免费仓储期结束前前往提取。",
+    "storage_final_reminder": "您在 {company_name} 的免费仓储期今日结束，未提取货物自明日起将按日计收仓储费。",
+    "release_note_expired": "您在 {company_name} 的提货单已过期，提货前请联系我们重新签发。",
+}
+_DEFAULT_EMAIL_BODY_ZH = "您有一条来自 {company_name} 的新通知，详情如下。"
+
+# Keys that are plumbing, not information: already shown elsewhere in the
+# message, or meaningless to the person reading it.
+_HIDDEN_EMAIL_FIELDS = frozenset({"name", "company_name"})
+
+_LINK_LABELS: dict[str, str] = {
+    "activation_link": "Set your password",
+    "invite_link": "Create your account",
+    "login_link": "Sign in",
+}
+_LINK_LABELS_ZH: dict[str, str] = {
+    "activation_link": "设置密码",
+    "invite_link": "创建账户",
+    "login_link": "登录",
+}
+
+
+def _field_label(key: str) -> str:
+    """Human label for a template_data key, e.g. container_number → Container number."""
+    words = key.replace("_", " ").strip()
+    return words[:1].upper() + words[1:] if words else key
+
+
+def _escaped(template_data: dict[str, Any], company_name: str) -> dict[str, str]:
+    """Template data with every value HTML-escaped, for embedding in HTML.
+
+    Values come from customer records, staff input and imported manifests. They
+    were previously interpolated into the email body raw, so a name or reference
+    containing `<` or `"` could break the layout or inject markup into a message
+    sent under the tenant's name.
+    """
+    escaped = {k: html.escape(str(v), quote=True) for k, v in template_data.items() if v is not None}
+    escaped.setdefault("company_name", html.escape(company_name, quote=True))
+    return escaped
+
+
+def _render_body_copy(
+    event_type: str,
+    locale: str,
+    data: dict[str, str],
+) -> str:
+    """The lead paragraph for this event, with placeholders filled.
+
+    Falls back to the generic lead if the event has no copy, or if the rendered
+    result still contains an unresolved `{placeholder}` — a half-substituted
+    sentence reads as a bug to the recipient, whereas the generic lead plus the
+    details table below it is always accurate.
+    """
+    if locale == "zh":
+        template = _EMAIL_BODIES_ZH.get(event_type, _DEFAULT_EMAIL_BODY_ZH)
+        default = _DEFAULT_EMAIL_BODY_ZH
+    else:
+        template = _EMAIL_BODIES.get(event_type, _DEFAULT_EMAIL_BODY)
+        default = _DEFAULT_EMAIL_BODY
+    try:
+        rendered = _safe_substitute(template, data)
+    except Exception:
+        logger.warning("Email body render failed for event %s; using generic copy", event_type)
+        rendered = ""
+    if not rendered or "{" in rendered:
+        logger.warning("Email body for event %s had unresolved placeholders; using generic copy", event_type)
+        rendered = _safe_substitute(default, data)
+    return rendered
+
+
+def _html_to_text(markup: str) -> str:
+    """Crude tag strip for deriving a text part from tenant-authored HTML.
+
+    Deliberately not a parser: this runs in a Lambda whose dependencies are
+    pinned and minimal, and the result only has to be readable. Block-level
+    tags become newlines so the text does not collapse into one paragraph.
+    """
+    text = re.sub(r"(?i)<br\s*/?>|</(p|div|tr|h[1-6]|li)>", "\n", markup)
+    text = re.sub(r"(?i)<(script|style)[^>]*>.*?</\1>", "", text, flags=re.DOTALL)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
+    # Collapse the runs of blank lines the tag strip leaves behind.
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def email_subject(
+    event_type: str,
+    branding: dict[str, Any],
+    template_data: dict[str, Any],
+    override: str | None = None,
+    locale: str = "en",
+) -> str:
+    """Subject line, prefixed with the company name.
+
+    The prefix is the point: subjects were bare phrases like "Create your
+    account to track your shipment", which in an inbox gives the recipient no
+    idea which company is writing or whether it is legitimate. This matches the
+    `{company_name}:` convention the SMS templates already use.
+
+    A tenant override is honoured as-is and is *not* prefixed — a tenant that
+    wrote its own subject has already said what it wants — but placeholders in
+    it are substituted, which they previously were not.
+    """
+    company_name = get_company_name(branding)
+    data = {"company_name": company_name, **{k: v for k, v in template_data.items() if v is not None}}
+    if override:
+        try:
+            return _safe_substitute(str(override), data)
+        except Exception:
+            logger.warning("Email subject override render failed for event %s; using it verbatim", event_type)
+            return str(override)
+    if locale == "zh":
+        base = EMAIL_SUBJECTS_ZH.get(event_type, _DEFAULT_EMAIL_SUBJECT_ZH)
+    else:
+        base = EMAIL_SUBJECTS.get(event_type, _DEFAULT_EMAIL_SUBJECT)
+    try:
+        base = _safe_substitute(base, data)
+    except Exception:
+        logger.warning("Email subject render failed for event %s", event_type)
+    return f"{company_name} — {base}"
+
+
+def render_email_override(
+    body_template: str,
+    branding: dict[str, Any],
+    template_data: dict[str, Any],
+) -> str:
+    """Substitute placeholders into a tenant's own HTML email body.
+
+    The HTML is the tenant's, so it is kept; the *values* are escaped, because
+    they come from customer records and imported manifests rather than from the
+    tenant admin who wrote the template.
+    """
+    data = _escaped(template_data, get_company_name(branding))
+    try:
+        return _safe_substitute(body_template, data)
+    except Exception:
+        # A malformed custom template must not block the notification. Returning
+        # it unsubstituted would email literal "{invite_link}" text, so fall
+        # back to the default renderer's shell instead.
+        logger.warning("Custom email body render failed; falling back to the default template")
+        return ""
 
 
 def render_email_html(
@@ -459,56 +819,98 @@ def render_email_html(
     event_type: str,
     recipient_name: str | None,
     template_data: dict[str, Any],
+    locale: str = "en",
 ) -> str:
-    """Render a tenant-branded HTML email body."""
+    """Render a tenant-branded HTML email body.
+
+    Everything tenant-specific comes from the canonical `branding_config` shape
+    (see `tenant_branding.py`): the company name and colour in the header, the
+    tagline beneath it, and the support contacts and boilerplate in the footer.
+    """
     company_name = get_company_name(branding)
     color = get_primary_color(branding)
-    greeting = f"Hello {recipient_name}," if recipient_name else "Hello,"
+    tagline = get_tagline(branding)
+    safe_company = html.escape(company_name, quote=True)
+    data = _escaped(template_data, company_name)
+    greeting = f"Hello {html.escape(recipient_name, quote=True)}," if recipient_name else "Hello,"
+    if locale == "zh":
+        greeting = f"{html.escape(recipient_name, quote=True)}，您好：" if recipient_name else "您好："
 
-    # Action links (keys ending in _link, e.g. activation_link / invite_link) are
-    # rendered as a prominent CTA button rather than a raw URL in a table row.
-    links = {k: v for k, v in template_data.items() if k.endswith("_link") and v}
-    rows = "".join(
-        f"<tr>"
-        f"<td style='padding:4px 8px;color:#555;font-size:13px;white-space:nowrap;'>"
-        f"{k.replace('_', ' ').title()}"
-        f"</td>"
-        f"<td style='padding:4px 8px;font-size:13px;'>{v}</td>"
-        f"</tr>"
-        for k, v in template_data.items()
-        if v is not None and not k.endswith("_link")
-    )
-    table = f"<table style='border-collapse:collapse;width:100%;margin-top:12px;'>{rows}</table>" if rows else ""
-    _link_labels = {"activation_link": "Activate account", "invite_link": "Create your account"}
+    lead = _render_body_copy(event_type, locale, data)
+
+    # Action links (keys ending in _link) are a CTA button, not a table row.
+    link_labels = _LINK_LABELS_ZH if locale == "zh" else _LINK_LABELS
+    links = {k: v for k, v in data.items() if k.endswith("_link") and v}
     buttons = "".join(
-        f"<p style='margin:20px 0;'>"
-        f"<a href='{v}' style='display:inline-block;background:{color};color:#ffffff;"
-        f"text-decoration:none;padding:12px 22px;border-radius:6px;font-size:15px;font-weight:bold;'>"
-        f"{_link_labels.get(k, k.replace('_link', '').replace('_', ' ').title() or 'Continue')}</a></p>"
-        f"<p style='margin:0 0 8px 0;font-size:12px;color:#888;word-break:break-all;'>"
-        f"Or paste this link into your browser: {v}</p>"
+        f"<p style='margin:24px 0 8px 0;'>"
+        f'<a href="{v}" style=\'display:inline-block;background:{color};color:#ffffff;'
+        f"text-decoration:none;padding:13px 24px;border-radius:6px;font-size:15px;font-weight:bold;'>"
+        f"{link_labels.get(k, _field_label(k.replace('_link', '')) or 'Continue')}</a></p>"
+        f"<p style='margin:0 0 4px 0;font-size:12px;color:#888;word-break:break-all;'>"
+        f"{'或将此链接粘贴到浏览器中：' if locale == 'zh' else 'Or paste this link into your browser:'} {v}</p>"
         for k, v in links.items()
     )
 
+    rows = "".join(
+        f"<tr>"
+        f"<td style='padding:7px 10px;color:#666;font-size:13px;white-space:nowrap;"
+        f"border-bottom:1px solid #eee;vertical-align:top;'>{_field_label(k)}</td>"
+        f"<td style='padding:7px 10px;font-size:13px;color:#222;border-bottom:1px solid #eee;'>{v}</td>"
+        f"</tr>"
+        for k, v in data.items()
+        if not k.endswith("_link") and k not in _HIDDEN_EMAIL_FIELDS and v != ""
+    )
+    table = (
+        f"<table role='presentation' style='border-collapse:collapse;width:100%;margin-top:20px;'>{rows}</table>" if rows else ""
+    )
+
+    # Support contacts turn an automated message into one the recipient can
+    # reply to. Omitted entirely when the tenant has published none, rather than
+    # printing an empty "Contact:" line.
+    support_bits = [
+        f"<a href='mailto:{html.escape(e, quote=True)}' style='color:{color};'>{html.escape(e, quote=True)}</a>"
+        for e in [get_support_email(branding)]
+        if e
+    ] + [f"WhatsApp {html.escape(w, quote=True)}" for w in [get_support_whatsapp(branding)] if w]
+    support = (
+        f"<p style='margin:16px 0 0 0;font-size:12px;color:#777;'>"
+        f"{'需要帮助？请联系 ' if locale == 'zh' else 'Need help? Contact '}{' · '.join(support_bits)}</p>"
+        if support_bits
+        else ""
+    )
+    footer_text = get_document_footer(branding)
+    footer = (
+        f"<p style='margin:8px 0 0 0;font-size:11px;color:#999;white-space:pre-line;'>{html.escape(footer_text, quote=True)}</p>"
+        if footer_text
+        else ""
+    )
+    automated = f"此邮件由 {safe_company} 自动发送。" if locale == "zh" else f"This is an automated message from {safe_company}."
+
     return (
         "<!DOCTYPE html>"
-        "<html><head><meta charset='UTF-8'></head>"
-        "<body style='margin:0;padding:0;background:#f4f4f4;"
-        "font-family:Arial,sans-serif;'>"
-        "<table width='100%' cellpadding='0' cellspacing='0'"
-        " style='background:#f4f4f4;'>"
-        "<tr><td align='center' style='padding:20px;'>"
-        "<table width='600' cellpadding='0' cellspacing='0'"
-        " style='background:#ffffff;border-radius:8px;overflow:hidden;'>"
+        "<html><head><meta charset='UTF-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+        "<body style='margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;'>"
+        "<table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='background:#f4f4f4;'>"
+        "<tr><td align='center' style='padding:20px 12px;'>"
+        "<table role='presentation' width='600' cellpadding='0' cellspacing='0'"
+        " style='max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;'>"
         f"<tr><td style='background:{color};padding:20px 24px;'>"
-        f"<span style='color:#ffffff;font-size:20px;font-weight:bold;'>"
-        f"{company_name}</span></td></tr>"
+        f"<div style='color:#ffffff;font-size:20px;font-weight:bold;'>{safe_company}</div>"
+        + (
+            f"<div style='color:#ffffff;opacity:0.85;font-size:12px;margin-top:3px;'>{html.escape(tagline, quote=True)}</div>"
+            if tagline
+            else ""
+        )
+        + "</td></tr>"
         "<tr><td style='padding:24px;'>"
-        f"<p style='margin:0 0 16px 0;font-size:15px;color:#222;'>{greeting}</p>"
+        f"<p style='margin:0 0 14px 0;font-size:15px;color:#222;'>{greeting}</p>"
+        f"<p style='margin:0;font-size:15px;color:#333;line-height:1.5;'>{lead}</p>"
         f"{buttons}"
         f"{table}"
-        f"<p style='margin:16px 0 0 0;font-size:12px;color:#888;'>"
-        f"This is an automated notification from {company_name}.</p>"
+        f"{support}"
+        f"<p style='margin:16px 0 0 0;font-size:11px;color:#999;'>{automated}</p>"
+        f"{footer}"
         "</td></tr>"
         "</table>"
         "</td></tr></table>"
@@ -521,15 +923,48 @@ def render_email_text(
     event_type: str,
     recipient_name: str | None,
     template_data: dict[str, Any],
+    locale: str = "en",
+    body_override: str | None = None,
 ) -> str:
-    """Render a plain-text fallback email body."""
+    """Render the plain-text alternative part.
+
+    Carries the same prose and the same links as the HTML part — a text-only
+    client previously received an unexplained list of field names. When the
+    tenant supplied its own HTML body, that body is stripped to text so the
+    two MIME parts say the same thing.
+    """
+    if body_override:
+        rendered = render_email_override(body_override, branding, template_data)
+        if rendered:
+            return _html_to_text(rendered)
     company_name = get_company_name(branding)
-    greeting = f"Hello {recipient_name}," if recipient_name else "Hello,"
-    lines = [company_name, "", greeting, ""]
-    for k, v in template_data.items():
-        if v is not None:
-            lines.append(f"  {k.replace('_', ' ').title()}: {v}")
-    lines += ["", f"This is an automated notification from {company_name}."]
+    data = {k: str(v) for k, v in template_data.items() if v is not None}
+    data.setdefault("company_name", company_name)
+    if locale == "zh":
+        greeting = f"{recipient_name}，您好：" if recipient_name else "您好："
+    else:
+        greeting = f"Hello {recipient_name}," if recipient_name else "Hello,"
+
+    lines = [company_name, "", greeting, "", _render_body_copy(event_type, locale, data), ""]
+    for key, value in data.items():
+        if key.endswith("_link"):
+            lines.append(f"{_field_label(key)}: {value}")
+    for key, value in data.items():
+        if not key.endswith("_link") and key not in _HIDDEN_EMAIL_FIELDS and value:
+            lines.append(f"  {_field_label(key)}: {value}")
+
+    support_email = get_support_email(branding)
+    support_whatsapp = get_support_whatsapp(branding)
+    if support_email or support_whatsapp:
+        contacts = " / ".join(filter(None, [support_email, f"WhatsApp {support_whatsapp}" if support_whatsapp else ""]))
+        lines += ["", ("需要帮助？请联系 " if locale == "zh" else "Need help? Contact ") + contacts]
+    lines += [
+        "",
+        (f"此邮件由 {company_name} 自动发送。" if locale == "zh" else f"This is an automated message from {company_name}."),
+    ]
+    footer_text = get_document_footer(branding)
+    if footer_text:
+        lines += ["", footer_text]
     return "\n".join(lines)
 
 
@@ -547,7 +982,22 @@ def send_email(
     """
     if not _assert_deliverable(to_email, "email", tenant_id):
         return False
-    from_address = os.environ.get("SES_FROM_ADDRESS", "notifications@logistics.example.com")
+    # `.strip() or` rather than a get() default: Terraform sets this to the
+    # empty string when the variable is unconfigured, and an empty string is
+    # "set" as far as os.environ.get is concerned — so a default would have
+    # been bypassed and SES handed a blank sender.
+    from_address = os.environ.get("SES_FROM_ADDRESS", "").strip() or _PLACEHOLDER_FROM_ADDRESS
+
+    if from_address == _PLACEHOLDER_FROM_ADDRESS and _is_production():
+        # The default is a documentation address. SES and ACS both reject an
+        # unverified sender, so this would fail on every send — but it would
+        # fail as a provider error buried in notification_log, which reads as a
+        # transient fault rather than a missing environment variable.
+        logger.error(
+            "SES_FROM_ADDRESS is unset in production — refusing to send from the placeholder address",
+            extra={"tenant_id": tenant_id},
+        )
+        return False
 
     try:
         get_email_provider().send(
@@ -563,9 +1013,11 @@ def send_email(
         )
         return True
     except Exception:
+        from . import repository as repo
+
         logger.exception(
             "Email send failed",
-            extra={"tenant_id": tenant_id, "to": to_email},
+            extra={"tenant_id": tenant_id, "to": repo.mask_email(to_email)},
         )
         raise
 
@@ -573,6 +1025,24 @@ def send_email(
 # ---------------------------------------------------------------------------
 # Notification log service functions
 # ---------------------------------------------------------------------------
+
+
+# Template variables that are secrets: delivered to the recipient, never kept. The notification log is readable by tenant
+# admins and is the source of "retry", so a code that reached it would let staff read every customer's pickup code.
+_SECRET_TEMPLATE_KEYS = frozenset({"pickup_code", "activation_link", "invite_link"})
+REDACTED = "••••••"
+
+
+def redact_secrets(template_data: dict[str, Any], message_body: str | None) -> tuple[dict[str, Any], str | None]:
+    """`template_data` and `message_body` as they may be stored: each secret value replaced by a mask."""
+    secret_values = {str(v) for k, v in template_data.items() if k in _SECRET_TEMPLATE_KEYS and v}
+    if not secret_values:
+        return template_data, message_body
+    redacted = {k: (REDACTED if k in _SECRET_TEMPLATE_KEYS and v else v) for k, v in template_data.items()}
+    for value in secret_values:
+        if message_body:
+            message_body = message_body.replace(value, REDACTED)
+    return redacted, message_body
 
 
 def log_queued(
@@ -594,6 +1064,7 @@ def log_queued(
     try:
         from . import repository as repo
 
+        template_data, message_body = redact_secrets(template_data, message_body)
         masked = repo.mask_email(recipient_raw) if "@" in recipient_raw else repo.mask_phone(recipient_raw)
         row = repo.insert_log(
             tenant_id,
@@ -631,6 +1102,7 @@ def log_sent(
     gateway_response: dict[str, Any],
 ) -> None:
     """Mark an existing notification_log row as 'sent'. Silent on failure."""
+    record_outcome("notification_send", failed=False)  # the failure-rate alarm's denominator (audit OPS-04)
     if not log_id:
         return
     try:
@@ -654,6 +1126,7 @@ def log_failed(
     gateway_response: dict[str, Any] | None = None,
 ) -> None:
     """Mark an existing notification_log row as 'failed'. Silent on failure."""
+    record_outcome("notification_send", failed=True)
     if not log_id:
         return
     try:
@@ -713,7 +1186,15 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
         logger.warning("SMS fallback: SQS_SMS_QUEUE_URL not set")
         return False
 
-    from shared.notifications import is_recipient_allowed
+    from shared.notifications import _tenant_branding, consent_verdict, is_recipient_allowed, record_suppressed
+
+    # The fallback is a new SMS, so it needs the same consent as one sent directly: a customer who agreed to
+    # WhatsApp but not SMS must not be texted just because WhatsApp failed.
+    event_type = str(log_row.get("event_type") or "")
+    verdict = consent_verdict(tenant_id, event_type, str(customer_id))
+    if verdict is not None and not verdict.permits("sms"):
+        record_suppressed(tenant_id, event_type, "sms", str(customer_id), phone, "customer has not agreed to sms")
+        return False
 
     recipient = {"phone": phone, "name": log_row.get("recipient_name")}
     # The non-production recipient guard applies to fallbacks too — a dev
@@ -727,6 +1208,7 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
         "event_type": log_row.get("event_type", ""),
         "channel": "sms",
         "recipient": recipient,
+        "tenant_branding": _tenant_branding(tenant_id),
         "customer_id": str(customer_id) if customer_id else None,
         "template_data": log_row.get("template_data") or {},
         "locale": log_row.get("locale") or "en",
@@ -743,6 +1225,9 @@ def trigger_sms_fallback(tenant_id: str, whatsapp_log_id: str, reason: str) -> b
     return True
 
 
+_NOT_RETRYABLE_EVENTS = frozenset({"pickup_code_issued", "account_activation", "customer_invite"})
+
+
 def retry_notification(
     tenant_id: str,
     log_id: str,
@@ -756,6 +1241,7 @@ def retry_notification(
     """
     from shared.audit import log_audit
     from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
+    from shared.notifications import _tenant_branding, consent_verdict, is_recipient_allowed
 
     from . import repository as repo
 
@@ -766,6 +1252,14 @@ def retry_notification(
         raise BusinessRuleViolationError(
             f"Only 'failed' notifications can be retried; current status is '{original['status']}'",
             rule_id="NOTIFICATION_NOT_FAILED",
+        )
+
+    # One-time secret codes/links are redacted on storage, so a retry would send a mask.
+    if original["event_type"] in _NOT_RETRYABLE_EVENTS:
+        raise BusinessRuleViolationError(
+            "This message carried a one-time code that is not kept, so it cannot be re-sent. "
+            "Reissue the code from the release note instead.",
+            rule_id="NOTIFICATION_NOT_RETRYABLE",
         )
 
     channel = original["channel"]
@@ -781,20 +1275,54 @@ def retry_notification(
             rule_id="QUEUE_URL_MISSING",
         )
 
-    # Build the SQS payload from the original log's template_data
-    template_data: dict[str, Any] = original.get("template_data") or {}
-    sqs_body = json.dumps(
-        {
-            "tenant_id": tenant_id,
-            "event_type": original["event_type"],
-            "channel": channel,
-            "recipient": {"masked": original.get("recipient_masked")},
-            "template_data": template_data,
-            "_retry_of_log_id": log_id,
-        }
-    )
+    customer_id = str(original["customer_id"]) if original.get("customer_id") else None
+    contact = repo.get_customer_contact_for_retry(tenant_id, customer_id) if customer_id else None
+    if not contact:
+        raise BusinessRuleViolationError(
+            "Customer contact is unavailable for retrying this notification.",
+            rule_id="NOTIFICATION_CONTACT_UNAVAILABLE",
+        )
 
-    get_queue_provider().send(destination=queue_url, body=sqs_body)
+    phone = str(contact.get("phone") or "").strip()
+    whatsapp = str(contact.get("whatsapp") or phone).strip()
+    email = str(contact.get("email") or "").strip()
+    if channel == "email" and not email:
+        raise BusinessRuleViolationError(
+            "Customer email address is unavailable for retry.",
+            rule_id="NOTIFICATION_CONTACT_UNAVAILABLE",
+        )
+    if channel == "sms" and not phone:
+        raise BusinessRuleViolationError(
+            "Customer phone number is unavailable for retry.",
+            rule_id="NOTIFICATION_CONTACT_UNAVAILABLE",
+        )
+    if channel == "whatsapp" and not whatsapp:
+        raise BusinessRuleViolationError(
+            "Customer WhatsApp number is unavailable for retry.",
+            rule_id="NOTIFICATION_CONTACT_UNAVAILABLE",
+        )
+
+    recipient = {
+        "phone": whatsapp if channel == "whatsapp" else phone,
+        "whatsapp": whatsapp,
+        "email": email,
+        "name": contact.get("name") or original.get("recipient_name"),
+    }
+    verdict = consent_verdict(tenant_id, original["event_type"], customer_id)
+    if verdict is not None and not verdict.permits(channel):
+        raise BusinessRuleViolationError(
+            f"Customer has not consented to receive '{channel}' notifications.",
+            rule_id="NOTIFICATION_CONSENT_DENIED",
+        )
+    if not is_recipient_allowed(recipient):
+        raise BusinessRuleViolationError(
+            "Recipient is not allowlisted in this non-production environment.",
+            rule_id="NOTIFICATION_RECIPIENT_NOT_ALLOWLISTED",
+        )
+
+    template_data: dict[str, Any] = original.get("template_data") or {}
+    locale = str(original.get("locale") or contact.get("locale") or "en")
+    branding = _tenant_branding(tenant_id)
 
     new_row = repo.insert_log(
         tenant_id,
@@ -802,9 +1330,10 @@ def retry_notification(
             "tenant_id": tenant_id,
             "event_type": original["event_type"],
             "channel": channel,
-            "recipient_masked": original.get("recipient_masked"),
-            "recipient_name": original.get("recipient_name"),
-            "customer_id": original.get("customer_id") and str(original["customer_id"]),
+            "recipient_masked": original.get("recipient_masked")
+            or (repo.mask_email(email) if channel == "email" else repo.mask_phone(str(recipient["phone"] or ""))),
+            "recipient_name": recipient["name"],
+            "customer_id": customer_id,
             "status": "queued",
             "provider": None,
             "provider_message_id": None,
@@ -812,8 +1341,27 @@ def retry_notification(
             "error_detail": None,
             "retry_of": log_id,
             "template_data": json.dumps(template_data),
+            "locale": locale,
         },
     )
+    new_log_id = str(new_row["id"]) if new_row else None
+
+    sqs_body = json.dumps(
+        {
+            "tenant_id": tenant_id,
+            "event_type": original["event_type"],
+            "channel": channel,
+            "recipient": recipient,
+            "tenant_branding": branding,
+            "template_data": template_data,
+            "locale": locale,
+            "customer_id": customer_id,
+            "_retry_of_log_id": log_id,
+            "_queued_log_id": new_log_id,
+        }
+    )
+
+    get_queue_provider().send(destination=queue_url, body=sqs_body)
 
     log_audit(
         tenant_id=tenant_id,
@@ -822,10 +1370,10 @@ def retry_notification(
         action="RETRY",
         actor_id=actor_id,
         actor_role="tenant_admin",
-        after_state={"new_log_id": str(new_row["id"]) if new_row else None, "channel": channel},
+        after_state={"new_log_id": new_log_id, "channel": channel},
     )
 
-    return {"new_log_id": str(new_row["id"]) if new_row else None, "original_log_id": log_id}
+    return {"new_log_id": new_log_id, "original_log_id": log_id}
 
 
 def get_log(tenant_id: str, log_id: str) -> dict[str, Any]:
@@ -874,14 +1422,37 @@ def count_unread_staff_notifications(tenant_id: str, user_id: str, role: str) ->
     return {"unread_count": repo.count_unread_staff_notifications(tenant_id, user_id, role)}
 
 
-def mark_staff_notification_read(tenant_id: str, notification_id: str, user_id: str) -> dict[str, Any]:
+def _assert_notification_visible(
+    notification: dict[str, Any] | None,
+    notification_id: str,
+    user_id: str,
+    role: str | None = None,
+) -> None:
     from shared.exceptions import ResourceNotFoundError
 
+    if not notification:
+        raise ResourceNotFoundError("staff_notification", notification_id)
+    target_uid = notification.get("target_user_id")
+    target_role = notification.get("target_role")
+    if target_uid is not None and str(target_uid) != str(user_id):
+        raise ResourceNotFoundError("staff_notification", notification_id)
+    if role is not None and target_uid is None:
+        if role == "customer" and target_role != "customer":
+            raise ResourceNotFoundError("staff_notification", notification_id)
+        if target_role is not None and str(target_role) != role:
+            raise ResourceNotFoundError("staff_notification", notification_id)
+
+
+def mark_staff_notification_read(
+    tenant_id: str,
+    notification_id: str,
+    user_id: str,
+    role: str | None = None,
+) -> dict[str, Any]:
     from . import repository as repo
 
     notification = repo.get_staff_notification_by_id(tenant_id, notification_id)
-    if not notification:
-        raise ResourceNotFoundError("staff_notification", notification_id)
+    _assert_notification_visible(notification, notification_id, user_id, role)
     row = repo.mark_staff_notification_read(tenant_id, notification_id, user_id)
     if row is None:
         raise RuntimeError("mark_staff_notification_read returned None unexpectedly")
@@ -894,14 +1465,16 @@ def mark_all_staff_notifications_read(tenant_id: str, user_id: str, role: str) -
     return {"marked_read": repo.mark_all_staff_notifications_read(tenant_id, user_id, role)}
 
 
-def dismiss_staff_notification(tenant_id: str, notification_id: str, user_id: str) -> dict[str, Any]:
-    from shared.exceptions import ResourceNotFoundError
-
+def dismiss_staff_notification(
+    tenant_id: str,
+    notification_id: str,
+    user_id: str,
+    role: str | None = None,
+) -> dict[str, Any]:
     from . import repository as repo
 
     notification = repo.get_staff_notification_by_id(tenant_id, notification_id)
-    if not notification:
-        raise ResourceNotFoundError("staff_notification", notification_id)
+    _assert_notification_visible(notification, notification_id, user_id, role)
     row = repo.mark_staff_notification_dismissed(tenant_id, notification_id, user_id)
     if row is None:
         raise RuntimeError("mark_staff_notification_dismissed returned None unexpectedly")
@@ -945,26 +1518,28 @@ def _create_announcement_notifications(
     """
     import uuid
 
+    from shared.db import tenant_transaction
+
     from . import repository as repo
 
     target_roles = list(_ALL_STAFF_ROLES) if audience == "all_staff" else ["customer"]
-    repo.deactivate_active_banners_for_roles(tenant_id, target_roles)
-
     group_id = str(uuid.uuid4())
     created: list[dict[str, Any]] = []
-    for role in target_roles:
-        row = repo.create_staff_notification(
-            tenant_id,
-            event_type="announcement",
-            entity_type="announcement",
-            title=title,
-            body=body,
-            target_role=role,
-            announcement_group_id=group_id,
-            banner_active=True,
-        )
-        if row:
-            created.append(dict(row))
+    with tenant_transaction(tenant_id):
+        repo.deactivate_active_banners_for_roles(tenant_id, target_roles)
+        for role in target_roles:
+            row = repo.create_staff_notification(
+                tenant_id,
+                event_type="announcement",
+                entity_type="announcement",
+                title=title,
+                body=body,
+                target_role=role,
+                announcement_group_id=group_id,
+                banner_active=True,
+            )
+            if row:
+                created.append(dict(row))
     return created
 
 
@@ -1088,21 +1663,28 @@ def approve_announcement_request(tenant_id: str, request_id: str, actor_id: str,
     request itself never reached a customer's bell — then notifies the
     original requester that it went out."""
     from shared.audit import log_audit
+    from shared.db import tenant_transaction
+    from shared.exceptions import IllegalTransitionError
     from shared.staff_notifications import notify_staff
 
     from . import repository as repo
 
     request_row = _get_pending_announcement_request(tenant_id, request_id)
-    created = _create_announcement_notifications(
-        tenant_id,
-        request_row["title"],
-        request_row["body"],
-        request_row["audience"],
-    )
-
-    reviewed = repo.mark_announcement_request_reviewed(tenant_id, request_id, "approved", reviewed_by=actor_id)
-    if reviewed is None:
-        raise RuntimeError("mark_announcement_request_reviewed returned None unexpectedly")
+    with tenant_transaction(tenant_id):
+        reviewed = repo.mark_announcement_request_reviewed(tenant_id, request_id, "approved", reviewed_by=actor_id)
+        if reviewed is None:
+            raise IllegalTransitionError(
+                entity="announcement_request",
+                current_state="reviewed",
+                requested_state="approved",
+                allowed=["pending"],
+            )
+        created = _create_announcement_notifications(
+            tenant_id,
+            request_row["title"],
+            request_row["body"],
+            request_row["audience"],
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -1235,6 +1817,7 @@ def activate_announcement(tenant_id: str, group_id: str, actor_id: str, actor_ro
     currently active for the same audience, same "only one visible per
     time" rule a fresh send already follows."""
     from shared.audit import log_audit
+    from shared.db import tenant_transaction
     from shared.exceptions import ResourceNotFoundError
 
     from . import repository as repo
@@ -1243,10 +1826,11 @@ def activate_announcement(tenant_id: str, group_id: str, actor_id: str, actor_ro
     if not target_roles:
         raise ResourceNotFoundError("announcement", group_id)
 
-    repo.deactivate_active_banners_for_roles(tenant_id, target_roles)
-    updated = repo.set_banner_active_for_group(tenant_id, group_id, active=True)
-    if updated == 0:
-        raise ResourceNotFoundError("announcement", group_id)
+    with tenant_transaction(tenant_id):
+        repo.deactivate_active_banners_for_roles(tenant_id, target_roles)
+        updated = repo.set_banner_active_for_group(tenant_id, group_id, active=True)
+        if updated == 0:
+            raise ResourceNotFoundError("announcement", group_id)
 
     log_audit(
         tenant_id=tenant_id,

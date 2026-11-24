@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { describe, expect, it } from 'vitest'
 import { INVALIDATION_RULES, ruleForPath } from './cacheInvalidation'
+import * as keys from './keys'
 
 // Read the sibling api modules as raw text through Vite rather than node:fs —
 // the app tsconfig carries no Node types, and loosening it for one test is the
@@ -116,6 +117,33 @@ describe('cache invalidation registry', () => {
       expect(ruleForPath(p), p).toBeDefined()
       expect(ruleForPath(p)!.roots, p).toEqual([])
     }
+  })
+
+  it('refreshes the platform settings forms, and the plan limits the tenant list shows, when settings or plans change', () => {
+    for (const path of ['/v1/platform/settings', '/v1/platform/settings/sms-gateway', '/v1/platform/plans/starter']) {
+      const roots = ruleForPath(path)?.roots
+      expect(roots, path).toContainEqual(keys.platformSettingsKeys.all)
+      expect(roots, path).toContainEqual(keys.platformTenantKeys.all)
+    }
+  })
+
+  it('refreshes the platform dashboard totals and its activity feed when a tenant changes', () => {
+    const roots = ruleForPath('/v1/platform/tenants/abc/suspend')?.roots
+    expect(roots).toContainEqual(keys.platformDashboardKeys.all)
+    expect(roots).toContainEqual(keys.platformAuditKeys.all)
+  })
+
+  it('refreshes the rate history and every rate reader when a rate is saved', () => {
+    // configKeys.rateHistory() and the packing-list form's rate reads are children of configKeys.all.
+    expect(ruleForPath('/v1/tenant/cbm-rate')?.roots).toContainEqual(keys.configKeys.all)
+    expect(keys.configKeys.rateHistory('cbm_rate').slice(0, keys.configKeys.all.length)).toEqual([...keys.configKeys.all])
+  })
+
+  it('keeps every flat "lookup" read under its domain root, so the domain rule reaches it', () => {
+    for (const domain of [keys.containerKeys, keys.manifestKeys, keys.customerKeys, keys.packingListKeys, keys.billingKeys, keys.releaseNoteKeys]) {
+      expect(domain.lookup({}).slice(0, domain.all.length)).toEqual([...domain.all])
+    }
+    expect(keys.disputeKeys.lookup({})[0]).toBe(keys.disputeKeys.all[0])
   })
 
   it('has no rule whose roots are silently undefined', () => {

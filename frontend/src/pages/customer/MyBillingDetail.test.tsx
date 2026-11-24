@@ -4,7 +4,7 @@
  * never navigate away.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,7 +17,7 @@ vi.mock('../../api/billing', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/billing')>()
   return {
     ...original,
-    billingApi: { ...original.billingApi, get: vi.fn(), initializePayment: vi.fn(), export: vi.fn() },
+    billingApi: { ...original.billingApi, get: vi.fn(), initializePayment: vi.fn(), export: vi.fn(), invoicePdf: vi.fn() },
     disputeApi: { ...original.disputeApi, file: vi.fn() },
     paymentClaimApi: { ...original.paymentClaimApi, listForBilling: vi.fn(), submit: vi.fn() },
   }
@@ -120,17 +120,18 @@ describe('MyBillingDetail — download invoice', () => {
     vi.mocked(configApi.getConfig).mockResolvedValue({} as never)
   })
 
-  it('downloads the invoice as a pdf', async () => {
-    vi.mocked(billingApi.export).mockResolvedValue(undefined)
+  it('opens the branded invoice PDF, not the data export (FD-39)', async () => {
+    vi.mocked(billingApi.invoicePdf).mockResolvedValue(undefined)
     renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: /download invoice/i }))
 
-    await waitFor(() => expect(billingApi.export).toHaveBeenCalledWith('b1', 'pdf'))
+    await waitFor(() => expect(billingApi.invoicePdf).toHaveBeenCalledWith('b1'))
+    expect(billingApi.export).not.toHaveBeenCalled()
   })
 
-  it('surfaces export failures inline', async () => {
-    vi.mocked(billingApi.export).mockRejectedValue(
+  it('says why when the invoice cannot be prepared (FD-44)', async () => {
+    vi.mocked(billingApi.invoicePdf).mockRejectedValue(
       new ApiError(
         { type: 'about:blank', title: 'Not Found', status: 404, detail: 'Invoice not found.', error_code: 'RESOURCE_NOT_FOUND' },
         null,
@@ -140,6 +141,18 @@ describe('MyBillingDetail — download invoice', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /download invoice/i }))
 
-    expect(await screen.findByText(/invoice not found/i)).toBeInTheDocument()
+    expect(await screen.findByText("Couldn't prepare your invoice")).toBeInTheDocument()
+    expect(screen.getByText(/couldn't find that/i)).toBeInTheDocument()
+  })
+})
+
+describe('MyBillingDetail next step (FD-22)', () => {
+  it('leads with paying what is owed; a refund (part is paid) is only in the overflow menu', async () => {
+    renderPage()
+    const header = (await screen.findByRole('heading', { level: 1 })).closest('[data-page-start]') as HTMLElement
+    expect(within(header).getByRole('button', { name: 'Pay ₦50,656' })).toBeInTheDocument()
+    expect(within(header).queryByRole('button', { name: /refund/i })).toBeNull()
+    await userEvent.click(within(header).getByRole('button', { name: 'More invoice actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Request a refund' })).toBeInTheDocument()
   })
 })

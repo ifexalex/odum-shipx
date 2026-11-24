@@ -35,6 +35,7 @@ describe('uploadImportFile', () => {
 
     expect(excelApi.getImportPresignedUrl).toHaveBeenCalledWith(
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      makeFile().size,
     )
     expect(fetchMock).toHaveBeenCalledWith(
       'https://logistics-assets.s3.amazonaws.com/t1/imports/abc.xlsx?sig=1',
@@ -59,4 +60,12 @@ describe('uploadImportFile', () => {
 
     await expect(uploadImportFile(makeFile())).rejects.toBeInstanceOf(UploadFailedError)
   })
+
+  it('refuses a file over 5 MB before asking for an upload URL', async () => {
+    const big = makeFile()
+    Object.defineProperty(big, 'size', { value: 5 * 1024 * 1024 + 1 })
+    await expect(uploadImportFile(big)).rejects.toThrow('The limit is 5 MB.')
+    expect(excelApi.getImportPresignedUrl).not.toHaveBeenCalled()
+  })
 })
+

@@ -101,8 +101,8 @@ deploys — never both at once.
 
 | `DEPLOY_CLOUD` value | What deploys | What is skipped |
 |---|---|---|
-| unset / `aws` (default) | `terraform.yml`, `deploy.yml`, `frontend-ci.yml` deploy (AWS Lambda) | `terraform-azure.yml`, `deploy-azure.yml` |
-| `azure` | `terraform-azure.yml` (infra) + `deploy-azure.yml` (backend image → Container Apps) | `terraform.yml`, `deploy.yml`, `frontend-ci.yml` deploy |
+| unset / `aws` (default) | `terraform.yml`, `deploy.yml`, `ci.yml` build, `frontend-deploy.yml` (`cloud=aws`) | `terraform-azure.yml`, `deploy-azure.yml` |
+| `azure` | `terraform-azure.yml` (plan), `deploy-azure.yml` (apply + image → Container Apps), `frontend-deploy.yml` (`cloud=azure`) | `terraform.yml`, `deploy.yml`, `ci.yml` Lambda build |
 
 The AWS backend deploys as Lambda zips (`deploy.yml`); the Azure backend deploys as a container
 image to ACR that rolls the Container Apps (`deploy-azure.yml` → `_deploy-azure-env.yml`). Both
@@ -199,6 +199,16 @@ jobs:
           DATABASE_USER: test_user
           DATABASE_PASSWORD: test_pass
         run: pytest tests/tenant_isolation/ -v
+      # Added 2026-11-14: tests/integration/ (service-level flow, no DB) and tests/db/ (real Postgres as
+      # logistics_app: invoice/payment concurrency and atomicity). Same env block as the isolation step.
+      - name: Run integration tests
+        run: pytest tests/integration/ -v
+      - name: Run database integrity tests
+        run: pytest tests/db/ -v
+      # Added 2026-11-17 (audit OPS-03): fails the build when unit-test line coverage of services/billing,
+      # services/payment_release or services/refunds falls below its floor in pyproject.toml.
+      - name: Enforce coverage floors
+        run: uv run python scripts/check_coverage.py coverage.xml
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
@@ -258,7 +268,7 @@ jobs:
       - name: Build service zips
         run: |
           for service in tenant_management packing_list manifest tracking billing claims \
-                         payment_release refunds notification metering excel; do
+                         payment_release refunds notification metering excel search; do
             cd services/$service
             zip -r ../../build/${service}.zip .
             cd ../..
@@ -582,7 +592,7 @@ jobs:
           ENV: ${{ inputs.environment }}
         run: |
           for service in tenant_management packing_list manifest tracking billing claims \
-                         payment_release refunds notification metering excel; do
+                         payment_release refunds notification metering excel search; do
             fn="logistics-${service}-${ENV}"
             aws lambda update-function-code \
               --function-name "$fn" --zip-file fileb://build/${service}.zip \
@@ -1360,3 +1370,58 @@ Workflow-level `concurrency` cannot see `needs` at all, so it keeps
 *production* frontend deploy; it failed only because AWS credentials are absent.
 Now `azure` / `dev`, with `prod` selectable but never the unchosen default.
 
+## Redis service for the database tests (2026-11-15)
+
+The `test` job now starts a `redis:7` service container beside Postgres, and the "Run database integrity tests" step passes `REDIS_HOST`/`REDIS_PORT`. `tests/db/test_rate_limit_redis.py` exercises the limiter's Lua script and a real outage; without a server those tests skip, so CI fails them outright when `CI` is set and `REDIS_HOST` is not.
+
+## Coverage is enforced, not only reported (audit OPS-03, 2026-11-17)
+
+Before: coverage went to Codecov (and only when a token was set, which it is not), with `fail_ci_if_error: false` and no threshold, so a change could delete the tests of the code that moves money and stay green.
+
+Now `ci.yml` runs `scripts/check_coverage.py coverage.xml` right after the unit tests. It reads the floors in `pyproject.toml` under `[tool.shipx.coverage-floors]` (line coverage, per directory) and fails when one is not met, or when a floored directory has no measured lines (a rename must not switch its floor off). Floors were set at each directory's level on 2026-11-17: `services/billing` 53.8 %, `services/payment_release` 71.6 %, `services/refunds` 40.7 %. The script prints a hint when coverage is a point or more above a floor; raise the floor in the same change. No external service, so no cost and no token.
+
+Shown locally: running the unit tests without `test_billing.py` and `test_invoice_credits.py` drops `services/billing` to 29.6 % and the check exits 1. Not yet seen failing in GitHub Actions itself.
+
+Frontend: there is no coverage number to hold (vitest runs without coverage). Instead `src/pages/untestedPages.test.ts` lists the 18 pages that still have no sibling test and fails when a new untested page appears, or when a listed page gains a test and is not removed from the list. The money-moving pages that had none (`MyBilling`, `RefundRequest`, `CarryoverLedger`) and the platform tenant page now have tests.
+
+## Lambda zips carry the `services` package (2026-11-19)
+
+**Bug found and fixed (HIGH on AWS, before go-live):** each service zip was `services/` flattened at the root, so the handler `tracking.handler` resolved but its `from services.billing.service import …` did not. The tracking and claims Lambdas failed at import (`No module named 'services'`), and lazy cross-service imports (packing-list approval → payment_release, customer invites from the import) would have failed when reached. Azure was not affected (its container image has the whole tree).
+
+- `ci.yml` "Build service zips" and "Build scheduled job zips" now add the `services/` tree a second time, as the package, to each zip; `scripts/build_lambda_zip.sh` does the same for the Terraform-built package. Handler paths are unchanged.
+- The offboarding-export Lambda (`scheduled.offboarding_export`, audit BE-10) existed in Terraform but was never built or deployed by CI; it is in both lists now.
+- Guarded by `tests/unit/test_infrastructure_contracts.py::TestLambdaPackageLayout`: every Terraform-configured handler is imported, isolated (`python -I`), from a copy of the zip layout; every zip step must add the package; every scheduled Lambda must be built and deployed. Both workflow checks fail on the previous workflows.
+- Note: the Terraform fallback (`archive_file` over `services/` when no package was built) is still flattened only; CI's `update-function-code` replaces it on the first deploy.
+
+---
+
+## CI/CD pipeline audit and streamlining (2026-11-23)
+
+A full audit of all 10 workflows, `Dockerfile`, `.pre-commit-config.yaml`, `Makefile`, and contract tests uncovered two critical bugs, five high-severity reliability gaps, and major build/rollout duplication. All fixes are now live in `.github/workflows/` and `.github/actions/` and guarded by `tests/unit/test_infrastructure_contracts.py::TestCiCdWorkflowContracts`.
+
+### Bugs fixed
+
+1. **Three AWS Lambdas were never deployed (`notif-api`, `notif-webhook`, `auth`):** Provisioned by `infrastructure/aws/modules/lambda/main.tf` but omitted from `_deploy-env.yml`. All 25 non-migrate Lambdas now deploy from a single shared `build/services.zip`, guarded by `test_every_lambda_in_terraform_is_deployed`.
+2. **Trivy scan never failed CI:** `aquasecurity/trivy-action` defaulted to `exit-code: '0'`. Added `exit-code: '1'` and `ignore-unfixed: true`.
+3. **Azure & Frontend untrusted checkout / missing tag CI verification:**
+   - `deploy-azure.yml` now runs a `prepare` job verifying that `CI Pipeline` succeeded for tagged commits (`v*-rc*`, `v*`) before allowing staging/prod deploys.
+   - `_deploy-azure-env.yml` and `frontend-deploy.yml` now pin `actions/checkout` to the exact resolved `ref:` (`workflow_run.head_sha` on automatic runs, `github.sha` on tag runs, or optional `inputs.ref` on manual rollback dispatches) instead of checking out floating `main`.
+4. **Broken `workflow_dispatch` job graphs & `deploy-prod` bypass:**
+   - `deploy.yml` unified `resolve-artifact` into a `prepare` job so `workflow_dispatch` to `staging` is no longer silently skipped, and `deploy-prod` explicitly requires `needs.prepare.result == 'success'`.
+   - `terraform.yml` and `terraform-azure.yml` fixed `always()` + `needs.*.result` expressions so manual dispatches for `staging` and `prod` execute instead of skipping silently.
+5. **Per-ref concurrency races:** Replaced workflow-level `github.ref` concurrency groups in `deploy.yml`, `deploy-azure.yml`, `terraform.yml`, and `terraform-azure.yml` with per-environment job-level concurrency (`deploy-aws-<env>`, `deploy-azure-<env>`, `terraform-aws-<env>`, `terraform-azure-<env>`). Concurrent prod tags now serialize cleanly, and a dev deploy never blocks a prod hotfix.
+6. **Migration Lambda version drift & stale layer order:** `_deploy-env.yml` now publishes `shared-layer.zip` first (immutable ARN) and attaches it to `logistics-migrate-<env>` before running migrations; `migrate.zip` drops the hardcoded `alembic==1.13.0 psycopg2-binary==2.9.11` install (which had drifted from `psycopg2-binary==2.9.13` in `uv.lock`) and ships only `migrations/` + `handler.py`.
+7. **Pre-merge Terraform validation:** Both `terraform.yml` and `terraform-azure.yml` now run a credential-free `validate` job (`terraform fmt -check -recursive`, `init -backend=false`, `validate`) on `pull_request`.
+
+### Streamlining & performance gains
+
+- **4 local composite actions under `.github/actions/`** eliminate duplicated YAML across workflows:
+  - `.github/actions/smoke-test`: shared by AWS (`_smoke-test.yml`) and Azure (`_deploy-azure-env.yml`), restoring the missing 2s SLA probe on Azure.
+  - `.github/actions/setup-playwright`: caches `~/.cache/ms-playwright` keyed on the locked `@playwright/test` version across `e2e-smoke`, `e2e-local-stack`, and `visual`.
+  - `.github/actions/start-local-stack`: deduplicates local-stack bring-up between `e2e-local-stack` and `visual`, adds `uv sync --frozen`, and replaces `npx --yes wait-on` downloads with native `curl` loops.
+  - `.github/actions/terraform-run`: shared init/bootstrap-import/plan/apply runner across all AWS and Azure Terraform jobs.
+- **Fast path filtering + parallel backend CI (`ci.yml`):** A 3s fail-open `changes` job skips `lint`, `test`, `security` (and dev redeploys in `deploy.yml`/`deploy-azure.yml`) on docs-only and frontend-UI-only commits while preserving required check names (`frontend/src/api/*` still triggers backend CI for API Gateway contract tests). `lint`, `test`, and `security` now run in parallel, and `lint` enforces `uv run ruff format --check .` alongside `ruff check` and `mypy`.
+- **~75% smaller AWS artifact & zero Azure waste:** `ci.yml`'s `build` job is gated on `vars.DEPLOY_CLOUD != 'azure'` and builds **one** `services.zip` instead of 20 identical copies (~25 MB instead of ~105 MB; 0 MB when on Azure).
+- **Parallel cloud rollouts + cached Docker builds:** `_deploy-env.yml` rolls Lambdas 6-wide (~45s vs ~4–5 min); `_deploy-azure-env.yml` builds with Docker Buildx + GHA layer cache (`type=gha,scope=backend`), skips double-updating the migrate job, and rolls Container Apps/Jobs 5-wide (~45–60s vs ~4–6 min).
+- **Single frontend deploy pipeline + least privilege:** Removed the duplicated AWS prod-on-main `deploy` job, top-level `id-token: write`, and unused `frontend-dist-*` upload from `frontend-ci.yml`. `frontend-deploy.yml` now handles both Azure and AWS (auto-deploying `dev` on `main`, manual dispatch with optional `ref` for rollback) and fixes cache-control headers so only hashed `dist/assets/*` are `immutable` while `theme-init.js`, `favicon.svg`, and `index.html` (uploaded last) stay `no-cache`.
+- **Tooling alignment:** `.pre-commit-config.yaml` synced to `ruff-pre-commit v0.17.4` and `uv run mypy`; `Makefile` `lint`/`check` targets now run `uv run ruff format --check .`.

@@ -16,23 +16,27 @@ import time
 import uuid
 from typing import Any
 
+from shared import rate_limit
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
+from shared.pagination import parse_pagination_params
 from shared.responses import (
+    accepted,
     created,
     error_response,
     no_content,
     paginated,
     success,
 )
-from shared.tenant_context import UserRole
+from shared.tenant_context import PLATFORM_TENANT_ID, UserRole
 from shared.validation import parse_validated
 
-from . import impersonation, service
+from . import branding_logo, impersonation, service
 from .models import (
     AcceptCustomerInviteRequest,
     ActivateAccountRequest,
@@ -40,9 +44,11 @@ from .models import (
     CreateTenantRequest,
     CreateTenantUserRequest,
     CustomerRegistrationRequest,
+    LogoUploadRequest,
     OnboardingRequestStatusUpdate,
     PaystackConfigRequest,
     SelfRegistrationUpdateRequest,
+    SetLogoRequest,
     SuspendTenantRequest,
     UpdateCbmRateRequest,
     UpdateDollarRateMarkupRequest,
@@ -81,7 +87,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     # Public routes — no JWT required; must be checked before get_tenant_context
     public_parts = path.strip("/").split("/")
@@ -121,15 +127,30 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Idempotency for POST requests
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -179,8 +200,16 @@ def _dispatch(
 
         # /v1/tenants is a shorthand alias for /v1/platform/tenants
         if section == "tenants":
-            # GET /v1/tenants/me/quota — accessible to all authenticated staff roles
-            if len(parts) >= 4 and parts[2] == "me" and parts[3] == "quota" and method == "GET":
+            # GET /v1/tenants/me/quota — accessible to tenant staff roles only (not customers or platform admin)
+            if len(parts) == 4 and parts[2] == "me" and parts[3] == "quota" and method == "GET":
+                ctx.assert_role(
+                    UserRole.TENANT_ADMIN,
+                    UserRole.CHINA_OFFICE_STAFF,
+                    UserRole.NIGERIA_OFFICE_STAFF,
+                    UserRole.WAREHOUSE_ATTENDANT,
+                )
+                if ctx.tenant_id == PLATFORM_TENANT_ID:
+                    raise ResourceNotFoundError("tenant", "me")
                 result = service.get_tenant_quota(ctx.tenant_id)
                 return success(result, request_id=request_id)
 
@@ -313,6 +342,7 @@ def _self_update_profile(
         str(user["id"]),
         {"locale": locale},
         actor_id=ctx.user_id,
+        actor_role=ctx.role.value,
         ip_address=ip_address,
     )
     return success(result, request_id=request_id)
@@ -331,11 +361,13 @@ def _handle_self_register(
 ) -> dict[str, Any]:
     """POST /v1/register/{slug} (or legacy POST /v1/register) — customer self-registration (no JWT)."""
     try:
+        rate_limit.hit_for_client(rate_limit.REGISTER_IP, event)
         body = _parse_body(event)
         req = parse_validated(CustomerRegistrationRequest, body)
         host = (event.get("headers") or {}).get("host") or (event.get("headers") or {}).get("Host", "")
-        result = service.self_register_customer(req, slug=slug, host=host, request_id=request_id, ip_address=ip_address)
-        return created(result, location=f"/v1/customers/{result['id']}", request_id=request_id)
+        service.self_register_customer(req, slug=slug, host=host, request_id=request_id, ip_address=ip_address)
+        # The same answer whether the email was new or already had an account: see self_register_customer.
+        return accepted({"status": "received"}, request_id=request_id)
     except LogisticsBaseError as exc:
         path = (event.get("requestContext", {}).get("http", {}) or {}).get("path", "/v1/register")
         return error_response(exc, instance=path, request_id=request_id)
@@ -430,6 +462,7 @@ def _handle_create_onboarding_request(event: dict[str, Any], request_id: str, ip
     job, deliberately kept separate). A platform admin provisions it later.
     """
     try:
+        rate_limit.hit_for_client(rate_limit.ONBOARDING_IP, event)
         req = parse_validated(CreateOnboardingRequest, _parse_body(event))
         result = service.create_onboarding_request(req, request_id=request_id, ip_address=ip_address)
         return created(result, location=f"/v1/platform/onboarding-requests/{result['id']}", request_id=request_id)
@@ -447,6 +480,14 @@ def _handle_create_onboarding_request(event: dict[str, Any], request_id: str, ip
 # ---------------------------------------------------------------------------
 # Platform admin routes  /v1/platform/...
 # ---------------------------------------------------------------------------
+
+
+def _is_uuid(value: str | None) -> bool:
+    try:
+        uuid.UUID(str(value))
+    except ValueError:
+        return False
+    return True
 
 
 def _platform_routes(
@@ -467,12 +508,10 @@ def _platform_routes(
 
     # GET /v1/platform/audit-log
     if resource == "audit-log" and method == "GET":
-        from shared.pagination import decode_cursor
-
-        cursor_str = _qp(event, "cursor")
+        cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
         page, next_cursor, has_more = service.list_platform_audit_log(
-            limit=int(_qp(event, "limit", 50)),
-            cursor=decode_cursor(cursor_str),
+            limit=limit,
+            cursor=cursor,
             target_tenant_id=_qp(event, "tenant_id") or None,
             action=_qp(event, "action") or None,
         )
@@ -524,7 +563,7 @@ def _platform_routes(
             return success(data, request_id=request_id)
         if sub is None and method == "PUT":
             body = _parse_body(event)
-            data = service.update_platform_settings(body, actor_id=ctx.user_id)
+            data = service.update_platform_settings(body, actor_id=ctx.user_id, ip_address=ip_address)
             return success(data, request_id=request_id)
 
     # /v1/platform/impersonation/{session_id}
@@ -564,7 +603,8 @@ def _platform_routes(
                 )
             # GET /v1/platform/tenants
             if method == "GET":
-                tenants = service.list_tenants(limit=int(_qp(event, "limit", 50)))
+                _, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
+                tenants = service.list_tenants(limit=limit)
                 return success(tenants, request_id=request_id)
 
         else:
@@ -584,6 +624,20 @@ def _platform_routes(
             if action == "reactivate" and method == "PATCH":
                 result = service.reactivate_tenant(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
+
+            # /v1/platform/tenants/{id}/offboarding-export[/link] — the tenant's data export (audit BE-10)
+            if action == "offboarding-export":
+                if not _is_uuid(tenant_id):
+                    raise ResourceNotFoundError("tenant", tenant_id or "")
+                export_action = parts[5] if len(parts) > 5 else None
+                if export_action is None and method == "GET":
+                    return success(service.get_offboarding_export(tenant_id), request_id=request_id)
+                if export_action is None and method == "POST":
+                    result = service.queue_offboarding_export(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
+                    return success(result, request_id=request_id)
+                if export_action == "link" and method == "POST":
+                    result = service.create_offboarding_export_link(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
+                    return success(result, request_id=request_id)
 
             # GET /v1/platform/tenants/{id}/users — staff users of that tenant
             if action == "users" and method == "GET":
@@ -608,21 +662,22 @@ def _platform_routes(
                 )
                 return created(result, location=f"/v1/platform/impersonation/{result['session_id']}", request_id=request_id)
 
-            # GET /v1/platform/tenants/{id}
-            if method == "GET":
-                return success(service.get_tenant(tenant_id), request_id=request_id)
+            if action is None:
+                # GET /v1/platform/tenants/{id}
+                if method == "GET":
+                    return success(service.get_tenant(tenant_id), request_id=request_id)
 
-            # PATCH /v1/platform/tenants/{id}
-            if method == "PATCH":
-                body = _parse_body(event)
-                req = parse_validated(UpdateTenantRequest, body)
-                result = service.update_tenant(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
-                return success(result, request_id=request_id)
+                # PATCH /v1/platform/tenants/{id}
+                if method == "PATCH":
+                    body = _parse_body(event)
+                    req = parse_validated(UpdateTenantRequest, body)
+                    result = service.update_tenant(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
+                    return success(result, request_id=request_id)
 
-            # DELETE /v1/platform/tenants/{id}
-            if method == "DELETE":
-                result = service.offboard_tenant(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
-                return success(result, request_id=request_id)
+                # DELETE /v1/platform/tenants/{id}
+                if method == "DELETE":
+                    result = service.offboard_tenant(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
+                    return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
 
@@ -657,13 +712,12 @@ def _tenant_admin_routes(
     # ?sort= (asc|desc) round out real filtering/search/sort for the
     # tenant-admin Activity Log page.
     if resource == "activity" and method == "GET":
-        from shared.pagination import decode_cursor
-
+        cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=20)
         entity_type_param = _qp(event, "entity_type")
         page, next_cursor, has_more = service.list_tenant_activity(
             tenant_id,
-            limit=int(_qp(event, "limit", 20)),
-            cursor=decode_cursor(_qp(event, "cursor")),
+            limit=limit,
+            cursor=cursor,
             actor_id=_qp(event, "actor_id") or None,
             entity_type=[t for t in entity_type_param.split(",") if t] if entity_type_param else None,
             action=_qp(event, "action") or None,
@@ -702,6 +756,28 @@ def _tenant_admin_routes(
         config_sub = parts[3] if len(parts) > 3 else None  # "webhook" | "paystack"
         config_action = parts[4] if len(parts) > 4 else None  # "rotate-secret" | "test"
 
+        # POST /v1/tenant/config/logo/upload-url — presign the logo upload (FD-29)
+        if config_sub == "logo" and config_action == "upload-url" and method == "POST":
+            ctx.assert_role(UserRole.TENANT_ADMIN)
+            req_upload = parse_validated(LogoUploadRequest, _parse_body(event))
+            result = branding_logo.create_logo_upload(
+                tenant_id, req_upload.filename, req_upload.content_type, req_upload.size_bytes
+            )
+            return success(result, request_id=request_id, status_code=201)
+
+        # PUT /v1/tenant/config/logo — use the uploaded file as the logo
+        if config_sub == "logo" and config_action is None and method == "PUT":
+            ctx.assert_role(UserRole.TENANT_ADMIN)
+            req_logo = parse_validated(SetLogoRequest, _parse_body(event))
+            result = branding_logo.set_logo(tenant_id, req_logo.file_key, actor_id=ctx.user_id, ip_address=ip_address)
+            return success(result, request_id=request_id)
+
+        # DELETE /v1/tenant/config/logo — back to the initials tile
+        if config_sub == "logo" and config_action is None and method == "DELETE":
+            ctx.assert_role(UserRole.TENANT_ADMIN)
+            result = branding_logo.remove_logo(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
+            return success(result, request_id=request_id)
+
         # POST /v1/tenant/config/webhook/rotate-secret
         if config_sub == "webhook" and config_action == "rotate-secret" and method == "POST":
             ctx.assert_role(UserRole.TENANT_ADMIN)
@@ -734,13 +810,14 @@ def _tenant_admin_routes(
             result = service.test_paystack_connection(tenant_id, actor_id=ctx.user_id, request_id=request_id)
             return success(result, request_id=request_id)
 
-        if method == "GET":
-            return success(service.get_tenant_config(tenant_id), request_id=request_id)
-        if method == "PUT":
-            body = _parse_body(event)
-            req = parse_validated(UpdateTenantConfigRequest, body)
-            result = service.update_tenant_config(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
-            return success(result, request_id=request_id)
+        if config_sub is None:
+            if method == "GET":
+                return success(service.get_tenant_config(tenant_id), request_id=request_id)
+            if method == "PUT":
+                body = _parse_body(event)
+                req = parse_validated(UpdateTenantConfigRequest, body)
+                result = service.update_tenant_config(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
+                return success(result, request_id=request_id)
 
     # /v1/tenant/dollar-rate
     if resource == "dollar-rate":
@@ -787,29 +864,54 @@ def _tenant_admin_routes(
         else:
             action = parts[4] if len(parts) > 4 else None
             if action == "resend-invite" and method == "POST":
-                service.resend_user_invite(tenant_id, user_id)
+                service.resend_user_invite(
+                    tenant_id, user_id, actor_id=ctx.user_id, actor_role=ctx.role.value, ip_address=ip_address
+                )
                 return success({"message": "Invite resent"}, request_id=request_id)
             if action == "reset-password" and method == "POST":
-                service.reset_user_password(tenant_id, user_id)
+                service.reset_user_password(
+                    tenant_id, user_id, actor_id=ctx.user_id, actor_role=ctx.role.value, ip_address=ip_address
+                )
                 return success({"message": "Password reset email sent"}, request_id=request_id)
             if action == "resend-activation" and method == "POST":
-                result = service.resend_activation(tenant_id, user_id, actor_id=ctx.user_id, request_id=request_id)
+                result = service.resend_activation(
+                    tenant_id,
+                    user_id,
+                    actor_id=ctx.user_id,
+                    request_id=request_id,
+                    actor_role=ctx.role.value,
+                    ip_address=ip_address,
+                )
                 return success(result, request_id=request_id)
-            if method == "GET":
-                return success(service.get_user(tenant_id, user_id), request_id=request_id)
-            if method == "PATCH":
-                body = _parse_body(event)
-                req = parse_validated(UpdateTenantUserRequest, body)
-                # exclude_none, not exclude_unset: the model's after-validator
-                # defaults primary_role to roles[0] via direct attribute
-                # assignment, which pydantic doesn't mark as "set" — only a
-                # None-based filter reliably keeps that default in the dump.
-                updates = req.model_dump(exclude_none=True)
-                result = service.update_user(tenant_id, user_id, updates, actor_id=ctx.user_id, ip_address=ip_address)
-                return success(result, request_id=request_id)
-            if method == "DELETE":
-                service.deactivate_user(tenant_id, user_id, actor_id=ctx.user_id, ip_address=ip_address)
-                return no_content(request_id=request_id)
+            if action is None:
+                if method == "GET":
+                    return success(service.get_user(tenant_id, user_id), request_id=request_id)
+                if method == "PATCH":
+                    body = _parse_body(event)
+                    req = parse_validated(UpdateTenantUserRequest, body)
+                    # exclude_none, not exclude_unset: the model's after-validator
+                    # defaults primary_role to roles[0] via direct attribute
+                    # assignment, which pydantic doesn't mark as "set" — only a
+                    # None-based filter reliably keeps that default in the dump.
+                    updates = req.model_dump(exclude_none=True)
+                    result = service.update_user(
+                        tenant_id,
+                        user_id,
+                        updates,
+                        actor_id=ctx.user_id,
+                        actor_role=ctx.role.value,
+                        ip_address=ip_address,
+                    )
+                    return success(result, request_id=request_id)
+                if method == "DELETE":
+                    service.deactivate_user(
+                        tenant_id,
+                        user_id,
+                        actor_id=ctx.user_id,
+                        actor_role=ctx.role.value,
+                        ip_address=ip_address,
+                    )
+                    return no_content(request_id=request_id)
 
     # /v1/tenant/notification-templates[/{event_type}/{channel}]
     if resource == "notification-templates":
@@ -838,13 +940,12 @@ def _tenant_admin_routes(
 
     # GET /v1/tenant/rate-history
     if resource == "rate-history" and method == "GET":
-        from shared.pagination import decode_cursor
-
+        cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
         page, next_cursor, has_more = service.list_rate_history(
             tenant_id,
             rate_type=_qp(event, "rate_type") or None,
-            limit=int(_qp(event, "limit", 50)),
-            cursor=decode_cursor(_qp(event, "cursor")),
+            limit=limit,
+            cursor=cursor,
         )
         return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -924,7 +1025,7 @@ def _customer_routes(
     tenant_id = ctx.tenant_id
     customer_id = parts[2] if len(parts) > 2 else None
     action = parts[3] if len(parts) > 3 else None
-    is_customer_role = ctx.role == UserRole.CUSTOMER
+    is_customer_role = ctx.is_customer_only
 
     # GET /v1/customers/stats — tenant-wide customer aggregates for the list
     # stats row (SQL-computed). Staff only; checked before the {id} branch.
@@ -944,7 +1045,14 @@ def _customer_routes(
                 UserRole.NIGERIA_OFFICE_STAFF,
             )
             body = _parse_body(event)
-            result = service.create_customer(tenant_id, body, actor_id=ctx.user_id, request_id=request_id, ip_address=ip_address)
+            result = service.create_customer(
+                tenant_id,
+                body,
+                actor_id=ctx.user_id,
+                request_id=request_id,
+                ip_address=ip_address,
+                actor_role=ctx.role.value,
+            )
             return created(
                 result,
                 location=f"/v1/customers/{result['id']}",
@@ -960,11 +1068,7 @@ def _customer_routes(
                 return paginated([own] if own else [], None, False, request_id=request_id)
             ctx.assert_role(*_STAFF_ROLES)
             q = _qp(event, "q")
-            limit = int(_qp(event, "limit", 50))
-            cursor_str = _qp(event, "cursor")
-            from shared.pagination import decode_cursor
-
-            cursor = decode_cursor(cursor_str)
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_customers(tenant_id, q=q, limit=limit, cursor=cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -999,7 +1103,14 @@ def _customer_routes(
                     body = {k: v for k, v in body.items() if k in allowed}
                 else:
                     ctx.assert_role(*_STAFF_ROLES)
-                result = service.update_customer(tenant_id, customer_id, body, actor_id=ctx.user_id, ip_address=ip_address)
+                result = service.update_customer(
+                    tenant_id,
+                    customer_id,
+                    body,
+                    actor_id=ctx.user_id,
+                    actor_role=ctx.role.value,
+                    ip_address=ip_address,
+                )
                 return success(result, request_id=request_id)
 
             # DELETE /v1/customers/{id} — GDPR/NDPR Art. 17 erasure.
@@ -1020,6 +1131,7 @@ def _customer_routes(
                     tenant_id,
                     customer_id,
                     actor_id=ctx.user_id,
+                    actor_role=ctx.role.value,
                     ip_address=ip_address,
                 )
                 return success(anonymised or {}, request_id=request_id)

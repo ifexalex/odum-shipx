@@ -18,6 +18,13 @@
 # are ignored by Terraform so CI owns the running tag.
 # ---------------------------------------------------------------------------
 
+# The secret that keys the pickup-code hash. Generated once and kept in state. Changing it makes every code already issued
+# unverifiable, so those release notes would need a new code (POST /v1/release-notes/{id}/pickup-code).
+resource "random_password" "pickup_code_pepper" {
+  length  = 48
+  special = false
+}
+
 locals {
   # Non-secret env — plain values. CLOUD_PROVIDER=azure drives adapter selection.
   plain_env = {
@@ -91,6 +98,12 @@ locals {
     AUTH_COOKIE_SAMESITE = var.auth_cookie_samesite
     # Browser origins allowed to call the API (the frontend URL).
     CORS_ALLOW_ORIGINS = var.cors_allow_origins
+    # The client's address, for rate limits and audit logs (shared/client_ip.py). Behind Front Door and the ingress
+    # the socket peer is a proxy. A request stamped with this Front Door's id is given the address Front Door
+    # saw; TRUSTED_PROXY_HOPS is only the fallback for requests that did not come through it (0 = unknown).
+    AZURE_FRONT_DOOR_ID = var.front_door_id
+    REQUIRE_FRONT_DOOR  = tostring(var.require_front_door)
+    TRUSTED_PROXY_HOPS  = tostring(var.trusted_proxy_hops)
     # Stamped on every structured log line, and read by the notification
     # recipient guard ("production" disables it).
     ENVIRONMENT = var.environment_name
@@ -103,6 +116,29 @@ locals {
     SQS_WHATSAPP_QUEUE_URL = lookup(var.queue_names, "whatsapp", "")
     SQS_EMAIL_QUEUE_URL    = lookup(var.queue_names, "email", "")
     SQS_METERING_QUEUE_URL = lookup(var.queue_names, "metering", "")
+
+    # Override for customer invite links, when the customer portal is hosted
+    # separately from the staff app. Falls back to APP_BASE_URL above —
+    # previously this was read with an empty default and set nowhere, so every
+    # customer invite went out as the relative path "/invite/<token>".
+    CUSTOMER_PORTAL_BASE_URL = var.customer_portal_base_url
+
+    # SMS — Africa's Talking. These were absent from the Azure deployment
+    # entirely, so send_sms logged "AFRICASTALKING_API_KEY not configured" and
+    # returned False for every message: no SMS was ever delivered on Azure and
+    # nothing failed. AFRICASTALKING_USERNAME must be the LIVE username in
+    # production — the application default is "sandbox", which accepts messages
+    # and delivers nothing.
+    AFRICASTALKING_USERNAME  = var.africastalking_username
+    AFRICASTALKING_SENDER_ID = var.africastalking_sender_id
+
+    # WhatsApp — Meta Cloud API. Also absent, and WhatsApp is the PRIMARY
+    # customer channel (SMS is only its fallback), so this was the main way
+    # customers are contacted being silently dead. META_WHATSAPP_TEMPLATE_LANG
+    # must match the language the templates named in WA_TEMPLATE_MAP were
+    # approved under, or Meta 404s every send.
+    META_WHATSAPP_PHONE_ID      = var.meta_whatsapp_phone_id
+    META_WHATSAPP_TEMPLATE_LANG = var.meta_whatsapp_template_lang
   }
 
   # Container App secret name (lowercase alnum + '-') → value. Optional secrets
@@ -119,12 +155,21 @@ locals {
       acs-connection         = var.acs_connection_string
       storage-connection     = var.storage_connection_string
       appinsights-connection = var.app_insights_connection_string
+      # Keys the HMAC that hashes release-note pickup codes (shared/pickup_code.py).
+      pickup-code-pepper = random_password.pickup_code_pepper.result
     },
     var.enable_redis ? { redis-password = var.redis_password } : {},
     # Graph provisioning app secret — gated on the NON-SENSITIVE client id (an
     # empty gate over a sensitive value would mark the whole map sensitive and
     # break for_each; Azure also rejects an empty-valued secret).
     var.entra_graph_client_id != "" ? { entra-graph-client-secret = var.entra_graph_client_secret } : {},
+    # Notification channel credentials, gated the same way: on the channel's
+    # non-sensitive companion value, never on the secret itself.
+    var.africastalking_username != "" ? { africastalking-api-key = var.africastalking_api_key } : {},
+    var.meta_whatsapp_phone_id != "" ? {
+      meta-whatsapp-access-token = var.meta_whatsapp_access_token
+      whatsapp-verify-token      = var.whatsapp_verify_token
+    } : {},
   )
 
   # Env var name → secret name. The redis mapping is included only when Redis is
@@ -140,9 +185,15 @@ locals {
       AZURE_COMMUNICATION_CONNECTION_STRING = "acs-connection"
       AZURE_STORAGE_CONNECTION_STRING       = "storage-connection"
       APPLICATIONINSIGHTS_CONNECTION_STRING = "appinsights-connection"
+      PICKUP_CODE_PEPPER                    = "pickup-code-pepper"
     },
     var.enable_redis ? { REDIS_PASSWORD = "redis-password" } : {},
     var.entra_graph_client_id != "" ? { ENTRA_GRAPH_CLIENT_SECRET = "entra-graph-client-secret" } : {},
+    var.africastalking_username != "" ? { AFRICASTALKING_API_KEY = "africastalking-api-key" } : {},
+    var.meta_whatsapp_phone_id != "" ? {
+      META_WHATSAPP_ACCESS_TOKEN = "meta-whatsapp-access-token"
+      WHATSAPP_VERIFY_TOKEN      = "whatsapp-verify-token"
+    } : {},
   ))
 
   image = var.container_image
@@ -156,6 +207,7 @@ locals {
     dispute_escalation = "0 */6 * * *" # every 6 hours
     sla_check          = "0 */4 * * *" # every 4 hours
     usage_aggregation  = "0 * * * *"   # hourly
+    offboarding_export = "30 * * * *"  # hourly, half past: queued tenant data exports (audit BE-10)
   }
 
   # Workers → the Service Bus queue each consumes (for the KEDA scaler).

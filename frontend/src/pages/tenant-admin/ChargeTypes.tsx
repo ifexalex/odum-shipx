@@ -7,14 +7,15 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { configApi, type ChargeType } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Field, Mono, Table } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
+import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton, ConfirmDialog } from '../../design/components'
 import styles from './admin.module.css'
+import { formatNgn } from '../../lib/format'
+import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 interface ChargeTypeModalProps {
   existing: ChargeType | null
@@ -41,12 +42,14 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
           amount_ngn: amount,
           description: description || undefined,
         })
+        toast.success('Charge type updated')
       } else {
         await configApi.createChargeType({
           name,
           amount_ngn: amount,
           description: description || undefined,
         })
+        toast.success('Charge type added')
       }
       onSuccess()
     } catch (err) {
@@ -61,25 +64,26 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(11,47,13,0.55)',
+        background: 'var(--scrim-modal)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 200,
-        padding: 16,
+        zIndex: 'var(--layer-modal)',
+        padding: 'var(--space-4)',
       }}
       onClick={onCancel}
     >
+      <DialogGuard onClose={onCancel} />
       <div
         style={{
           background: 'var(--color-surface)',
-          borderRadius: 14,
-          padding: 24,
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-6)',
           width: '100%',
           maxWidth: 480,
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
+          gap: 'var(--space-4)',
           maxHeight: '90vh',
           overflowY: 'auto',
         }}
@@ -87,7 +91,7 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
         role="dialog"
         aria-modal="true"
       >
-        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>
+        <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 700 }}>
           {existing ? 'Edit charge type' : 'New charge type'}
         </h3>
         {error && (
@@ -122,7 +126,7 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button variant="ghost" size="lg" onClick={onCancel} disabled={submitting}>
             Cancel
           </Button>
@@ -143,12 +147,13 @@ function ChargeTypeModal({ existing, onCancel, onSuccess }: ChargeTypeModalProps
 }
 
 export function ChargeTypes(): JSX.Element {
-  const navigate = useNavigate()
   const [modal, setModal] = useState<{ open: boolean; existing: ChargeType | null }>({
     open: false,
     existing: null,
   })
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
+  // The charge type waiting on a confirmation before it is deactivated (FD-24).
+  const [confirming, setConfirming] = useState<{ id: string; name: string } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const { data: chargeTypes = [], isLoading: loading, error: loadError } = useQuery({
@@ -173,6 +178,7 @@ export function ChargeTypes(): JSX.Element {
     setActionError(null)
     try {
       await configApi.deactivateChargeType(id)
+      toast.success('Charge type deactivated')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not deactivate charge type.')
     } finally {
@@ -180,22 +186,23 @@ export function ChargeTypes(): JSX.Element {
     }
   }
 
-  useTopBarSlot({
-    subtitle:
-      'Reusable presets for miscellaneous billing charges — customs examination, port handling, and similar.',
-    actions: (
-      <Button
-        variant="primary"
-        icon="plus"
-        onClick={() => setModal({ open: true, existing: null })}
-      >
-        New charge type
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Charge types"
+        meta={
+          'Reusable presets for miscellaneous billing charges — customs examination, port handling, and similar.'
+        }
+        primary={
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => setModal({ open: true, existing: null })}
+          >
+            New charge type
+          </Button>
+        }
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Error">
@@ -204,39 +211,39 @@ export function ChargeTypes(): JSX.Element {
         </div>
       )}
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Name' },
-            { title: 'Default amount (₦)', align: 'right' },
-            { title: 'Times used', align: 'right' },
+            { title: 'Default amount (₦)', type: 'money' },
+            { title: 'Times used', type: 'number' },
             { title: 'Description' },
-            { title: 'Status' },
-            { title: '', width: '160px' },
+            { title: 'Status', type: 'status' },
+            { title: '', type: 'action', width: '160px' },
           ]}
           rows={chargeTypes.map((t) => ({
             cells: [
-              <span key="name" style={{ fontWeight: 600, fontSize: 13 }}>
+              <span key="name" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                 {t.name}
               </span>,
-              <Mono key="amt">₦{Number(t.amount_ngn).toLocaleString()}</Mono>,
+              <Mono key="amt">{formatNgn(t.amount_ngn)}</Mono>,
               <span
                 key="usage"
                 title="Billing charges added from this type"
                 style={{
-                  fontSize: 12,
+                  fontSize: 'var(--text-xs)',
                   color: t.usage_count ? 'var(--color-ink-2)' : 'var(--color-ink-3)',
                 }}
               >
                 {t.usage_count ?? 0}×
               </span>,
-              <span key="desc" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+              <span key="desc" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
                 {t.description ?? '—'}
               </span>,
               <Badge key="status" variant={t.is_active ? 'success' : 'neutral'}>
                 {t.is_active ? 'Active' : 'Inactive'}
               </Badge>,
-              <span key="actions" style={{ display: 'inline-flex', gap: 6 }}>
+              <span key="actions" style={{ display: 'inline-flex', gap: 'var(--space-2)' }}>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -246,10 +253,10 @@ export function ChargeTypes(): JSX.Element {
                 </Button>
                 {t.is_active && (
                   <Button
-                    variant="ghost"
+                    variant="danger-ghost"
                     size="sm"
                     loading={deactivatingId === t.id}
-                    onClick={() => void handleDeactivate(t.id)}
+                    onClick={() => setConfirming(t)}
                   >
                     Deactivate
                   </Button>
@@ -257,19 +264,9 @@ export function ChargeTypes(): JSX.Element {
               </span>,
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
-              {loading ? 'Loading charge types…' : 'No charge types yet — create the first one.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading charge types" /> : <EmptyState compact title="No charge types yet" body="Create the first one." />}
         />
       </Card>
-
-      <div style={{ marginTop: 24 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/config')}>
-          Back to configuration
-        </Button>
-      </div>
 
       {modal.open && (
         <ChargeTypeModal
@@ -278,6 +275,22 @@ export function ChargeTypes(): JSX.Element {
           onSuccess={() => setModal({ open: false, existing: null })}
         />
       )}
+      <ConfirmDialog
+        open={confirming !== null}
+        title={`Deactivate ${confirming?.name ?? 'this charge type'}?`}
+        confirmLabel="Deactivate charge type"
+        undo="Charges already on invoices stay as they are. You can add the charge type again later."
+        busy={deactivatingId !== null}
+        error={actionError}
+        onConfirm={async () => {
+          if (!confirming) return
+          await handleDeactivate(confirming.id)
+          setConfirming(null)
+        }}
+        onCancel={() => setConfirming(null)}
+      >
+        It will no longer be offered when staff add a charge to an invoice.
+      </ConfirmDialog>
     </div>
   )
 }

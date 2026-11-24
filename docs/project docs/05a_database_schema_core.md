@@ -271,6 +271,8 @@ CREATE INDEX idx_packing_list_item_delivery_note ON packing_list_item(delivery_n
 (Include full DDL from backend spec §1.2)
 
 #### 11. `billing` + `misc_charge` + `payment_record` tables
+
+> Later columns: `credits_applied_ngn` (migration 066), `exchange_rate_source` and `exchange_rate_fetched_at` (migration 068, audit BE-11) — see `05b`.
 (Include full DDL from backend spec §1.2)
 
 ## Also Create

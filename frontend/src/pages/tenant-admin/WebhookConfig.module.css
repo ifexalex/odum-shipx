@@ -4,43 +4,45 @@
 .enabledRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .enabledLabel {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
 /* Signing secret */
 .secretLabel {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-ink-2);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 
 .secretRow {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .secretDisplay {
-  flex: 1;
+  flex: 1 1 220px;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   height: 40px;
-  padding: 0 14px;
+  padding: 0 var(--space-4);
   background: var(--color-surface-muted);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   border: 1px solid var(--color-line);
 }
 
 .secretHint {
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
 }
 
@@ -48,8 +50,8 @@
 .eventRow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 0;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--color-line);
 }
 
@@ -61,10 +63,10 @@
 
 .eventLabel {
   display: block;
-  font-size: 13.5px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-ink);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
 }
 
 /* Footer */
@@ -78,19 +80,19 @@
 .newSecretBanner {
   background: var(--color-success-soft);
   border: 1px solid var(--color-success);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-4);
 }
 
 .newSecretTop {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .newSecretTitle {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-success-strong);
 }
@@ -98,10 +100,10 @@
 .newSecretRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   background: var(--color-surface);
-  border-radius: var(--radius-sm);
-  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
 }
 
 /* Rotate confirm modal. Ground-truth gap found live: .modal used a fixed
@@ -111,17 +113,17 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
+  background: var(--scrim-modal);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--layer-modal);
 }
 
 .modal {
   width: 100%;
   background: var(--color-surface);
-  border-radius: 14px 14px 0 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-modal);
   overflow: hidden;
   max-height: 90vh;
@@ -131,16 +133,16 @@
 
 @container sxapp (min-width: 861px) {
   .modalOverlay {
-    padding: 32px;
+    padding: var(--space-8);
   }
   .modal {
-    width: 480px;
-    border-radius: 14px;
+    width: var(--dialog-sm);
+    border-radius: var(--radius-xl);
   }
 }
 
 .modalHeader {
-  padding: 20px 24px;
+  padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--color-line);
   display: flex;
   align-items: center;
@@ -149,38 +151,38 @@
 
 .modalTitle {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 18px;
+  font-weight: 600;
+  font-size: var(--text-lg);
   color: var(--color-ink);
   margin: 0;
 }
 
 .modalBody {
-  padding: 20px 24px;
+  padding: var(--space-5) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-4);
   overflow-y: auto;
 }
 
 .modalText {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
-  line-height: 1.6;
+  line-height: var(--text-sm-line);
   margin: 0;
 }
 
 .modalFooter {
-  padding: 16px 24px;
+  padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--color-line);
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .modalFooter > * {
   min-height: 48px;
-  font-size: 1rem;
+  font-size: var(--text-lg);
 }
 
 @container sxapp (min-width: 861px) {
@@ -193,9 +195,9 @@
 .closeBtn {
   background: transparent;
   border: none;
-  padding: 6px;
+  padding: var(--space-2);
   cursor: pointer;
   color: var(--color-ink-4);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   display: flex;
 }

@@ -129,6 +129,19 @@ class CognitoIdentityProvider:
         except ClientError as exc:
             raise ExternalServiceError("Cognito", str(exc)) from exc
 
+    def delete_user(self, username: str) -> None:
+        """Permanently delete a Cognito user (GDPR erasure). UserNotFoundException is a no-op."""
+        from botocore.exceptions import ClientError
+
+        from shared.exceptions import ExternalServiceError
+
+        try:
+            self.client.admin_delete_user(UserPoolId=self.user_pool_id, Username=username)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] == "UserNotFoundException":
+                return
+            raise ExternalServiceError("Cognito", str(exc)) from exc
+
     def disable_user(self, username: str) -> None:
         """Disable (deactivate) a Cognito user account."""
         from botocore.exceptions import ClientError

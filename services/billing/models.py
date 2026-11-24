@@ -3,8 +3,9 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -36,12 +37,48 @@ class CBMDisputeStatus(StrEnum):
 # ---------------------------------------------------------------------------
 
 
+class GenerateBillingRequest(BaseModel):
+    """Body of ``POST /v1/billing``.
+
+    With ``customer_id`` it bills that one customer for the container. Without
+    it, it bills every customer on the container who does not yet have an
+    invoice, which is how a partly failed clearance is completed.
+    """
+
+    container_id: UUID
+    customer_id: UUID | None = None
+
+
 class CancelBillingRequest(BaseModel):
     cancel_reason: str = Field(min_length=1, max_length=500)
 
 
 class ExemptCarryoverRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
+
+
+class AddMiscChargeRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    description: str = Field(min_length=1, max_length=500)
+    amount_ngn: Decimal = Field(gt=Decimal("0"))
+    amount_usd: Decimal | None = Field(default=None, gt=Decimal("0"))
+    charge_type: str = Field(default="other", min_length=1, max_length=50)
+    charge_type_id: str | None = None
+
+    @field_validator("amount_ngn")
+    @classmethod
+    def _amount_must_be_finite(cls, value: Decimal) -> Decimal:
+        if not value.is_finite():
+            raise ValueError("amount_ngn must be finite")
+        return value
+
+    @field_validator("charge_type")
+    @classmethod
+    def _disallow_storage_fee(cls, value: str) -> str:
+        if value.lower() == "storage_fee":
+            raise ValueError("storage_fee is managed automatically and cannot be added as a misc charge")
+        return value
 
 
 class FileCBMDisputeRequest(BaseModel):

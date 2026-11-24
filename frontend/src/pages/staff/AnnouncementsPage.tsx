@@ -1,7 +1,8 @@
 import { useState, type JSX } from 'react'
+import { ApiError } from '../../api/client'
 import { useSession } from '../../auth/useSession'
-import { Badge, Button, Card, Field, type BadgeVariant } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
+import { Badge, Banner, Button, Card, Field, StatusBadge, LinesSkeleton, ConfirmDialog, ErrorState } from '../../design/components'
+import { formatDateTime } from '../../lib/format'
 import { SectionHead } from '../../shell/SectionHead'
 import { ComposeAnnouncementModal } from '../../shell/ComposeAnnouncementModal'
 import type {
@@ -23,21 +24,10 @@ import {
   useUpdateAnnouncementRequest,
 } from '../../hooks/useAnnouncements'
 import styles from './AnnouncementsPage.module.css'
+import { PageHeader } from '../../shell/PageHeader'
 
 function audienceLabel(audience: AnnouncementAudience): string {
   return audience === 'all_staff' ? 'All staff' : 'All customers'
-}
-
-const STATUS_VARIANT: Record<AnnouncementRequest['status'], BadgeVariant> = {
-  pending: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-const STATUS_LABEL: Record<AnnouncementRequest['status'], string> = {
-  pending: 'Pending approval',
-  approved: 'Approved',
-  rejected: 'Rejected',
 }
 
 function EditForm({
@@ -68,6 +58,9 @@ function EditForm({
         onChange={(e) => setBody(e.target.value)}
       />
       <div className={styles.rowActions}>
+        <Button size="sm" variant="secondary" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
         <Button
           size="sm"
           variant="primary"
@@ -77,12 +70,14 @@ function EditForm({
         >
           Save
         </Button>
-        <Button size="sm" variant="secondary" onClick={onCancel} disabled={saving}>
-          Cancel
-        </Button>
       </div>
     </div>
   )
+}
+
+function mutationError(err: unknown): string | null {
+  if (!err) return null
+  return err instanceof ApiError ? err.message : 'Something went wrong. Please try again.'
 }
 
 // tenant_admin: one row per staff-submitted customer request awaiting review.
@@ -91,6 +86,7 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
   const reject = useRejectAnnouncement()
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
+  const rowErr = mutationError(approve.error ?? reject.error)
 
   return (
     <div className={styles.row}>
@@ -100,7 +96,11 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
           {audienceLabel(req.audience)}
         </Badge>
       </div>
+      <div className={styles.rowMeta}>
+        Submitted {formatDateTime(req.created_at)}
+      </div>
       {req.body && <p className={styles.rowBody}>{req.body}</p>}
+      {rowErr && <Banner variant="error">{rowErr}</Banner>}
       {!rejecting ? (
         <div className={styles.rowActions}>
           <Button
@@ -113,7 +113,7 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
           </Button>
           <Button
             size="sm"
-            variant="danger-outline"
+            variant="danger-ghost"
             onClick={() => setRejecting(true)}
             disabled={approve.isPending}
           >
@@ -134,6 +134,14 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
           <div className={styles.rowActions}>
             <Button
               size="sm"
+              variant="secondary"
+              onClick={() => setRejecting(false)}
+              disabled={reject.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
               variant="danger"
               onClick={() =>
                 reject.mutate({
@@ -144,14 +152,6 @@ function PendingRow({ req }: { req: AnnouncementRequest }): JSX.Element {
               loading={reject.isPending}
             >
               Confirm reject
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setRejecting(false)}
-              disabled={reject.isPending}
-            >
-              Cancel
             </Button>
           </div>
         </div>
@@ -169,10 +169,12 @@ function HistoryRow({ entry }: { entry: AnnouncementHistoryEntry }): JSX.Element
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const togglePending = activate.isPending || deactivate.isPending
+  const rowErr = mutationError(activate.error ?? deactivate.error ?? update.error ?? remove.error)
 
   if (editing) {
     return (
       <div className={styles.row}>
+        {rowErr && <Banner variant="error">{rowErr}</Banner>}
         <EditForm
           initialTitle={entry.title}
           initialBody={entry.body}
@@ -200,7 +202,11 @@ function HistoryRow({ entry }: { entry: AnnouncementHistoryEntry }): JSX.Element
           {audienceLabel(entry.audience)}
         </Badge>
       </div>
+      <div className={styles.rowMeta}>
+        Sent {formatDateTime(entry.created_at)}
+      </div>
       {entry.body && <p className={styles.rowBody}>{entry.body}</p>}
+      {rowErr && <Banner variant="error">{rowErr}</Banner>}
       <div className={styles.rowControls}>
         {entry.banner_active ? (
           <Button
@@ -233,7 +239,7 @@ function HistoryRow({ entry }: { entry: AnnouncementHistoryEntry }): JSX.Element
           {!confirmingDelete ? (
             <Button
               size="sm"
-              variant="danger-outline"
+              variant="danger-ghost"
               onClick={() => setConfirmingDelete(true)}
               disabled={togglePending}
             >
@@ -243,19 +249,19 @@ function HistoryRow({ entry }: { entry: AnnouncementHistoryEntry }): JSX.Element
             <>
               <Button
                 size="sm"
-                variant="danger"
-                loading={remove.isPending}
-                onClick={() => remove.mutate(entry.announcement_group_id)}
-              >
-                Confirm delete
-              </Button>
-              <Button
-                size="sm"
                 variant="secondary"
                 onClick={() => setConfirmingDelete(false)}
                 disabled={remove.isPending}
               >
                 Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                loading={remove.isPending}
+                onClick={() => remove.mutate(entry.announcement_group_id)}
+              >
+                Confirm delete
               </Button>
             </>
           )}
@@ -270,16 +276,32 @@ function MyRequestRow({ req }: { req: AnnouncementRequest }): JSX.Element {
   const update = useUpdateAnnouncementRequest()
   const remove = useDeleteAnnouncementRequest()
   const [editing, setEditing] = useState(false)
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false)
+  const rowErr = mutationError(update.error ?? remove.error)
 
   return (
     <div className={styles.row}>
+      <ConfirmDialog
+        open={confirmWithdraw}
+        title={`Withdraw "${req.title}"?`}
+        confirmLabel="Withdraw announcement"
+        undo="You can submit it again later."
+        busy={remove.isPending}
+        onConfirm={() => remove.mutate(req.id, { onSettled: () => setConfirmWithdraw(false) })}
+        onCancel={() => setConfirmWithdraw(false)}
+      >
+        It will be taken out of the admin's review queue and will not be sent.
+      </ConfirmDialog>
       <div className={styles.rowHeader}>
         <span className={styles.rowTitle}>{req.title}</span>
-        <Badge variant={STATUS_VARIANT[req.status]} size="sm" dot={false}>
-          {STATUS_LABEL[req.status]}
-        </Badge>
+        <StatusBadge size="sm" kind="announcement" status={req.status} />
+      </div>
+      <div className={styles.rowMeta}>
+        Submitted {formatDateTime(req.created_at)}
+        {req.reviewed_at ? ` · Reviewed ${formatDateTime(req.reviewed_at)}` : ''}
       </div>
       {req.body && <p className={styles.rowBody}>{req.body}</p>}
+      {rowErr && <Banner variant="error">{rowErr}</Banner>}
       {req.status === 'rejected' && req.rejection_reason && (
         <p className={styles.rejectionReason}>Reason: {req.rejection_reason}</p>
       )}
@@ -304,9 +326,9 @@ function MyRequestRow({ req }: { req: AnnouncementRequest }): JSX.Element {
           </Button>
           <Button
             size="sm"
-            variant="danger-outline"
+            variant="danger-ghost"
             loading={remove.isPending}
-            onClick={() => remove.mutate(req.id)}
+            onClick={() => setConfirmWithdraw(true)}
           >
             Withdraw
           </Button>
@@ -343,28 +365,33 @@ export function AnnouncementsPage(): JSX.Element {
   const history = historyQuery.data ?? []
   const mine = mineQuery.data ?? []
 
-  useTopBarSlot({
-    subtitle: isAdmin
-      ? 'Broadcast to every staff member or every customer — only one banner shows per audience at a time.'
-      : 'Submit an announcement for customers. A tenant admin reviews it before it reaches anyone.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setComposeOpen(true)}>
-        New announcement
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Announcements"
+        meta={
+          isAdmin
+            ? 'Broadcast to every staff member or every customer — only one banner shows per audience at a time.'
+            : 'Submit an announcement for customers. A tenant admin reviews it before it reaches anyone.'
+        }
+        primary={
+          <Button variant="primary" icon="plus" onClick={() => setComposeOpen(true)}>
+            New announcement
+          </Button>
+        }
+      />
       {isAdmin ? (
         <>
-          <Card padding={16} style={{ marginBottom: 16 }}>
+          <Card padding="default" style={{ marginBottom: 'var(--space-4)' }}>
             <SectionHead
               title="Pending approval"
               sub="Customer announcements submitted by staff."
             />
-            {pendingQuery.isLoading && <div className={styles.empty}>Loading…</div>}
-            {!pendingQuery.isLoading && pending.length === 0 && (
+            {pendingQuery.isLoading && <LinesSkeleton label="Loading" />}
+            {pendingQuery.error && (
+              <ErrorState compact title="Couldn't load announcements awaiting approval" error={pendingQuery.error} onRetry={() => void pendingQuery.refetch()} />
+            )}
+            {!pendingQuery.isLoading && !pendingQuery.error && pending.length === 0 && (
               <div className={styles.empty}>No customer announcements awaiting approval.</div>
             )}
             {pending.map((req) => (
@@ -372,13 +399,16 @@ export function AnnouncementsPage(): JSX.Element {
             ))}
           </Card>
 
-          <Card padding={16}>
+          <Card padding="default">
             <SectionHead
               title="All announcements"
               sub="Toggle which one is visible as a page banner."
             />
-            {historyQuery.isLoading && <div className={styles.empty}>Loading…</div>}
-            {!historyQuery.isLoading && history.length === 0 && (
+            {historyQuery.isLoading && <LinesSkeleton label="Loading" />}
+            {historyQuery.error && (
+              <ErrorState compact title="Couldn't load announcements" error={historyQuery.error} onRetry={() => void historyQuery.refetch()} />
+            )}
+            {!historyQuery.isLoading && !historyQuery.error && history.length === 0 && (
               <div className={styles.empty}>No announcements sent yet.</div>
             )}
             {history.map((entry) => (
@@ -387,10 +417,13 @@ export function AnnouncementsPage(): JSX.Element {
           </Card>
         </>
       ) : (
-        <Card padding={16}>
+        <Card padding="default">
           <SectionHead title="My announcements" />
-          {mineQuery.isLoading && <div className={styles.empty}>Loading…</div>}
-          {!mineQuery.isLoading && mine.length === 0 && (
+          {mineQuery.isLoading && <LinesSkeleton label="Loading" />}
+          {mineQuery.error && (
+            <ErrorState compact title="Couldn't load your announcements" error={mineQuery.error} onRetry={() => void mineQuery.refetch()} />
+          )}
+          {!mineQuery.isLoading && !mineQuery.error && mine.length === 0 && (
             <div className={styles.empty}>You haven't submitted any announcements yet.</div>
           )}
           {mine.map((req) => (

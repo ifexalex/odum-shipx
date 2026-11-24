@@ -6,6 +6,7 @@ stored name inside `Content-Disposition: inline; filename="{name}"`. A `"` break
 string, `/` fabricates key structure, and a bidi-override character spoofs the extension staff see.
 """
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -63,6 +64,9 @@ class TestSafeFilename:
 
 HOSTILE = '../../bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/claims/x/evil".png'
 EXPECTED = "evil_.png"
+#: A stored key ends in a random hex part and the safe name, so two uploads of one name never collide.
+UNIQUE = r"[0-9a-f]{32}-"
+STAFF = TenantContext(tenant_id=TENANT, user_id="user-1", role=UserRole.NIGERIA_OFFICE_STAFF)
 
 
 def _storage():
@@ -81,13 +85,13 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
 
         storage = _storage()
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_damage_claim_by_id", return_value={"id": "c1"}),
             patch.object(service.repo, "create_claim_evidence", return_value={"id": "e1"}) as create,
         ):
-            result = service.generate_presigned_url(TENANT, "c1", HOSTILE, "image/png", "user-1")
+            result = service.generate_presigned_url(TENANT, "c1", HOSTILE, "image/png", STAFF, size_bytes=1024)
 
-        assert result["file_key"] == f"{TENANT}/claims/c1/{EXPECTED}"
+        assert re.fullmatch(f"{TENANT}/claims/c1/{UNIQUE}{re.escape(EXPECTED)}", result["file_key"])
         assert storage.presigned_upload.call_args.args[0] == result["file_key"]
         assert create.call_args.args[0]["file_name"] == EXPECTED
 
@@ -96,13 +100,13 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
 
         storage = _storage()
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_manifest_by_id", return_value={"id": "m1"}),
             patch.object(service.repo, "create_manifest_evidence", return_value={"id": "e1"}) as create,
         ):
-            service.generate_evidence_upload(TENANT, "m1", HOSTILE, "image/png", "user-1")
+            service.generate_evidence_upload(TENANT, "m1", HOSTILE, "image/png", "user-1", size_bytes=1024)
 
-        assert storage.presigned_upload.call_args.args[0] == f"{TENANT}/manifests/m1/{EXPECTED}"
+        assert re.fullmatch(f"{TENANT}/manifests/m1/{UNIQUE}{re.escape(EXPECTED)}", storage.presigned_upload.call_args.args[0])
         assert create.call_args.args[1]["file_name"] == EXPECTED
 
     def test_container_document(self):
@@ -110,15 +114,15 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
 
         storage = _storage()
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_container_by_id", return_value={"id": "k1"}),
             patch.object(service.repo, "create_container_document", return_value={"id": "d1"}) as create,
         ):
             result = service.generate_document_presigned_url(
-                TENANT, "k1", HOSTILE, "application/pdf", next(iter(service._ALLOWED_DOCUMENT_TYPES)), "user-1"
+                TENANT, "k1", HOSTILE, "application/pdf", next(iter(service._ALLOWED_DOCUMENT_TYPES)), "user-1", size_bytes=1024
             )
 
-        assert result["s3_key"] == f"{TENANT}/containers/k1/{EXPECTED}"
+        assert re.fullmatch(f"{TENANT}/containers/k1/{UNIQUE}{re.escape(EXPECTED)}", result["s3_key"])
         assert storage.presigned_upload.call_args.args[0] == result["s3_key"]
         assert create.call_args.args[1]["filename"] == EXPECTED
 
@@ -128,23 +132,23 @@ class TestUploadFlowsSanitiseTheKeyAndTheStoredName:
         storage = _storage()
         ctx = TenantContext(tenant_id=TENANT, user_id="user-1", role=UserRole.NIGERIA_OFFICE_STAFF)
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_billing_by_id", return_value={"id": "b1", "customer_id": "cu1"}),
         ):
-            result = service.generate_payment_claim_upload_url(TENANT, "b1", HOSTILE, "image/png", ctx)
+            result = service.generate_payment_claim_upload_url(TENANT, "b1", HOSTILE, "image/png", ctx, size_bytes=1024)
 
-        assert result["file_key"] == f"{TENANT}/payment-claims/b1/{EXPECTED}"
+        assert re.fullmatch(f"{TENANT}/payment-claims/b1/{UNIQUE}{re.escape(EXPECTED)}", result["file_key"])
 
     def test_unusable_filename_is_a_422_before_any_storage_call(self):
         from services.claims import service
 
         storage = _storage()
         with (
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "get_damage_claim_by_id", return_value={"id": "c1"}),
             pytest.raises(ValidationError),
         ):
-            service.generate_presigned_url(TENANT, "c1", "..", "image/png", "user-1")
+            service.generate_presigned_url(TENANT, "c1", "..", "image/png", STAFF, size_bytes=1024)
         storage.presigned_upload.assert_not_called()
 
 

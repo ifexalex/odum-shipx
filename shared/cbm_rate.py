@@ -16,7 +16,7 @@ pricing config from, and its direct-SQL-against-tenant_config pattern
 """
 
 import logging
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from shared.db import execute_with_tenant
@@ -24,6 +24,8 @@ from shared.db import execute_with_tenant
 logger = logging.getLogger(__name__)
 
 _KNOWN_BUCKETS = ("carton", "bag", "bale")
+_BAG_UNITS = frozenset({"bag", "bags"})
+_BALE_UNITS = frozenset({"bale", "bales", "big bale", "small bale"})
 
 _DEFAULT_CONFIG: dict[str, Any] = {
     "currency": "usd",
@@ -35,17 +37,29 @@ _DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 
+def _safe_decimal(raw: Any, fallback: Decimal) -> Decimal:
+    if raw is None:
+        return fallback
+    try:
+        val = Decimal(str(raw))
+    except (InvalidOperation, TypeError, ValueError):
+        return fallback
+    return val if val.is_finite() and val >= Decimal("0") else fallback
+
+
 def normalize_package_unit(package_unit: str | None) -> str:
     """Map a free-text `packing_list_item.package_unit` to a billable bucket.
 
-    Only an exact (case-insensitive) match for "bag" or "bale" gets its own
-    bucket; everything else — carton, pallet, item, mixed, unspecified,
-    null, or any future free-text value — falls back to "carton", per the
-    confirmed product decision (unrecognized package types bill at the
-    carton rate).
+    Recognises singular/plural/sized variants for "bag" and "bale"; everything
+    else — carton, pallet, item, mixed, unspecified, null, or any future
+    free-text value — falls back to "carton".
     """
     normalized = (package_unit or "").strip().lower()
-    return normalized if normalized in ("bag", "bale") else "carton"
+    if normalized in _BAG_UNITS:
+        return "bag"
+    if normalized in _BALE_UNITS:
+        return "bale"
+    return "carton"
 
 
 def get_cbm_rate_config(tenant_id: str) -> dict[str, Any]:
@@ -68,26 +82,28 @@ def get_cbm_rate_config(tenant_id: str) -> dict[str, Any]:
     raw = rows[0]["config_value"] if rows and isinstance(rows[0]["config_value"], dict) else {}
 
     if "carton_rate" in raw:
-        carton_rate = Decimal(str(raw.get("carton_rate", 0)))
+        carton_rate = _safe_decimal(raw.get("carton_rate"), Decimal("0"))
+        raw_currency = str(raw.get("currency") or "usd").strip().lower()
+        currency = raw_currency if raw_currency in ("usd", "ngn") else "usd"
         return {
-            "currency": raw.get("currency", "usd"),
-            "rate_mode": raw.get("rate_mode", "flat"),
+            "currency": currency,
+            "rate_mode": str(raw.get("rate_mode") or "flat").strip().lower(),
             "carton_rate": carton_rate,
-            "bag_rate": Decimal(str(raw.get("bag_rate", carton_rate))),
-            "bale_rate": Decimal(str(raw.get("bale_rate", carton_rate))),
-            "effective_from": raw.get("effective_from", ""),
+            "bag_rate": _safe_decimal(raw.get("bag_rate"), carton_rate),
+            "bale_rate": _safe_decimal(raw.get("bale_rate"), carton_rate),
+            "effective_from": raw.get("effective_from") or "",
         }
 
     if "rate_usd" in raw:
         # Pre-2026-09-20 shape: one flat USD rate, no currency/mode/per-type fields.
-        flat = Decimal(str(raw.get("rate_usd", 0)))
+        flat = _safe_decimal(raw.get("rate_usd"), Decimal("0"))
         return {
             "currency": "usd",
             "rate_mode": "flat",
             "carton_rate": flat,
             "bag_rate": flat,
             "bale_rate": flat,
-            "effective_from": raw.get("effective_from", ""),
+            "effective_from": raw.get("effective_from") or "",
         }
 
     # Never configured (missing/empty row) — all-zero rates, which the

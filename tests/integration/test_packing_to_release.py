@@ -166,7 +166,7 @@ class TestPackingListStateFlow:
 
         with (
             patch.object(service.repo, "get_packing_list_by_id", return_value=draft_pl),
-            patch.object(service.repo, "list_packing_list_items", return_value=[]),
+            patch.object(service.repo, "list_packing_list_items", return_value=[{"id": "item-1", "cartons": 2}]),
             patch.object(service.repo, "update_packing_list_status", return_value=pending_pl),
             patch("services.packing_list.service.log_audit"),
         ):
@@ -229,8 +229,37 @@ class TestBillingHandlerDispatch:
                 self._event(
                     "POST",
                     "/v1/billing",
-                    body={"container_id": "cont-001", "customer_id": "cust-001"},
+                    body={
+                        "container_id": "11111111-1111-4111-8111-111111111111",
+                        "customer_id": "22222222-2222-4222-8222-222222222222",
+                    },
                 ),
                 {},
             )
         assert resp["statusCode"] == 201
+
+    def test_generate_billing_for_a_whole_container_returns_200(self, monkeypatch):
+        from services.billing import handler
+
+        monkeypatch.setattr("shared.auth._check_tenant_active", lambda t: None)
+        with (
+            patch("services.billing.handler.service") as mock_svc,
+            patch("shared.metering.record_usage"),
+        ):
+            mock_svc.generate_billing.return_value = {"container_id": "x", "results": []}
+            resp = handler.lambda_handler(
+                self._event("POST", "/v1/billing", body={"container_id": "11111111-1111-4111-8111-111111111111"}),
+                {},
+            )
+        assert resp["statusCode"] == 200
+
+    def test_generate_billing_rejects_a_malformed_body(self, monkeypatch):
+        from services.billing import handler
+
+        monkeypatch.setattr("shared.auth._check_tenant_active", lambda t: None)
+        with patch("shared.metering.record_usage"):
+            resp = handler.lambda_handler(
+                self._event("POST", "/v1/billing", body={"container_id": "not-a-uuid"}),
+                {},
+            )
+        assert resp["statusCode"] == 422

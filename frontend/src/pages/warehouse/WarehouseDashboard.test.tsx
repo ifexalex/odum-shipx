@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../../api/client'
 import { withQuery } from '../../test/queryWrapper'
 import * as rnModule from '../../api/releaseNotes'
 import type { ReleaseNote, ReleaseNoteListParams } from '../../api/releaseNotes'
@@ -67,10 +68,10 @@ function renderPage() {
 describe('WarehouseDashboard', () => {
   beforeEach(() => vi.restoreAllMocks())
 
-  it('renders dashboard title', () => {
+  it('is titled for its task, not the role the shell already names (FD-26)', () => {
     mockLists({})
     renderPage()
-    expect(screen.getByText('Warehouse')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Pickups' })).toBeInTheDocument()
   })
 
   it('shows empty state when queue is empty', async () => {
@@ -113,8 +114,16 @@ describe('WarehouseDashboard', () => {
     })
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('Urgent')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Waiting 24h+')).toBeInTheDocument())
     expect(screen.getByText(/1 urgent · 24h\+ old/)).toBeInTheDocument()
+  })
+
+  it('shows no chip on a note that is not urgent (FD-26)', async () => {
+    mockLists({ active: [note({})] })
+    renderPage()
+    await screen.findByRole('button', { name: 'Record pickup' })
+    expect(screen.queryByText('Waiting 24h+')).toBeNull()
+    expect(screen.queryByText('New')).toBeNull()
   })
 
   // P2-2 — scan-or-type lookup: active match opens the pickup sheet directly
@@ -137,5 +146,121 @@ describe('WarehouseDashboard', () => {
     await userEvent.type(screen.getByLabelText('Release note reference'), 'RN-NOPE{Enter}')
 
     expect(await screen.findByText(/No release note found for "RN-NOPE"/)).toBeInTheDocument()
+  })
+})
+
+describe('WarehouseDashboard pickup sheet (UX-09)', () => {
+  beforeEach(() => vi.restoreAllMocks())
+
+  const RESULT = {
+  release_note_id: 'rn1', release_note_status: 'picked_up' as const, pickup_record_id: 'pr-1',
+  pickup_date: '2026-11-16', pickup_time: '10:00', attendant_name: 'Tunde',
+  customer_service_officer_name: null, accounting_officer_name: null,
+  remaining_cartons: 0, shipment_status: null,
+}
+
+  async function openSheet(overrides: Partial<ReleaseNote> = {}) {
+    mockLists({ active: [note(overrides)] })
+    const recordPickup = vi.spyOn(rnModule.releaseNotesApi, 'recordPickup').mockResolvedValue(RESULT)
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Record pickup' }))
+    await screen.findByRole('button', { name: /Confirm pickup/ })
+    return recordPickup
+  }
+
+  it('sends the collector name for an in-person pickup, defaulted to the customer', async () => {
+    // Regression: this sheet sent only the carton count, and the backend requires collected_by_name when it is
+    // not a delegate pickup, so every in-person pickup recorded from the dashboard was refused.
+    const recordPickup = await openSheet()
+    expect(screen.getByLabelText(/^Collected by/)).toHaveValue('Ngozi Okonkwo')
+    await userEvent.click(screen.getByRole('button', { name: /Confirm pickup/ }))
+    await waitFor(() => expect(recordPickup).toHaveBeenCalledWith('rn1', { cartons_released: 4, collected_by_name: 'Ngozi Okonkwo' }))
+  })
+
+  it('cannot be confirmed with no collector name', async () => {
+    await openSheet()
+    await userEvent.clear(screen.getByLabelText(/^Collected by/))
+    expect(screen.getByRole('button', { name: /Confirm pickup/ })).toBeDisabled()
+  })
+
+  it('asks for no code on a note that has none', async () => {
+    await openSheet()
+    expect(screen.queryByLabelText(/Pickup code/)).toBeNull()
+  })
+
+  it('asks for the pickup code when the note needs one, and will not confirm without it', async () => {
+    await openSheet({ pickup_code_required: true })
+    expect(screen.getByLabelText(/Pickup code/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Confirm pickup/ })).toBeDisabled()
+  })
+
+  it('sends the code the collector gave', async () => {
+    const recordPickup = await openSheet({ pickup_code_required: true })
+    await userEvent.type(screen.getByLabelText(/Pickup code/), '048 213')
+    await userEvent.click(screen.getByRole('button', { name: /Confirm pickup/ }))
+    await waitFor(() => expect(recordPickup).toHaveBeenCalledWith('rn1', expect.objectContaining({ pickup_code: '048 213' })))
+  })
+
+  it('shows the reason when the code is wrong, and stays open to try again', async () => {
+    mockLists({ active: [note({ pickup_code_required: true })] })
+    vi.spyOn(rnModule.releaseNotesApi, 'recordPickup').mockRejectedValue(
+      new ApiError(
+        { type: 'about:blank', title: 'Unprocessable Entity', status: 422, detail: 'That pickup code is not right. 4 tries left before this release note is locked.', error_code: 'BUSINESS_RULE_VIOLATION', rule_id: 'PICKUP_CODE_INVALID' },
+        null,
+      ),
+    )
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Record pickup' }))
+    await userEvent.type(await screen.findByLabelText(/Pickup code/), '999999')
+    await userEvent.click(screen.getByRole('button', { name: /Confirm pickup/ }))
+    expect(await screen.findByText(/That pickup code is not right. 4 tries left/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Pickup code/)).toBeInTheDocument()
+  })
+
+  it('says a locked note cannot be released and offers no code field', async () => {
+    await openSheet({ pickup_code_required: true, pickup_code_locked: true })
+    expect(screen.getByText('Pickup code locked')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Pickup code/)).toBeNull()
+    expect(screen.getByRole('button', { name: /Confirm pickup/ })).toBeDisabled()
+  })
+})
+
+describe('WarehouseDashboard at the counter: scanner and keyboard only (FD-26)', () => {
+  beforeEach(() => vi.restoreAllMocks())
+
+  it('starts with the reference field focused', async () => {
+    mockLists({})
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Release note reference')).toHaveFocus())
+  })
+
+  it('records a pickup and is ready for the next scan with no click', async () => {
+    mockLists({ active: [note({ pickup_code_required: true })] })
+    const recordPickup = vi.spyOn(rnModule.releaseNotesApi, 'recordPickup').mockResolvedValue({
+      release_note_id: 'rn1', release_note_status: 'picked_up', pickup_record_id: 'pr-1',
+      pickup_date: '2026-11-16', pickup_time: '10:00', attendant_name: 'Tunde',
+      customer_service_officer_name: null, accounting_officer_name: null,
+      remaining_cartons: 0, shipment_status: null,
+    })
+    renderPage()
+    await screen.findByRole('button', { name: 'Record pickup' })
+    // The scanner types the reference and sends Enter.
+    await userEvent.keyboard('RN-20260716-ABC123{Enter}')
+    // The sheet opens on the code field; the collector reads the code out and Enter confirms.
+    await waitFor(() => expect(screen.getByLabelText(/Pickup code/)).toHaveFocus())
+    await userEvent.keyboard('048213{Enter}')
+    await waitFor(() => expect(recordPickup).toHaveBeenCalledWith('rn1', expect.objectContaining({ pickup_code: '048213' })))
+    expect(await screen.findByText('Pickup recorded')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('Release note reference')).toHaveFocus())
+    expect(screen.getByLabelText('Release note reference')).toHaveValue('')
+  })
+
+  it('says what is needed when Look up is pressed with nothing entered, instead of a disabled button', async () => {
+    mockLists({})
+    renderPage()
+    const lookUp = screen.getByRole('button', { name: 'Look up' })
+    expect(lookUp).toBeEnabled()
+    await userEvent.click(lookUp)
+    expect(await screen.findByText('Scan or type a release note reference first.')).toBeInTheDocument()
   })
 })

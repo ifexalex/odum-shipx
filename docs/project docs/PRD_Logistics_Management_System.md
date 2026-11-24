@@ -4,11 +4,32 @@
 
 | Field | Detail |
 |---|---|
-| **Document Version** | 2.1 |
-| **Date** | 2 March 2026 |
+| **Document Version** | 2.2 |
+| **Date** | 2 March 2026 (v2.1); current-state revision 17 November 2026 (v2.2) |
 | **Status** | Active — In Development |
 | **Author** | — |
-| **Changelog** | v2.1: Added GDPR compliance requirements (§5.8), updated user management (FR-TN-009), updated billing status values |
+| **Changelog** | v2.2 (17 Nov 2026): §0 "Current state" added; statements in §9–§12 that the product had overtaken corrected in place (audit OPS-05). v2.1: Added GDPR compliance requirements (§5.8), updated user management (FR-TN-009), updated billing status values |
+
+---
+
+## 0. Current state (17 November 2026)
+
+This PRD was written before most of the product existed. Where the product has since gone further, or decided differently, this section says so; the affected statements below are struck through and corrected in place. Code is the source of truth; each line names where to look. An agent or engineer must not "correct" these features back to the original text.
+
+| Area | PRD said | The product does | Where |
+|---|---|---|---|
+| Dollar rate | Set by hand by each Tenant Admin; automation out of scope | Live USD→NGN rate from Bybit's P2P order book plus the tenant's markup (percentage or flat NGN), set by the Tenant Admin; frozen on each invoice when it is generated | `shared/fx_rate.py`, `07_api_tenant_management.md` |
+| When billing happens | At container arrival | When the container reaches `cleared` (customs), per customer | `services/billing/service.py::handle_payment_due`, `11_api_billing.md` |
+| Warehouses | One per tenant, address in `TENANT_CONFIG` | Several per tenant (`warehouse` table, migration 041); each release note names its warehouse | `services/payment_release`, `13_api_payment_release.md` |
+| Online payment | Out of scope; confirmation manual | Paystack checkout with each tenant's own key (encrypted), verified by webhook and by a direct check; plus bank-transfer **payment claims** with evidence that staff confirm or reject | `services/payment_release/paystack.py`, `webhook.py`, `13_api_payment_release.md` |
+| Usage metering | Out of scope | Usage is metered and plan quotas are enforced (429 `USAGE_LIMIT_EXCEEDED`); platform admins set plan limits and per-tenant overrides. Charging tenants for subscriptions is still manual | `services/metering`, `shared/tier_limits.py`, `20_metering_service.md` |
+| Customers | Pre-registered by staff | Created by staff, imported from Excel, invited (single-use link), or **self-registered** (`POST /v1/register[/{slug}]`); each belongs to exactly one tenant | `services/tenant_management`, `07_api_tenant_management.md` |
+| Customer portal | Minimal, read-only | Accounts with shipments, invoices (pay online or submit a bank-transfer claim), damage claims, refund requests, release notes with a one-time pickup code, notification preferences, global search | `frontend/src/pages/customer/`, frontend `07_domain_modules.md` |
+| Tiers | Starter and Business; Enterprise post-v1 | Starter (10 users, 5 containers/month, 5 GB), Business (50, 25, 25 GB) and Enterprise (unlimited) | `shared/tier_limits.py` |
+| Domains | All tenants on the platform domain | Tenant subdomains (`{slug}.{domain}`) and an optional white-label `custom_domain` per tenant (migration 023) | `infrastructure/aws/modules/cloudfront`, `services/tenant_management/service.py` |
+| Tenant onboarding | Platform Admin provisions | Still provisioned by a Platform Admin, now from a public lead form (`POST /v1/onboarding-requests`) the admin reviews | `07_api_tenant_management.md` |
+| Offboarding export (FR-TN-004) | Required | Implemented 2026-11-17: an archive of all the tenant's data, downloadable by platform admins; deletion is refused until it exists | `16_scheduled_jobs.md`, `07_api_tenant_management.md` |
+| Deployment | AWS serverless | AWS (Lambda) **and** Azure (Container Apps, Entra ID, Front Door) from the same code, chosen per deployment | `system_design_logistics_management.md` §0, `docs/adr/005-*` |
 
 ---
 
@@ -380,7 +401,7 @@ flowchart TD
 | **SMS Gateway** (e.g., Twilio, Africa's Talking) | Send payment notifications, tracking updates | Sender ID configurable per tenant; messages include tenant's company name |
 | **WhatsApp Business API** | Customer notifications and packing list distribution | Shared platform WABA with tenant-branded templates, or per-tenant WABA (future) |
 | **Email Service** | Send packing lists to global company email and individual customers | From address and reply-to configurable per tenant |
-| **Payment Gateway** (optional) | Online payment confirmation | Per-tenant payment gateway credentials (future) |
+| **Payment Gateway** | ~~Online payment confirmation~~ Paystack checkout, confirmed by webhook and by a direct verify call (2026-11-17: current state) | ~~Per-tenant payment gateway credentials (future)~~ Each tenant connects its own Paystack secret key, stored encrypted; a charge is applied only if it is a positive naira amount |
 | **Excel Import/Export** | Backward compatibility with existing Excel-based manifest workflows | Exports scoped to tenant data; imports tagged with tenant_id |
 
 ---
@@ -390,8 +411,8 @@ flowchart TD
 ### Assumptions
 1. Each tenant (shipping company) operates a China→Nigeria corridor as the primary use case. The platform may support additional corridors per tenant in future versions.
 2. Nigeria is the primary destination (single country operation per tenant, potentially multiple warehouses per tenant).
-3. Customers are pre-registered with contract details before goods are shipped; each customer belongs to exactly one tenant.
-4. The dynamic dollar rate is set independently by each tenant's admin and applied to that tenant's billing at time of arrival.
+3. ~~Customers are pre-registered with contract details before goods are shipped;~~ Customers are created by staff, imported from Excel, invited by link, or self-register; each customer belongs to exactly one tenant. *(Corrected 2026-11-17.)*
+4. ~~The dynamic dollar rate is set independently by each tenant's admin and applied to that tenant's billing at time of arrival.~~ The dollar rate is the live Bybit P2P USD→NGN rate plus each tenant's own markup, set by its admin, and it is frozen on each invoice when the invoice is generated at customs clearance. *(Corrected 2026-11-17.)*
 5. Each tenant manages their own staff (China Office, Nigeria Office, Warehouse Attendants) independently.
 6. Tenants do not share containers, customers, or operational data with each other.
 
@@ -408,12 +429,12 @@ flowchart TD
 
 - Automated customs declaration filing
 - Multi-country shipping (beyond China → Nigeria) per tenant
-- In-app payment processing (payment confirmation is manual in v1)
+- ~~In-app payment processing (payment confirmation is manual in v1)~~ *In scope since: Paystack checkout per tenant and bank-transfer payment claims (corrected 2026-11-17).*
 - Supplier management / procurement
 - Inventory management beyond shipment tracking
-- Per-tenant custom domain / vanity URL (all tenants share the platform domain in v1)
+- ~~Per-tenant custom domain / vanity URL (all tenants share the platform domain in v1)~~ *In scope since: tenant subdomains and an optional white-label custom domain (corrected 2026-11-17).*
 - Tenant-to-tenant container sharing or cross-tenant customer transfers
-- Usage-based billing / metering of tenants by the platform (subscription management is manual in v1)
+- Charging tenants for their subscription (invoicing tenants is manual). ~~Usage-based billing / metering of tenants by the platform~~ *Metering and quota enforcement are in scope (corrected 2026-11-17).*
 - Tenant-specific custom workflow rules (all tenants follow the standard packing list → manifest → tracking → billing → release flow)
 
 ---
@@ -423,16 +444,16 @@ flowchart TD
 | # | Question | Owner | Decision | Rationale |
 |---|---|---|---|---|
 | 1 | What is the SLA for CBM dispute resolution? | Operations | **7 business days** from date of complaint submission. Acknowledgement within 24 hours, investigation within 5 days, resolution communicated by day 7. If the China office does not respond within 5 days, auto-escalate to Tenant Admin. | Industry standard for freight disputes; aligns with container turnaround cycles. |
-| 2 | Should customers have a self-service portal or is WhatsApp/SMS sufficient for v1? | Product | **Minimal self-service web portal + WhatsApp/SMS.** The portal provides read-only tracking, packing list viewing, dispute submission, and payment status. All proactive notifications go via WhatsApp/SMS. No customer login required for tracking (tracking code + phone verification). | WhatsApp/SMS alone can't support dispute submission with photo uploads or viewing packing list details. A lightweight portal reduces support load. |
-| 3 | How is the dynamic dollar rate determined and how frequently does it change? | Finance | **Tenant Admin sets the rate manually** via the Tenant Admin dashboard. The rate is a simple USD→NGN value applied at billing time (container arrival). Rate changes take effect on the next billing event — already-billed containers are not retroactively affected. Rate change history is maintained in the audit log. | Each shipping company negotiates their own rates and changes them based on market conditions. Automation of rate fetching is out of scope for v1. |
-| 4 | Are there multiple warehouses in Nigeria or a single location? | Operations | **v1: Single warehouse per tenant.** The warehouse address is stored in `TENANT_CONFIG`. Future versions may support multiple warehouses per tenant. | Simplifies release note generation and pickup flow. Most smaller shipping companies operate one warehouse. |
+| 2 | Should customers have a self-service portal or is WhatsApp/SMS sufficient for v1? | Product | ~~**Minimal self-service web portal + WhatsApp/SMS.** The portal provides read-only tracking, packing list viewing, dispute submission, and payment status.~~ *Superseded 2026-11-17:* customers have accounts with a full portal (shipments, invoices with online payment or a bank-transfer claim, damage claims, refund requests, release notes with a pickup code, notification preferences). All proactive notifications go via WhatsApp/SMS (and email). No customer login required for tracking (tracking code + phone verification, rate limited). | WhatsApp/SMS alone can't support dispute submission with photo uploads or viewing packing list details. A lightweight portal reduces support load. |
+| 3 | How is the dynamic dollar rate determined and how frequently does it change? | Finance | ~~**Tenant Admin sets the rate manually** via the Tenant Admin dashboard. The rate is a simple USD→NGN value applied at billing time (container arrival).~~ *Superseded 2026-11-17:* the base rate is fetched live from Bybit's P2P USDT/NGN order book and the Tenant Admin sets the tenant's markup (percentage or flat NGN) on top. The resulting rate is frozen on each invoice when it is generated (container cleared). Rate changes take effect on the next billing event — already-billed containers are not retroactively affected. Rate change history is kept (`rate_history`). | Each shipping company negotiates their own rates and changes them based on market conditions. ~~Automation of rate fetching is out of scope for v1.~~ The market moves daily; a live base with the tenant's own margin keeps invoices current without daily manual edits. |
+| 4 | Are there multiple warehouses in Nigeria or a single location? | Operations | ~~**v1: Single warehouse per tenant.** The warehouse address is stored in `TENANT_CONFIG`.~~ *Superseded 2026-11-17:* a tenant can have several warehouses (`warehouse` table, migration 041), one marked default; each release note names the warehouse to collect from. | Simplifies release note generation and pickup flow. Most smaller shipping companies operate one warehouse. |
 | 5 | What is the current volume (containers/month, customers/container)? | Operations | **Design for 5–10 containers/month per tenant, 20–80 customers per container, up to 50 tenants.** Peak: ~500 containers/month platform-wide, ~25,000 active customers. | Based on China-to-Nigeria corridor volume for mid-sized shipping companies. Serverless architecture handles this comfortably. |
 | 6 | Should the system support partial release (some cartons released, others held)? | Operations | **Yes.** A release note authorizes release of specific cartons. If a customer has 10 cartons but only pays for 7, a partial release note is generated for the 7 paid cartons. Remaining cartons stay in "Held" status. A subsequent release note is generated when the balance is paid. | Common scenario when customers lack funds for full payment. Blocking partial release would stall warehouse operations. |
 | 7 | What happens if a customer doesn't pick up goods — are there storage fees? | Finance | **Yes.** A grace period of **14 calendar days** from release note generation. After that, the Tenant Admin can enable daily storage fees (configurable per tenant as a `TENANT_CONFIG` value, e.g., ₦500/day/carton). Storage fee accrual is logged in the billing record. The system sends reminder notifications at day 7 and day 13. | Warehouses have limited space. Storage fees incentivize timely pickup and are standard in the industry. |
 | 8 | Who authorizes refunds/discounts for damage claims and what are the approval thresholds? | Management | **Nigeria Office Staff** can approve refunds/discounts up to **$50 USD** (or NGN equivalent). Above $50, approval escalates to **Tenant Admin**. All refund/discount approvals are logged in the audit trail with approver identity and amount. | Prevents bottlenecks for small claims while maintaining oversight on larger amounts. Threshold is configurable per tenant via `TENANT_CONFIG`. |
-| 9 | What subscription/pricing tiers should be offered to tenants? | Product / Finance | **v1: Two tiers — Starter and Business.** Starter: up to 10 users, 5 containers/month, 5 GB storage, $50/month. Business: up to 50 users, 25 containers/month, 25 GB storage, $150/month. Enterprise (custom pricing) added post-v1. **Billing is manual in v1** (Platform Admin invoices tenants outside the system). | Simple tiering for launch. Usage-based automated billing is a post-v1 enhancement per "Out of Scope." |
+| 9 | What subscription/pricing tiers should be offered to tenants? | Product / Finance | **Tiers — Starter and Business, plus Enterprise.** Starter: up to 10 users, 5 containers/month, 5 GB storage, $50/month. Business: up to 50 users, 25 containers/month, 25 GB storage, $150/month. ~~Enterprise (custom pricing) added post-v1.~~ Enterprise (no limits, custom pricing) exists *(corrected 2026-11-17)*; platform admins can change plan limits and override them per tenant. **Billing is manual** (Platform Admin invoices tenants outside the system). | Simple tiering for launch. Usage-based automated billing is a post-v1 enhancement per "Out of Scope." |
 | 10 | Should each tenant provide their own WhatsApp Business Account? | Product / Engineering | **v1: Shared platform WABA** with `{{company_name}}` template variable for tenant branding. Per-tenant WABA is a post-v1 feature stored in `TENANT_CONFIG` / Secrets Manager. | Shared WABA simplifies launch; Meta Business verification per tenant is slow (2–4 weeks). Template variable branding is sufficient for v1. |
-| 11 | What is the tenant data retention policy after offboarding? | Legal / Compliance | **90 days.** On offboarding: (1) tenant status set to `offboarded`, (2) all API/UI access revoked immediately, (3) full data export generated and provided to tenant, (4) data retained in "archived" state for 90 days (read-only by Platform Admin for legal/compliance), (5) permanent deletion after 90 days via automated job. | Balances compliance needs with storage costs. 90 days provides a recovery window. |
+| 11 | What is the tenant data retention policy after offboarding? | Legal / Compliance | **90 days.** On offboarding: (1) tenant status set to `offboarded`, (2) all API/UI access revoked immediately, (3) full data export generated and provided to tenant *(implemented 2026-11-17: an hourly job writes the archive; platform admins download it through a five-minute, audited link and hand it over)*, (4) data retained for 90 days (the tenant is blocked; Platform Admins see it on the tenant page and in the archive), (5) permanent deletion after 90 days via automated job, which refuses to delete a tenant whose export has not completed. | Balances compliance needs with storage costs. 90 days provides a recovery window. |
 | 12 | Should Platform Admins be able to impersonate tenant users? | Security / Engineering | **Yes, with strict controls.** Platform Admin can impersonate a Tenant Admin (not lower roles) for debugging. Controls: (1) impersonation logged in `platform_audit_log` with start/end timestamps, (2) impersonated sessions are read-only (no mutations), (3) impersonation requires explicit tenant_id selection, (4) session auto-expires after 30 minutes, (5) impersonation actions are visually flagged in audit log. | Necessary for customer support. Read-only constraint prevents accidental damage. |
 | 13 | What are the tenant usage limits for v1? | Product | **Starter:** 10 users, 5 containers/month, 5 GB storage. **Business:** 50 users, 25 containers/month, 25 GB storage. Metering service enforces limits; exceeding limits returns HTTP 429 with upgrade prompt. Storage includes damage photos, PDFs, and exports. | Aligns with tier pricing in Q9. |
 | 14 | Should tenants configure custom shipment tracking stages? | Product / Operations | **No. Standard 8 stages are mandatory for v1.** All tenants follow: Received at China Warehouse → Packed in Container → In Transit → Arrived in Nigeria → Customs Clearance → Cleared → Ready for Pickup → Picked Up. Custom stages are a post-v1 enhancement. | Standardization simplifies v1 development, testing, and notification templates. Custom stages would significantly increase complexity. |
@@ -445,4 +466,5 @@ flowchart TD
 |---|---|---|---|
 | 1.0 | 15 Feb 2026 | — | Initial draft from stakeholder brain dump |
 | 2.0 | 15 Feb 2026 | — | Multi-tenant SaaS redesign: added Platform Admin & Tenant Admin roles, tenant management FRs (FR-TN-001 to FR-TN-017), tenant_id on all data entities, tenant isolation NFRs, updated assumptions/constraints/open questions for multi-tenancy |
+| 2.2 | 17 Nov 2026 | — | Current state (§0): live dollar rate + markup, billing at clearance, multiple warehouses, Paystack and bank-transfer claims, metering and quotas, customer self-registration and full portal, Enterprise tier, subdomains and custom domains, offboarding export, Azure target. Contradicting statements in §9–§12 corrected in place (audit OPS-05). |
 | 3.0 | 21 Feb 2026 | — | Resolved all 14 open questions with product decisions: CBM dispute SLA (7 days), self-service portal decision, dollar rate workflow, single warehouse per tenant (v1), partial release support, storage fees (14-day grace), damage claim approval thresholds ($50), subscription tiers (Starter/Business), shared WABA (v1), 90-day data retention, Platform Admin impersonation (read-only), usage limits per tier, standard tracking stages mandatory (v1) |

@@ -43,10 +43,10 @@ test.describe('impersonation read-only banner', () => {
     await switchRole(page, 'china_office_staff')
     await goToViaNav(page, /containers/i)
 
-    // Scoped to the TopBar (<header>, role "banner") — the sidebar also has a
-    // "Create container" submenu link, and an unscoped locator matches both.
+    // Scoped to <main> (PageHeader) — the sidebar also has a "Create container"
+    // submenu link, and an unscoped locator matches both.
     await expect(
-      page.getByRole('banner').getByRole('button', { name: /create container/i }),
+      page.locator('main').getByRole('button', { name: /create container/i }),
     ).toBeVisible()
   })
 })

@@ -6,7 +6,6 @@ import { SessionContext, type SessionContextValue } from '../../auth/SessionCont
 import type { Session } from '../../auth/types'
 import { announcementsApi } from '../../api/announcements'
 import { AnnouncementsPage } from './AnnouncementsPage'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 
 vi.mock('../../api/announcements', () => ({
   announcementsApi: {
@@ -59,7 +58,7 @@ function renderPage(session: Session | null) {
   render(
     <QueryClientProvider client={queryClient}>
       <SessionContext.Provider value={makeContextValue(session)}>
-        <TopBarTestWrapper><AnnouncementsPage /></TopBarTestWrapper>
+        <><AnnouncementsPage /></>
       </SessionContext.Provider>
     </QueryClientProvider>,
   )
@@ -281,6 +280,8 @@ describe('AnnouncementsPage — nigeria_office_staff', () => {
 
     await screen.findByText('Customs delay')
     await userEvent.click(screen.getByRole('button', { name: /withdraw/i }))
+    expect(announcementsApi.deleteRequest).not.toHaveBeenCalled() // it asks first (FD-24)
+    await userEvent.click(screen.getByRole('button', { name: 'Withdraw announcement' }))
 
     await waitFor(() => expect(announcementsApi.deleteRequest).toHaveBeenCalledWith('req1'))
   })

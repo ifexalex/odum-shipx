@@ -1,12 +1,19 @@
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { type CBMDisputeStatus } from '../../api/billing'
+import { useSession } from '../../auth/useSession'
 import { useDisputeList } from '../../hooks/useBilling'
-import { Badge, Banner, Card, Chip, Mono, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
+import { Chip, ListFooter, Mono, SearchField, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
 import { useNow } from '../../hooks/useNow'
+import { BillingSubNav } from './BillingSubNav'
 import styles from './DisputeList.module.css'
+import { formatDate } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
+import { statusLabel } from '../../design/status'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
+import { PageHeader } from '../../shell/PageHeader'
 
 const _DISPUTE_SLA_DAYS = 7
 
@@ -47,103 +54,131 @@ const STATUS_FILTERS: CBMDisputeStatus[] = [
   'closed',
 ]
 
-const STATUS_VARIANT: Record<CBMDisputeStatus, BadgeVariant> = {
-  submitted: 'warning',
-  acknowledged: 'warning',
-  investigating: 'warning',
-  escalated_china: 'error',
-  resolved_adjusted: 'success',
-  resolved_no_change: 'success',
-  closed: 'neutral',
-}
-
-function statusLabel(status: CBMDisputeStatus): string {
-  switch (status) {
-    case 'submitted': return 'Submitted'
-    case 'acknowledged': return 'Acknowledged'
-    case 'investigating': return 'Investigating'
-    case 'escalated_china': return 'Escalated to China'
-    case 'resolved_adjusted': return 'Resolved — adjusted'
-    case 'resolved_no_change': return 'Resolved — no change'
-    case 'closed': return 'Closed'
-  }
-}
+// The values `?status=` may hold (useStatusParam); anything else reads as no filter.
+const DISPUTE_STATUSES: readonly CBMDisputeStatus[] = [
+  'submitted',
+  'acknowledged',
+  'investigating',
+  'escalated_china',
+  'resolved_adjusted',
+  'resolved_no_change',
+  'closed',
+]
 
 export function DisputeList(): JSX.Element {
   const navigate = useNavigate()
+  const { session } = useSession()
+  // China staff may not open invoices, so they get the measurement-only dispute screen (UX-01).
+  const isChina = session?.role === 'china_office_staff'
   // One clock for the whole table — see useNow. Also makes the countdown tick
   // instead of only refreshing when something unrelated re-renders the list.
   const now = useNow()
-  const [statusFilter, setStatusFilter] = useState<CBMDisputeStatus | null>(null)
-  const { items: disputes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useDisputeList(
+  const [statusFilter, setStatusFilter] = useStatusParam<CBMDisputeStatus>(DISPUTE_STATUSES)
+  const [search, setSearch] = useState('')
+  const { items: disputes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useDisputeList(
     statusFilter ? { status: statusFilter } : {},
   )
 
-  useTopBarSlot({ subtitle: 'Customer-filed disputes on cargo measurements.' })
+  const filteredDisputes = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return disputes
+    return disputes.filter((d) =>
+      [d.customer_name, d.invoice_number, d.container_number]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    )
+  }, [disputes, search])
 
   return (
-    <div>
-
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load disputes">{error.message}</Banner>
-        </div>
-      )}
-
-      <Card padding={16}>
-        <div className={styles.chips}>
-          <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
-          {STATUS_FILTERS.map((s) => (
-            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
-              {statusLabel(s)}
-            </Chip>
-          ))}
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding={0}>
-          <Table
-            columns={[
-              { title: 'Billing ID' },
-              { title: 'Original CBM', align: 'right' },
-              { title: 'Corrected CBM', align: 'right' },
-              { title: 'Status' },
-              { title: 'Submitted' },
-              { title: 'SLA', align: 'right' },
-              { title: '', width: '60px' },
-            ]}
-            rows={disputes.map((d) => ({
-              cells: [
-                <Mono key="billing">{d.billing_id.slice(0, 8)}…</Mono>,
-                <Mono key="orig">{d.original_cbm ?? '—'}</Mono>,
-                <Mono key="corrected">{d.corrected_cbm ?? '—'}</Mono>,
-                <Badge key="status" variant={STATUS_VARIANT[d.status]}>
-                  {statusLabel(d.status)}
-                </Badge>,
-                <span key="date">{d.submitted_at.slice(0, 10)}</span>,
-                <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} now={now} />,
-                // Disputes are managed inline on BillingDetail — navigate there.
-                <ViewLink key="view" onClick={() => navigate(`/billing/${d.billing_id}`)} />,
-              ],
-            }))}
-            loading={loading}
-            emptyState={
-              !loading && disputes.length === 0 ? (
-                <span>✓ No disputes match this filter.</span>
-              ) : undefined
-            }
-          />
-        </Card>
+    <ListPage
+      header={
+        <PageHeader title="CBM disputes" meta={'Customer-filed disputes on cargo measurements.'} />
+      }
+      tabs={<BillingSubNav active="disputes" />}
+      notices={
+        <>
+          {error && (
+            <ErrorState
+              compact
+              title="Couldn't load disputes"
+              error={error}
+              onRetry={() => void refetch()}
+            />
+          )}
+        </>
+      }
+      filters={
+        <FilterBar
+          label="Filter CBM disputes"
+          status={
+            <>
+              <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                All
+              </Chip>
+              {STATUS_FILTERS.map((s) => (
+                <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
+                  {statusLabel('dispute', s)}
+                </Chip>
+              ))}
+            </>
+          }
+          search={
+            <SearchField
+              label="Search disputes"
+              placeholder="Customer, invoice, container…"
+              value={search}
+              onChange={setSearch}
+            />
+          }
+        />
+      }
+      footer={
         <ListFooter
-        shown={disputes.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="disputes"
+          shown={filteredDisputes.length}
+          total={search.trim() ? filteredDisputes.length : totalCount}
+          hasMore={!search.trim() && hasMore}
+          loading={isFetchingMore}
+          onLoadMore={loadMore}
+          noun="disputes"
+          nounOne="dispute"
+        />
+      }
+    >
+      <Table
+        columns={[
+          { title: 'Customer' },
+          { title: 'Invoice', type: 'reference' },
+          { title: 'Container', type: 'reference' },
+          { title: 'Original (CBM)', type: 'number' },
+          { title: 'Corrected (CBM)', type: 'number' },
+          { title: 'Status', type: 'status' },
+          { title: 'Submitted', type: 'date' },
+          { title: 'SLA', align: 'right' },
+        ]}
+        rows={filteredDisputes.map((d) => ({
+          onOpen: () =>
+            navigate(isChina ? `/billing/disputes/${d.id}` : `/billing/${d.billing_id}`),
+          cells: [
+            <span key="customer" className={styles.customer}>
+              {d.customer_name ?? '—'}
+            </span>,
+            <Mono key="invoice">{d.invoice_number ?? '—'}</Mono>,
+            <Mono key="container">{d.container_number ?? '—'}</Mono>,
+            <Mono key="orig">{d.original_cbm ?? '—'}</Mono>,
+            <Mono key="corrected">{d.corrected_cbm ?? '—'}</Mono>,
+            <StatusBadge key="status" kind="dispute" status={d.status} />,
+            <span key="date">{formatDate(d.submitted_at)}</span>,
+            <SLACountdown key="sla" submittedAt={d.submitted_at} status={d.status} now={now} />,
+            // Nigeria staff and admins manage a dispute inline on its invoice; China staff cannot open invoices.
+          ],
+        }))}
+        loading={loading}
+        emptyState={
+          !loading && filteredDisputes.length === 0 ? (
+            <EmptyState compact title="No disputes match this filter" />
+          ) : undefined
+        }
       />
-      </div>
-    </div>
+    </ListPage>
   )
 }

@@ -3,7 +3,7 @@
    visual weight; the country name is still searchable inside the panel. */
 .row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-start;
 }
 
@@ -19,10 +19,10 @@
 
 /* At phone width the two stack, so the number keeps a usable tap/typing area
    instead of being squeezed into ~40% of a narrow viewport. */
-@media (max-width: 420px) {
+@media (max-width: 600px) {
   .row {
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .dial,

@@ -26,7 +26,7 @@ from flask import Flask, Response, request
 
 from services.entra_token_claims.claims import build_claims_response, extract_object_id
 from services.entra_token_claims.db_lookup import DatabaseClaimsReader
-from services.entra_token_claims.security import is_authorized
+from services.entra_token_claims.security import DEFAULT_ENTRA_EXTENSION_APP_ID, is_authorized
 from shared.logging_config import diagnostics_enabled, setup_logging
 
 setup_logging()
@@ -35,6 +35,8 @@ logger = logging.getLogger("shipx_entra_claims")
 _JWKS_URL = os.environ.get("CALLER_JWKS_URL", "")
 _EXPECTED_AUD = os.environ.get("CALLER_AUDIENCE", "")
 _EXPECTED_ISS = os.environ.get("CALLER_ISSUER", "")
+_EXPECTED_CALLER_APP_ID = os.environ.get("CALLER_APP_ID", DEFAULT_ENTRA_EXTENSION_APP_ID)
+_JWKS_CLIENT: Any = None
 
 _reader = DatabaseClaimsReader(
     out_tenant_claim=os.environ.get("OUT_TENANT_CLAIM", "tenant_id"),
@@ -46,8 +48,9 @@ app = Flask(__name__)
 
 def _verify_caller(auth_header: str) -> dict[str, Any] | None:
     """Verify Entra's inbound bearer (RS256 against the tenant JWKS). Returns the
-    decoded claims or None; signature/expiry/audience enforced here, issuer by
-    the caller via `is_authorized`."""
+    decoded claims or None; signature/expiry/audience enforced here, issuer and
+    caller app ID by the caller via `is_authorized`."""
+    global _JWKS_CLIENT
     if not auth_header.lower().startswith("bearer "):
         return None
     token = auth_header[len("bearer ") :].strip()
@@ -55,7 +58,11 @@ def _verify_caller(auth_header: str) -> dict[str, Any] | None:
         import jwt
         from jwt import PyJWKClient
 
-        signing_key = PyJWKClient(_JWKS_URL).get_signing_key_from_jwt(token)
+        if not _JWKS_URL:
+            return None
+        if _JWKS_CLIENT is None:
+            _JWKS_CLIENT = PyJWKClient(_JWKS_URL, cache_keys=True)
+        signing_key = _JWKS_CLIENT.get_signing_key_from_jwt(token)
         decoded: dict[str, Any] = jwt.decode(
             token,
             signing_key.key,
@@ -82,7 +89,7 @@ def token_claims() -> Response:
     if caller is None:
         # _verify_caller already logged the signature/audience/JWKS failure reason.
         return Response(status=401)
-    if not is_authorized(caller, _EXPECTED_AUD, _EXPECTED_ISS):
+    if not is_authorized(caller, _EXPECTED_AUD, _EXPECTED_ISS, _EXPECTED_CALLER_APP_ID):
         # Log the mismatch so a misconfigured caller audience/issuer is diagnosable
         # without a redeploy. aud/iss are token identifiers, not secrets — but the
         # token itself is never logged.

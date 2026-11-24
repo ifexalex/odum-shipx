@@ -1,6 +1,7 @@
 """Generate billing .xlsx (single-sheet, 14 columns) per spec §7.4."""
 
 import contextlib
+from decimal import Decimal
 from io import BytesIO
 from typing import Any
 
@@ -8,6 +9,8 @@ import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
+
+from ._tables import neutralise_formulas
 
 
 def _autosize_columns(ws: Worksheet) -> None:
@@ -41,9 +44,10 @@ _HEADERS = [
 
 def _billing_row(b: dict[str, Any]) -> list[Any]:
     """Convert a billing dict (with aggregated fields) to a 14-column list."""
-    total_due = float(b.get("total_ngn") or 0)
-    total_paid = float(b.get("amount_paid_ngn") or 0)
-    outstanding = total_due - total_paid
+    total_due_dec = Decimal(str(b.get("total_ngn") or 0))
+    total_paid_dec = Decimal(str(b.get("amount_paid_ngn") or 0))
+    balance_raw = b.get("balance_ngn")
+    outstanding_dec = Decimal(str(balance_raw)) if balance_raw is not None else (total_due_dec - total_paid_dec)
     return [
         b.get("customer_name") or "",
         float(b.get("total_cbm") or 0),
@@ -55,9 +59,9 @@ def _billing_row(b: dict[str, Any]) -> list[Any]:
         float(b.get("carryover_ngn") or 0),
         float(b.get("adjustments_ngn") or 0),
         float(b.get("storage_fees_ngn") or 0),
-        total_due,
-        total_paid,
-        outstanding,
+        float(total_due_dec),
+        float(total_paid_dec),
+        float(outstanding_dec),
         b.get("status") or "",
     ]
 
@@ -84,6 +88,7 @@ def generate_billing_xlsx(billing_rows: list[dict[str, Any]]) -> BytesIO:
     _autosize_columns(ws)
 
     buf = BytesIO()
+    neutralise_formulas(wb)
     wb.save(buf)
     buf.seek(0)
     return buf

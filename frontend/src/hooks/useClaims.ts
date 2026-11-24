@@ -21,6 +21,7 @@ export function useClaim(id: string) {
 export function useFileClaim() {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Claim filed' },
     mutationFn: ({ body, idempotencyKey }: { body: FileDamageClaimInput; idempotencyKey: string }) =>
       claimsApi.file(body, idempotencyKey),
     onSuccess: () => {

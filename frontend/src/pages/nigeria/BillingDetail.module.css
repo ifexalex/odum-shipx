@@ -1,136 +1,14 @@
-.loadingState {
-  padding: 48px;
-  text-align: center;
-  color: var(--color-text-muted);
-}
-
-/* Hero */
-.hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.heroLeft {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.heroIcon {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
-  background: var(--color-surface-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.heroTitleRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.heroTitle {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 26px;
-  color: var(--color-ink);
-  margin: 0;
-  letter-spacing: -0.015em;
-  line-height: 1.15;
-}
-
-.heroMeta {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  align-items: center;
-}
-
-.heroContacts {
-  margin-top: 6px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-}
-
-.heroContact {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.heroActions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  flex-shrink: 0;
-  align-items: center;
-}
-
-/* Stats — reflows to fewer columns as space shrinks instead of forcing
-   the page wider than its container on mobile (was a fixed 4-column grid). */
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
 /* Sections */
 .section {
-  margin-bottom: 24px;
-}
-
-/* Breakdown */
-.breakdown {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.breakdownRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 14px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.breakdownRow:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.breakdownTotal {
-  font-weight: 600;
-  font-size: 15px;
-  padding-top: 8px;
-  border-top: 2px solid var(--color-border);
-  border-bottom: none;
+  margin-bottom: var(--space-6);
 }
 
 /* Dispute cards */
 .disputeCard {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  margin-bottom: 12px;
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
   background: var(--color-surface);
 }
 
@@ -138,52 +16,49 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .disputeMeta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .disputeLabel {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .disputeNumbers {
   display: flex;
-  gap: 16px;
-  font-size: 13px;
-  color: var(--color-text-muted);
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-ink-4);
 }
 
 .disputeError {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 .disputeActions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .inlineReject {
   width: 100%;
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .inlineRejectActions {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 /* Back link */
-.backLink {
-  margin-top: 32px;
-}
 
 /* Modals — mobile-first bottom sheet, matching the proven pattern in
    warehouse/WarehouseDashboard.module.css; upgrades to a centered dialog
@@ -191,21 +66,21 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
+  background: var(--scrim-modal);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  z-index: 200;
+  z-index: var(--layer-modal);
 }
 
 .modalPanel {
   background: var(--color-surface);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  padding: 24px 20px;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: var(--space-6) var(--space-5);
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   box-shadow: var(--shadow-modal);
   max-height: 90vh;
   overflow-y: auto;
@@ -214,91 +89,91 @@
 @container sxapp (min-width: 861px) {
   .modalOverlay {
     align-items: center;
-    padding: 16px;
+    padding: var(--space-4);
   }
   .modalPanel {
-    border-radius: var(--radius-lg);
-    max-width: 480px;
-    padding: 28px;
+    border-radius: var(--radius-xl);
+    max-width: var(--dialog-sm);
+    padding: var(--space-8);
   }
 }
 
 .modalTitle {
-  font-size: 18px;
-  font-weight: 700;
+  font-size: var(--text-lg);
+  font-weight: 600;
   margin: 0;
 }
 
 .modalBanner {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 /* Record-payment context: who is paying + for what, before the inputs */
 .modalSub {
-  margin: -8px 0 4px;
-  font-size: 13px;
+  margin: calc(-1 * var(--space-2)) 0 var(--space-1);
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
 }
 .payCtx {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
   background: var(--color-surface-muted);
   border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
 }
 .payCtxCustomer {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .payCtxName {
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-ink);
 }
 .payCtxContacts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  font-size: 12.5px;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
 }
 .payCtxContact {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-1);
 }
 .payCtxMeta {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  font-size: 12.5px;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
   border-top: 1px solid var(--color-line-soft);
-  padding-top: 10px;
+  padding-top: var(--space-3);
 }
 .paySummary {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
   border-top: 1px solid var(--color-line-soft);
-  padding-top: 10px;
+  padding-top: var(--space-3);
 }
 .paySummaryItem {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
 }
 .paySummaryLabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--tracking-label);
   color: var(--color-ink-4);
 }
 .paySummaryValue {
-  font-size: 15px;
+  font-size: var(--text-lg);
   font-weight: 700;
   color: var(--color-ink);
   font-variant-numeric: tabular-nums;
@@ -309,14 +184,14 @@
 
 .modalActions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   justify-content: flex-end;
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .modalActions > * {
   min-height: 48px;
-  font-size: 1rem;
+  font-size: var(--text-lg);
 }
 
 @container sxapp (min-width: 861px) {
@@ -329,52 +204,54 @@
 /* Outcome toggle */
 .outcomeToggle {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* Select field */
 .selectField {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.selectLabel {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.required {
-  color: var(--color-error);
-  margin-left: 2px;
-}
-
-.optional {
-  color: var(--color-text-muted);
-  font-weight: 400;
-  font-size: 12px;
-  margin-left: 4px;
-}
-
-.select {
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 14px;
-  background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
-  min-height: 44px;
-}
-
-@container sxapp (max-width: 860px) {
-  .select {
-    font-size: 16px;
-  }
+  gap: var(--space-2);
 }
 
 .emptyNote {
-  color: var(--color-text-muted);
-  font-size: 14px;
+  color: var(--color-ink-4);
+  font-size: var(--text-md);
   margin: 0;
+}
+
+.contact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.contactLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-primary-text);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.contactLink:hover {
+  text-decoration: underline;
+}
+
+.disputeReason {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+}
+
+.disputeFooter {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }

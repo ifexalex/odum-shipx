@@ -104,19 +104,28 @@ describe('PackingListDetail', () => {
     vi.mocked(packingListApi.submit).mockReset()
   })
 
+  // Reject packing list: from the overflow menu (FD-24).
+  async function openReject(): Promise<void> {
+    await userEvent.click(await screen.findByRole('button', { name: 'More packing list actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Reject packing list' }))
+  }
+
   it('shows approve/reject for an authorized non-creator on a pending list', async () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ created_by: 'staff-1' }))
     renderPage('china_office_staff', 'staff-2')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument())
-    expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument()
+    // Reject is in the overflow menu, not beside Approve (FD-24).
+    expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull()
+    await openReject()
   })
 
-  it('hides approve/reject when the actor created the list (self-approval prevention)', async () => {
+  it('hides approve/reject and explains why when the actor created the list (self-approval prevention)', async () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ created_by: 'staff-1' }))
     renderPage('china_office_staff', 'staff-1')
     await waitFor(() => expect(screen.getByText('Items')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reject' })).not.toBeInTheDocument()
+    expect(screen.getByText('Awaiting another approver')).toBeInTheDocument()
   })
 
   it('hides approve/reject for roles outside the approver set even on a pending list', async () => {
@@ -138,8 +147,7 @@ describe('PackingListDetail', () => {
   it('requires comments before confirming a reject', async () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ created_by: 'staff-1' }))
     renderPage('china_office_staff', 'staff-2')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument())
-    await userEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    await openReject()
     expect(screen.getByRole('button', { name: 'Confirm reject' })).toBeDisabled()
   })
 
@@ -147,8 +155,7 @@ describe('PackingListDetail', () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ created_by: 'staff-1' }))
     vi.mocked(packingListApi.reject).mockRejectedValue(new Error('boom'))
     renderPage('china_office_staff', 'staff-2')
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument())
-    await userEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    await openReject()
     await userEvent.type(screen.getByLabelText('Comments', { exact: false }), 'bad transition')
     await userEvent.click(screen.getByRole('button', { name: 'Confirm reject' }))
     const dialog = await screen.findByRole('dialog')
@@ -162,8 +169,8 @@ describe('PackingListDetail', () => {
     vi.mocked(packingListApi.update).mockResolvedValue(plStub({ status: 'draft' }))
     vi.mocked(packingListApi.submit).mockResolvedValue(plStub({ status: 'pending_approval' }))
     renderPage('china_office_staff', 'staff-1')
-    await waitFor(() => expect(screen.getByText('Edit & resubmit')).toBeInTheDocument())
-    await userEvent.click(screen.getByText('Edit & resubmit'))
+    await waitFor(() => expect(screen.getByText('Revise and resubmit')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Revise and resubmit'))
     await userEvent.click(screen.getByText('Save & resubmit'))
     await waitFor(() => expect(packingListApi.update).toHaveBeenCalledTimes(1))
     expect(packingListApi.submit).toHaveBeenCalledTimes(1)
@@ -173,6 +180,31 @@ describe('PackingListDetail', () => {
     vi.mocked(packingListApi.get).mockResolvedValue(plStub({ status: 'approved', approved_by: 'admin-1' }))
     renderPage('china_office_staff', 'staff-1')
     await waitFor(() => expect(screen.getByText('Items')).toBeInTheDocument())
-    expect(screen.queryByText('Edit & resubmit')).not.toBeInTheDocument()
+    expect(screen.queryByText('Revise and resubmit')).not.toBeInTheDocument()
+  })
+
+  it('keeps each remaining row paired with its own carton tag after deleting an earlier row while editing', async () => {
+    const baseItem = plStub().items[0]!
+    vi.mocked(packingListApi.get).mockResolvedValue(
+      plStub({
+        status: 'rejected',
+        created_by: 'staff-1',
+        items: [
+          { ...baseItem, id: 'i1', carton_tag: 'SHX-00001', description: 'First item' },
+          { ...baseItem, id: 'i2', carton_tag: 'SHX-00002', description: 'Second item' },
+        ],
+      }),
+    )
+    renderPage('china_office_staff', 'staff-1')
+    await userEvent.click(await screen.findByText('Revise and resubmit'))
+
+    expect(screen.getByText('SHX-00001')).toBeInTheDocument()
+    expect(screen.getByText('SHX-00002')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove item 1' }))
+
+    // Remaining row must keep SHX-00002, not inherit SHX-00001 from index 0
+    expect(screen.queryByText('SHX-00001')).not.toBeInTheDocument()
+    expect(screen.getByText('SHX-00002')).toBeInTheDocument()
   })
 })

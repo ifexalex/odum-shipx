@@ -38,11 +38,37 @@ tests/
 │   ├── test_dispute_flow.py       # CBM dispute → resolution → billing adjustment
 │   ├── test_claim_flow.py         # Damage claim → inspection → resolution → refund
 │   └── test_tenant_lifecycle.py   # Create tenant → config → users → suspend → activate
-└── tenant_isolation/
-    ├── test_db_isolation.py       # RLS blocks cross-tenant queries
-    ├── test_api_isolation.py      # API returns empty for wrong tenant
-    └── test_s3_isolation.py       # S3 prefix isolation
+├── tenant_isolation/
+│   ├── test_db_isolation.py       # RLS blocks cross-tenant queries
+│   ├── test_api_isolation.py      # API returns empty for wrong tenant
+│   └── test_s3_isolation.py       # S3 prefix isolation
+└── db/
+    └── test_money_integrity.py    # Real Postgres, as logistics_app, parallel processes: invoice numbering, one invoice per customer+container, payment status under concurrency, atomic rollback, gateway dedupe
 ```
+
+**`tests/db/` (added 2026-11-14).** The mocked unit tests cannot see a race or a half-committed write. These run the real
+repository functions against a migrated database as the application role (RLS applies) and use separate processes for the
+concurrent cases, because `shared.db` keeps one connection per process. Run with `make test-db`; they skip when no database
+is reachable. Verified against the previous code: 12 customers invoiced at once produced **3 invoices and 9 silently
+dropped** (`UniqueViolation`, swallowed); the same scenario now issues 12 contiguous numbers. `tests/integration/` is
+mock-based and, as of the same date, also runs in CI.
+
+`tests/db/` grew to 43 tests the same day: `test_atomic_writes.py` covers misc charges, carryovers, CBM-dispute re-pricing,
+storage-fee accrual and waiver, refund approval, claim resolution, seized-item compensation and the unbilled queue — each
+asserting (a) a failure part-way leaves nothing behind, (b) a second simultaneous request changes nothing, (c) the invoice
+status is still honest. Fixtures live in `tests/db/conftest.py`, helpers in `tests/db/support.py`. **Mock-based suites get a
+fake `shared.db` connection** (`tests/conftest.py::_fake_db_connection`) because services now open a real
+`tenant_transaction`; real-database suites (`tests/db/`, `test_rls_enforcement`, `test_db_connection_healing`) opt out.
+Writing these found three bugs mocks could not: waiving storage fees returned 500, seized-item compensation hit a CHECK
+violation, and the invoice page never showed storage fees.
+
+`tests/db/` is now 46 tests: `TestClaims` gained three for missing-item compensation (confirming an item lost opens one
+`missing_item` refund that the database accepts and links it; a status other than `confirmed_lost` opens none; two simultaneous
+confirmations open one). The same change added `TestItemUpdateValidation` (9 cases, `tests/unit/test_claims.py`) for the
+handler's 422s, and, in the frontend, `GenerateBillingModal.test.tsx` (7), the compensation cases in `MissingItemList.test.tsx`
+(5), three "Generate billing" cases in `BillingList.test.tsx`, and `canGenerateInvoices` / `groupUnbilledByContainer` in
+`billingRules.test.ts`. **jsdom cannot see clipping:** a Combobox inside the modal rendered and passed its tests while its
+dropdown was cut off by the modal body in the browser, found only by a screenshot, so a modal change needs one browser look.
 
 ## Key Test Fixtures (`conftest.py`)
 
@@ -293,7 +319,31 @@ user pool, not `MagicMock`, so these exercise the actual boto3 call shapes):
   tenant's or `platform_admin`'s groups, empty desired-roles removes everything for
   that tenant.
 
+Frontend — `frontend/scripts/mobile-audit.mjs` (2026-11-17): a browser audit, not a unit test; needs the local stack. Every route at 375/360/320 px, fails on sideways scroll or protruding content. All 78 routes pass.
+
+Frontend visual baseline — `frontend/e2e/visual/visual.spec.ts`, Playwright project `visual` (2026-11-19, FD-38): every route at 1366 px, 390 px and dark mode, as an allowed role, with real local-stack records. There are no committed reference images: `npm run visual:baseline` captures the current state, then `npm run visual:compare` fails each changed screen, with before, after and diff images in the report. Stability: a fixed clock (`page.clock.setFixedTime`), animations and caret off, and waiting until no API request is unanswered and nothing shows a loading state. It counts at the response, not `requestfinished`, because a 401 session refresh body is never read. A repeat run with no change finds no differences. CI job `visual` runs it base-then-head on style pull requests and reports the differences without failing the job.
+
+`tests/unit/test_uploads.py::TestSizeLimit` (2026-11-17): 5 MB on every policy, exactly-the-limit accepted, one byte over refused, nonsense sizes refused, the size signed as `content_length`, the stored-size check, and payment claims and imports refusing an over-size stored file. Frontend `lib/uploadLimits.test.ts`, `uploads.test.ts`, `ContainerDetail.test.tsx`.
+
+`tests/db/test_paginated_lists.py` (2026-11-17): the dispute and manifest counts match their filters, not the page.
+
+Frontend — `shell/breadcrumbs.test.tsx` (FD-45/46, 2026-11-17): walks every route in `routeTable.ts` against the expected trail, so a new route needs an expectation; plus link, role, label and component checks.
+
+Frontend type check: `npm run typecheck` (`tsc -b --noEmit`). `npx tsc --noEmit -p .` checks no files (the root `tsconfig.json` only references others). `pages/untestedPages.test.ts` treats a part in a page's folder (`nigeria/billingDetail/*.tsx`) as covered by the page's test (FE-07, 2026-11-17).
+
+`tests/patching.py::patch_tenant_management(name, ...)` (audit BE-13, 2026-11-17): patches a collaborator in every module `services/tenant_management/service.py` was split into, with one shared mock. Use it where several modules use the name; otherwise patch the one module (`services.tenant_management.<module>.<name>`). Patching `service.<name>` no longer reaches the code.
+
+Frontend — `pages/china/ChinaWorkQueue.test.tsx` (audit UX-10, 2026-11-17): each queue reads its list with the right filter, shows the total (or counted rows with "+"), its first rows and an empty message, links to its filtered list, opens a row, and survives one queue failing. `DisputeList.test.tsx` covers `?status=` from a link and an unknown value.
+
+Backend — `tests/unit/test_invoice_rate_source.py` (audit BE-11, 2026-11-17): live and recent last-known rates are recorded without a notice; an old last-known rate notifies tenant admins (age limit from `FX_RATE_MAX_AGE_MINUTES`, nonsense values ignored); the hard-coded rate writes no invoice (`RATE_UNAVAILABLE`) and the container run tells staff; the source shows on the staff invoice and not the customer's. `tests/db/test_invoice_rate_source.py` runs the whole invoicing path against Postgres with the feed cut. Both mutation-checked.
+
+Backend — `tests/unit/test_uploads.py` (audit BE-12, 2026-11-17): every policy refuses `application/octet-stream` and a policy cannot declare it; keys stay under a UUID tenant prefix with server-chosen segments; a refused type never reaches storage; each of the five upload endpoints refuses the unknown type before any repository call. Upload tests now patch `shared.uploads.get_storage_provider`. Frontend `ContainerDetail.test.tsx` (+3): an untyped file is refused in the dialog without a request, the real type is sent, a server refusal shows inside the dialog.
+
 Backend — `tests/unit/test_tenant_management.py`:
+- `TestAccessEmailsAreAudited` (audit SEC-07, 2026-11-17) — through the handler, resend-invite,
+  reset-password and resend-activation each write one `audit_log` row (`INVITE_RESENT`,
+  `PASSWORD_RESET_SENT`, `ACTIVATION_RESENT`) with actor, role and client IP and no email or
+  name in the snapshot; a failed identity-provider call writes none.
 - `TestCreateUser` extended — `create_user` now takes real `CreateTenantUserRequest`
   instances (not `MagicMock`) with `roles`/`primary_role`; asserts
   `cognito.sync_user_groups(...)` replaces the old `create_group_if_not_exists` +
@@ -2262,3 +2312,284 @@ unit tests: `quantity: 100` produced 100 rows with 100 unique tags
 (`ACM-ACME002001-001 … -100`), one shared `batch_ref`, `quantity` left at 1, in
 168 ms; `quantity: 500` in 229 ms; 501 and unconfirmed quantities both rejected
 with 422; and a mixed list kept one unbroken tag sequence.
+
+## Notification links, branding and channel config (2026-11-13)
+
+`tests/unit/test_app_urls.py` (12) — absolute-URL resolution. The ones that
+earn their keep are the refusals: nothing configured raises rather than
+returning a relative URL, and a variable that is *set but relative* raises
+naming that variable rather than falling through to another host. Plus the
+override precedence (`invite_url` follows `CUSTOMER_PORTAL_BASE_URL`,
+`activation_url` never does) and a check that both paths still match the
+frontend routes in `shell/routes.tsx`, since a path mismatch renders the SPA's
+not-found page and looks identical to a broken link.
+
+`tests/unit/test_notification_email.py` (37) —
+
+- **Branding**: `display_name` wins; falls back to the tenant row's
+  `company_name`; blank strings are not "set"; the `"Logistics"` fallback is
+  only reached with nothing at all. Producer side: the query selects
+  `company_name`, does not overwrite `display_name`, and degrades to defaults
+  rather than raising when the DB is unreachable.
+- **Rendering**: the lead paragraph explains why the message arrived; links
+  become a button *and* a pasteable URL; support contacts and footer appear only
+  when published; plumbing keys (`name`, `company_name`) are not shown as rows;
+  ZH renders Chinese copy.
+- **Escaping**: a recipient name of `<script>x</script>` and a value of
+  `"><b>hi</b>` come out escaped — these values come from imported manifests and
+  went into the HTML raw.
+- **Fallbacks**: an unresolved placeholder falls back to the generic lead rather
+  than emailing a half-substituted sentence; a malformed override returns empty
+  so the caller falls back to the default shell.
+- **Config guards**: the placeholder sender is refused in production but allowed
+  locally; `AFRICASTALKING_USERNAME == "sandbox"` is refused in production
+  without touching the network; provider error bodies are stripped of
+  phone-number-shaped digits and truncated.
+
+`tests/unit/test_whatsapp_first.py::TestUnconfiguredWhatsAppIsNotReportedAsSent`
+(3) — `send_whatsapp` returning `""` must log `failed` and trigger the SMS
+fallback, not `log_sent` + `record_usage`; a real message id still records a
+send; and a failing fallback does not raise, because an SQS retry would re-send
+a message already known to be unsendable.
+
+The existing invite tests in `test_tenant_management.py` were updated: they set
+no base URL, so under the new behaviour nothing is sent — which is itself now
+pinned by `test_no_base_url_sends_nothing_and_does_not_claim_it_did`, asserting
+`sent_channel IS NULL` on the row so staff are not told a customer was
+contacted.
+
+## Audit Phase 2 tests (2026-11-15)
+
+Backend 1850 passed (+264 over Phase 1), `tests/db/` 81 (+35), frontend 1017 (+30). What each group pins:
+
+- **SEC-02** `tests/unit/test_auth.py::TestActiveUserCheck` / `TestActiveIdentityLookup`; `tests/db/test_access_revocation.py` issues a token for an active user, deactivates them through the service, and asks whether the very next request is served; includes an erased customer. A mutation check (switching the check off) fails exactly the three revocation tests.
+- **SEC-05** `tests/unit/test_origin_guard.py`: look-alike origins (`app.shipx.co.evil.example`, userinfo trick, wrong port or scheme), missing and `null` origins, fail closed with nothing configured, no cookie on refusal, `text/plain` refused (415). `tests/browser.py` is what a browser sends; a global fixture trusts it.
+- **SEC-04** `tests/db/test_registration_enumeration.py` runs two registrations through the real handler and SQL; `TestSelfRegisterResponsesAreIdentical` asserts identical status and body.
+- **SEC-03** `tests/unit/test_rate_limit.py` (limiter, fail-open, every protected route, per-tenant isolation), `tests/unit/test_client_ip.py` (forged `X-Forwarded-For`, unconfigured proxies), `tests/unit/test_distributed_cache.py::TestRedisOutageIsFastNotSlow`, and **`tests/db/test_rate_limit_redis.py` against a real Redis** (atomicity under 8 threads, the window not sliding, a counter with no expiry being re-armed, a genuinely unreachable Redis).
+- **SEC-01** `tests/unit/test_notification_consent.py` (including `TestEveryEventTypeIsClassified`, which scans the code and the template tables for event types and fails until each is classified), `tests/db/test_notification_consent.py`.
+- **What mocks hid again.** A real Redis showed that every operation against an unreachable one took ~4 s (redis-py 8 retries); a real database showed `get_customer_by_email` selected only `id`, so the "you already have an account" email had no name; the real HTTP stack showed the local dev server dropped every response header except `Content-Type`.
+- **Global fixtures** in `tests/conftest.py`: `_rate_limiter_off` (no test needs Redis), `_trusted_browser_origin`, `_active_user_check_stubbed` (opts out for `tests/db/`). A test that wants the real behaviour turns it on itself.
+- **Redis in the DB suite:** the rate-limiter tests need `REDIS_HOST`; they skip without one locally, and fail when `CI` is set and none is provided.
+
+## Audit Phase 3 tests (2026-11-16)
+
+Frontend 1089 (+69), backend 1866 unit/integration (+11). `ErrorBoundary.test.tsx` (fallback, retry, reset on route change, logging without personal data, the quiet boundary), `returnPath.test.ts` (the open-redirect cases from the brief plus encoded variants) and the RoleGuard/LoginScreen return-path tests, `DisputeDetail.test.tsx` (list to detail to resolve in one flow through the real router), `MyReleaseNote.test.tsx`, `navConfig.test.ts` (Nigeria menu), and the header-search tests in `TopBar`/`StaffLayout`. `tests/db/test_dispute_detail.py` runs the two new SQL queries on real Postgres. **A test must register a stable `onSearch`**: a fresh function each render loops the layout (it hung the suite once). `App.test.tsx` no longer touches the network.
+
+## Global search tests (2026-11-16)
+
+Backend: `tests/unit/test_search.py` (89 with the infrastructure-contract tests): the role-to-kind map, the customer pin, phone patterns however typed, LIKE wildcards made literal, ranking and the 20-result cap, no internal fields in a result, a platform admin refused, and an **SQL inspection** of every query (tenant scope, the customer pin in SQL, erased customers excluded, the text only ever a bound parameter, LIKE escaped). The handler never logs the text. `tests/db/test_search.py` runs the same queries on real Postgres; **it has not been run** (Docker was unavailable), so run `make test-db` before relying on it. Frontend: `GlobalSearch.test.tsx` (debounce makes one request, keyboard, click, Escape, empty and error states, customer routes, Ctrl/Cmd+K, the phone-width toggle), `searchRoutes.test.ts` (every kind a role can find lands on a route that admits that role; the id is encoded), and the `StaffLayout`/`CustomerLayout`/`TopBar` tests for where the box appears. The route-table drift guard `tests/unit/test_infrastructure_contracts.py` covers the new service's Terraform and CI registration.
+
+## List export tests (2026-11-16)
+
+`tests/unit/test_list_exports.py` (81): the shared filter fragments pinned to exactly what the list queries produced before extraction (the golden master, plus a test that each of the four queries contains the shared clause), the export SQL (tenant scope, bound text, the limit plus one, an allowlisted sort), the writers (a name like `=HYPERLINK(...)` stays text in xlsx and csv, a negative amount is not mistaken for a formula, UTC timestamps, exact decimals, BOM and CRLF), the query model, the service (truncation refuses and uploads nothing, audit has no search text) and the handler (roles, forwarding, 422s, the single-invoice route not shadowed). Mutation-checked: removing the xlsx guard, the csv guard, the shared filter, the truncation check, the role check or the audit masking each fails a named test. `tests/db/test_list_exports.py` (42, **unrun**, no Docker) compares list and export row ids and order on Postgres, checks carryover, storage-fee and balance columns, and that no exported column is blank for every row. Frontend: `useListExport.test.tsx`, the Export blocks in `BillingList.test.tsx` and `ContainerList.test.tsx` (including the filters-at-the-moment-of-the-click regression, mutation-checked), and `client.test.ts` (filters forwarded; `format` wins). `tests/db/conftest.py` now clears `audit_log` in teardown.
+
+## Phase 4 frontend tests (2026-11-16)
+
+Frontend 165 files / 1,296 tests. New guards that fail on regression: `routes.test.tsx` (a page or layout imported statically, FE-02), `shell/dialogs.test.ts` (an `aria-modal` dialog without focus handling, FE-04; since 2026-11-17 also any native `window.confirm`/`alert`/`prompt`, UX-11), `lib/format.test.ts` (a page calling `toLocale*String` or slicing an ISO date, FE-03), `shell/noFetchInEffect.test.ts` (an effect that calls an API module, FE-05). Each was mutation-checked. Backend 2,162 unit/integration tests. **Unrun, written for a real database (no Docker in this session):** `tests/db/test_search.py`, `test_list_exports.py`, `test_paginated_lists.py`, `test_claim_read.py`, `test_pickup_code.py`, and migration 065.
+
+## Owner decisions 2026-11-17: claim reason and the invoice-list export
+
+- `tests/unit/test_claims.py`: `TestGetClaimForTheCustomer` (a customer gets `resolution.reason` only for `no_action`; staff always; the approver never), `TestResolvingAgainstTheCustomerNeedsAReason` (422 on a blank reason for `no_action`; other outcomes unchanged).
+- `tests/unit/test_refunds.py::TestGetRefund`: the customer view of a refund (their own reason only, the rejection reason always, no approval level, debt-check notes or threshold). Mutation-checked: returning the reason unconditionally fails two tests.
+- `tests/unit/test_list_exports.py`: `GET /v1/billing/export` is the tenant admin's; Nigeria and China staff, warehouse, customer and platform admin are 403.
+- `tests/db/test_claim_read.py`: one more case (the outcome query returns the reason). **Unrun**: no Docker.
+- Frontend: `MyClaimDetail.test.tsx` (the Why row appears only with a reason), `ClaimDetail.test.tsx` (the reason field says whether the customer will read it).
+
+## BE-07 — invoice totals and credits (2026-11-17)
+
+- `tests/unit/test_invoice_credits.py` (31): `_credits_to_apply` (capped at what is due, oldest first, approved amount, earlier use counted), generation with credits (the brief's case: ₦50,000 credit on a ₦20,000 charge gives a zero `paid` invoice and leaves ₦30,000), the credit write's SQL (adds instead of completing, optimistic guard, tenant scoped, `RETURNING`), `adjust_billing`'s zero floor, `new_overpayment` past zero, and the invoice showing the credit. Mutation-checked: nine protections removed one at a time, each caught.
+- `tests/db/test_invoice_credits.py` (10): the same against a real database, including the CHECK refusing a negative total. **Unrun**: no Docker.
+- Frontend: `RefundDetail.test.tsx` ("Credit used ₦X of ₦Y").
+
+## BE-08 — Paystack currency (2026-11-17)
+
+`tests/unit/test_payment_webhook.py`: `TestPaystackChargeAmount` (only a positive naira amount; other currencies, no currency, zero, negative, NaN, Infinity and malformed amounts refused; the log line does not echo the payload), `TestExtractPaystackPaymentCurrency`, and `TestASignedEventInAnotherCurrencyDoesNotChangeTheInvoice` (the brief's acceptance test: a correctly signed USD `charge.success` through `_webhook_routes` records no payment; the same event in NGN does). `tests/unit/test_payment_release.py`: the verify path refuses the same charges (422 `BR-PAY-VERIFY-002`). Mutation-checked: 5 protections, each caught.
+
+## BE-09 — no EventBridge rule feeds a notification queue (2026-11-17)
+
+`tests/unit/test_infrastructure_contracts.py::TestNoEventGoesToANotificationQueue` (4): the EventBridge module targets only the metering queue, has no routing-rule list, does not grant EventBridge send on every queue, and `scripts/bootstrap_local.sh` creates only `route-metering`. Checked against the files from before the change: 4 of 4 fail there. The notification consumer tests (`test_notifications.py` and friends) still pass.
+
+## BE-10 — offboarding export (2026-11-17)
+
+- `tests/unit/test_tenant_data.py` (60): parses every migration's `upgrade()` (CREATE TABLE, ALTER TABLE … ADD COLUMN / FOREIGN KEY, DROP TABLE) and checks that every table is in `TENANT_TABLES` or `NOT_TENANT_DATA`, that tables read through a parent have that key, that the order never breaks a foreign key on delete, that omitted and decrypted columns exist, and the SQL shapes. Guarded itself: it asserts the parser sees the core tables, later-added columns and more than 100 foreign keys.
+- `tests/unit/test_offboarding_export.py` (25): archive contents (every table, manifest, exact values, secrets and hashes left out, encrypted fields decrypted, decryption failure fails the export), job outcomes (completed, cancelled for a reactivated tenant, failed by type only with no personal data in the log), the loop and time budget, the record's SQL.
+- `tests/unit/test_data_cleanup.py` (11): refusal without an export (and only one since the latest offboarding), children-first deletes in one transaction, platform records cleared before the tenant row, storage first and a storage failure deleting nothing, Cognito after commit.
+- `tests/unit/test_tenant_offboarding_export.py` (29): offboarding queues in the same transaction, reactivation cancels, status rules, queue rules, the link (five minutes, attachment, audited, refused without the audit record, never signed outside the tenant's export folder), routes (platform admin only, UUID check).
+- Mutation-checked: 12 protections across the four files, each caught. Note: `scratchpad/mutate.py` now deletes the module's `.pyc` before each run, because a same-size edit made within one second kept the old bytecode valid and let one mutant look like it survived.
+- Frontend: `PlatformTenantDetail.test.tsx` (8, new: the page had no test): export card states, download through a fresh link, queue, no card for an active tenant, and the three tabs reading through hooks. `shell/noFetchInEffect.test.ts` now recognises an API object imported under another name (it missed `platformApi as platformExtras`).
+
+## OPS-03 — coverage floors and the untested-pages ratchet (2026-11-17)
+
+- `scripts/check_coverage.py` + `[tool.shipx.coverage-floors]` in `pyproject.toml`; CI step "Enforce coverage floors". Tests: `tests/unit/test_check_coverage.py` (7: at the floor passes, below fails, a floored directory with nothing measured fails, a `shared/` file with a similar name does not count toward the service, the raise hint, the floors exist, CI runs the check after the unit tests).
+- New frontend tests for money-moving pages that had none: `pages/customer/RefundRequest.test.tsx` (4: no zero amount; the request body, payout choice and return to the invoice; **a retry reuses the idempotency key**, so a failed-then-retried submit cannot file two refunds; the credit wording), `pages/customer/MyBilling.test.tsx` (4), `pages/nigeria/CarryoverLedger.test.tsx` (6: the outstanding total excludes applied entries; only tenant admins exempt, only outstanding entries; the exemption sends the reason; a refused exemption keeps the dialog open).
+- `src/pages/untestedPages.test.ts`: the ratchet described in `18_cicd_pipeline.md`.
+
+## OPS-04 — failure counters and alarms (2026-11-17)
+
+`tests/unit/test_failure_metrics.py` (23): the metric line, written through the production `StructuredFormatter`, is valid Embedded Metric Format (namespace, dimensions, metric names as top-level keys, integer timestamp); outcomes carry attempts and failures; counted even with the root log level at ERROR; only the fixed operation names become metrics; counting never raises; and each catch site counts (audit, platform audit, notification enqueue, invoice generation but not a skipped invoice, both send outcomes, a failed tenant step in each of six scheduled jobs). Mutation-checked: 7 protections, each caught. `test_infrastructure_contracts.py::TestFailureAlarmsMatchTheCounters` (3): every operation an AWS or Azure alarm names is one the code counts, and the namespaces agree. **Not verified:** an alarm firing in a deployed environment (the brief's gate).
+
+## Real-database run, 2026-11-17
+
+Docker Desktop had stopped because the disk was full ("no space left on device" in its backend log); after space was freed it started. Migrations 065–067 were applied to the local dev database (`make migrate`, data kept; `make stack` was not used because it drops the database). `make test-db`: **183 passed**. Every database test written while Docker was down now runs: `test_search.py`, `test_list_exports.py`, `test_paginated_lists.py`, `test_claim_read.py`, `test_pickup_code.py`, `test_invoice_credits.py`, and the new `test_offboarding_lifecycle.py` (2: offboard, export to Moto S3, read back, then the cleanup deletes everything against real foreign keys; mutation-checked three ways).
+
+Found by running them: **a real bug** (invoice generation set a used credit to `completed`, which `refund_request` does not allow, so every invoice that used a credit failed; fixed, `processed`), and two fixture mistakes in `test_claim_read.py` (approval level `admin`, a claim without `reference`).
+
+## Upload confirmation (2026-11-19)
+
+- `tests/unit/test_upload_confirmation.py` (15): for each of claim evidence, manifest evidence and container documents, a file over the limit is deleted with its row; a confirmed file records its stored size; a missing upload keeps the row hidden; confirming twice reads storage once; a customer can neither upload to nor confirm on another customer's claim (mutation-checked: dropping the ownership check fails both); each confirm path reaches its confirm function, not the presign route.
+- `tests/unit/test_uploads.py`: `confirm_stored_upload` (size, missing, over and exactly at the limit); two uploads of one name get different keys. `test_storage_provider.py` / `test_azure_blob_provider.py`: `delete_object`. Key assertions in `test_safe_filename.py` and `test_manifest.py` now expect the `{hex}-name` form.
+- `tests/db/test_upload_confirmation.py` (7, real database): unconfirmed rows are not listed or downloadable, confirming keeps the first time, the refusal path never deletes a confirmed row, another tenant cannot confirm or delete a container document (RLS). `test_claim_read.py`'s fixture evidence is now confirmed. Full `make test-db`: 195 passed.
+- Frontend: `src/hooks/useFileUpload.test.ts` (4, fake XHR): confirm runs after the PUT, done only after it; its refusal is the message; a failed PUT is not confirmed. `ContainerDetail.test.tsx`: confirm after upload, and a confirm refusal shown inside the dialog.
+- End to end against a second API server on :3010 with local Moto storage (which, like Azure, does not enforce the signed length): a 6 MB body declared as 4 bytes was stored, then refused and deleted at confirm.
+
+## Tracking events export and Lambda package layout (2026-11-19)
+
+- `tests/unit/test_list_exports.py` `TestContainerEventExport` (6) and `TestContainerEventExportRoute` (7): csv and xlsx content with readable statuses and roles, a formula in a note neutralised, an event with no actor, audit on the container, 404 before any upload; routing to excel, the four reading roles allowed, a customer refused, PDF refused. Live on :3010: csv/xlsx downloaded, PDF 422.
+- `tests/unit/test_infrastructure_contracts.py` `TestLambdaPackageLayout` (10): see `18_cicd_pipeline.md` "Lambda zips carry the `services` package".
+- Frontend: `ContainerDetail.test.tsx` tracking export (2): the button exports xlsx; a failed export is shown.
+
+## Cancelling an invoice gives back credit and carryover (2026-11-19)
+
+- `tests/unit/test_invoice_credits.py`: each credit used is recorded against the invoice; `TestCancelGivesBackWhatTheInvoiceTook` (4, fake cursor) pins the reversal SQL, the carryover reopening, nothing written for an invoice no longer unpaid, and rollback when a credit cannot be returned. `test_billing.py` `TestCancelBilling`: the response and audit report what was given back; an older invoice with unrecorded credit is refused `CREDIT_NOT_TRACEABLE`. An existing assertion that matched `INSERT INTO billing` as a prefix (and so also the new ledger insert) now matches `INSERT INTO billing (`.
+- `tests/db/test_invoice_credits.py` `TestCancelGivesBackWhatTheInvoiceTook` (5, real database): a used-up credit comes back and the container can be invoiced again with it; a credit shared by two invoices gets back only the cancelled one's part; a carried-over balance is outstanding again; a paid invoice is not cancelled and nothing is returned; another tenant sees no applications. `conftest.py` cleanup deletes `billing_credit_application` first.
+- Frontend: `CancelBillingModal.test.tsx` (2).
+
+## No payment-due message for a ₦0 invoice (2026-11-19)
+
+`tests/unit/test_billing.py::TestHandlePaymentDueNotification::test_an_invoice_the_credit_covered_sends_no_payment_due_message`: credit larger than the charge → no `enqueue_notifications`, one bell saying "nothing to pay". Mutation-checked (removing the guard fails it).
+
+## Refund bank details and encrypted column widths (2026-11-19)
+
+- `tests/unit/test_refund_bank_details.py` (15): required for a bank refund, refused for a credit, 10 digits; encrypted before the write; claim refunds write none; staff see the account, a customer the masked number; the audit entry is masked.
+- `tests/db/test_encrypted_columns.py` (2, real database): a 600-character ciphertext stores in the refund account columns; the three encrypted columns are TEXT.
+- Frontend: see `frontend/07_domain_modules.md`.
+
+## Paging past empty sort values (2026-11-19)
+
+`tests/unit/test_pagination_walk.py::TestEmptySortValues` (6): a joined list sorted by a column with eight empty values, walked page by page in both directions, equals the one-shot ordering with nothing repeated or skipped, empty values last, and the cursor marks an empty value. Mutation-checked against the previous `shared/pagination.py` (all 6 fail). Three SQL-text assertions updated for `NULLS LAST`. `make test-db`: 202 passed.
+
+## Reports page export (2026-11-20)
+
+- `tests/unit/test_report_export.py` (19): the shared per-container query binds the period and limit (a hostile date never reaches the SQL) and the report page takes its top 200 from it; `ReportExportQuery` refuses pdf and bad dates; the service asks for one row more than the limit, refuses past 10,000 with "Narrow the period", writes the page's columns and exact figures in csv, and audits the period; the handler is the tenant admin's (five other roles 403), forwards period and format, 422 on bad input, and is not taken by the single-invoice export route; `resolve_service` sends it to excel.
+- `tests/db/test_list_exports.py::TestReportExportEndToEnd` (2, real Postgres): invoices summed per container, ranked by billed, every container exported, the page's list in the same order; the period bounds the rows.
+- Frontend `TenantReports.test.tsx` (+4): one Export, beside the table, none in the top bar; Excel by default for the whole period; the period on screen at the click, CSV when chosen; a refusal shown as a banner; the note when the table is only the top 200.
+
+## One page header (FD-14, 2026-11-20)
+
+- `frontend/src/pages/pageHeader.test.ts` (241): every routed page inside the layouts (found from the area chunks in `shell/areas/`) is titled by `PageHeader` or `ResultScreen`; no page inside the layouts writes an `<h1>`; nothing uses the removed top-bar slot. Mutation-checked: an `<h1>` put back on the refunds list fails two cases.
+- `shell/PageHeader.test.tsx` (7): one `<h1>`; meta facts joined by middle dots with empty ones dropped; a one-sentence meta; action order (secondaries, primary, overflow); the overflow menu runs its action; no action row when there are none; a reference in the title kept whole.
+- `design/components/MenuButton.test.tsx` (6): named button with `aria-haspopup`/`aria-expanded`, focus on the first item; choosing runs the action, closes and refocuses the button; arrow keys wrap, End, Escape; click outside closes; nothing rendered with no items; a destructive item disabled in a read-only session.
+- `shell/TopBar.test.tsx`, `shell/StaffLayout.test.tsx`: the top bar has no heading, breadcrumb or page actions; the layout adds no `<h1>` and puts the breadcrumb at the top of `main`, ahead of the page, before the page has loaded.
+- Page tests updated for the record titles ("Container MSCU1234567", "Invoice …", "Damage claim DC-…") and for actions now in the overflow menu (Apply carryover, Split note). `TopBarTestWrapper` and the per-file `TopBarContext` fixtures were deleted: actions render in the page now.
+
+## Tab titles (FD-48, 2026-11-20)
+
+- `frontend/src/shell/documentTitle.test.tsx` (9): tab title order (record, parents, tenant), the route's name before a record loads, top-level and public titles, a distinct title for every staff, customer and shell-less route, sentence-case route titles, `useDocumentTitle` sets `document.title`, and focus moves to the new page's heading after a navigation but not on first load. Mutation-checked (two staff pages given one title fail).
+
+## Heading structure (FD-49, 2026-11-20)
+
+- `frontend/scripts/headings.mjs` (route audit, local stack): one non-empty `<h1>` per route and no skipped levels, all 78 routes passing; proved with `HEADINGS_INJECT='<h3>…</h3>'` (every injected page fails). The unit suite needed no changes: page tests query headings by name, not level.
+
+## Not-found page (FD-55, 2026-11-20)
+
+- `frontend/src/shell/routes.test.tsx` (+3, replacing one): a signed-in staff user and a customer see "Page not found" inside their layout, with "Go to your home page" and the nearest list, tab "Page not found · ShipX"; a signed-out visitor gets the bare page with "Sign in". `shell/nearestList.test.ts` (3): closest openable list, skips one the role cannot open, none when it is home or there is none.
+
+## Shell notices (FD-16, 2026-11-20)
+
+- `frontend/src/shell/ShellNotice.test.tsx` (7): the plan notice is one line with a "View plan" link for the tenant admin, hidden from other staff, warns from 80%, stays dismissed for the session, returns when a warning becomes a reached limit; the announcement shows first and the plan notice after it is dismissed; nothing in the content column during impersonation.
+
+## The menu (FD-15, 2026-11-20)
+
+- `frontend/src/shell/navConfig.test.ts` (+20): for every role, at most one item lit on every route it can open; the deepest item wins (`/claims/missing-items`, `/packing-lists/new`, `/billing/disputes/:id`); no two items share an icon; sentence case and no create pages; the tenant admin's groups. `TopBar.test.tsx` (+2) account menu; `Sidebar.test.tsx`, `AppSidebar.test.tsx`, `StaffLayout.test.tsx` updated (no sidebar sign-out; role switch through the account menu).
+
+## The staff layout on a phone (FD-35, 2026-11-20)
+
+- `frontend/src/design/breakpoints.test.ts` (2): every `@media` and `@container sxapp` rule uses 600, 860 or 1200 px. Proved with a 640 px rule.
+- `frontend/scripts/mobile-audit.mjs` (route audit): also fails a page whose header starts more than 140 px from the top at phone widths.
+
+## Names and precision (FD-17, 2026-11-20)
+
+- `tests/db/test_refund_read.py` (3, real Postgres): the refund detail read joins the customer's name, invoice number and claim reference; absent links read as null; another tenant cannot read it.
+- `frontend/src/lib/format.test.ts` (+5): `formatKg`, grouped `formatCbm`, `plural`; guards against CBM or weight rounded by hand and against "(s)" plurals (each proved by reintroducing one). `design/components/Kvp.test.tsx` (+2): optional rows. Page tests updated for the new precision ("68.400", "412.0 kg", "+1.7").
+
+## Chart colours (FD-52, 2026-11-20)
+
+- `frontend/src/design/statusRegistry.test.ts` (+2): a status series takes its badge's colour, "Released, balance owed" is amber not purple, two of one colour stay apart; the neutral series colour.
+
+## One list layout (FD-18, 2026-11-20)
+
+- `frontend/src/pages/listPages.test.ts` (19): every staff list page uses `ListPage` and `FilterBar` and builds no stats row or filter card of its own. `shell/ListPage.test.tsx` (6): layout order, more than four stats reported, a stat as a toggle, the filter bar's fixed order and landmark, More filters and clear-all.
+- `tests/db/test_overdue_filter.py` (2, real Postgres): `overdue` lists exactly what the Overdue stat counts. Unit: `overdue_condition` and the `overdue` parameter in the handler and the export query.
+- Page tests: chips are found inside the filter bar (a stat and a chip can now both say "Unpaid"); "Filters" is "More filters"; new tests for the Overdue and Outstanding stats and a release-note stat as a filter.
+
+## One detail layout (FD-19, 2026-11-21)
+
+- `frontend/src/pages/detailPages.test.ts` (16): every record page uses `DetailPage`; both invoices use `InvoiceBreakdown`. `shell/DetailPage.test.tsx` (2): layout order, the summary as a complementary region, a section named by its heading with the heading inside its card. `pages/shared/InvoiceBreakdown.test.tsx` (3): rows and figures, optional rows, the last-known-rate note. `ContainerDetail.test.tsx`: the container type is stated once (it asserted it appeared twice).
+
+## Next steps (FD-23, 2026-11-21)
+
+- `frontend/src/design/nextAction.test.ts` (32): each status's next step, none for finished records, every registry status covered. `BillingDetail.test.tsx` (+2): owed → Record payment, paid → Generate release note. Page tests renamed for the new labels.
+
+## Destructive actions (FD-24, 2026-11-21)
+
+- `design/components/ConfirmDialog.test.tsx` (3), `pages/destructiveActions.test.ts` (every page: destructive buttons styled as danger). Page tests updated: Reject from the overflow menu (packing list, refund), withdrawing an announcement asks first.
+
+## Create packing list prerequisites and tab draft (FD-25, 2026-11-21)
+
+- `hooks/useTabDraft.test.tsx` (4): kept per tenant and user, nothing stored for an untouched form or when disabled, clear wins over a pending write.
+- `CreatePackingList.test.tsx` (+6): the no-container callout (ask the China office without a session; a "Create a container" link with `return` for China office staff), no callout when one is loading, the draft restored on reopening, nothing stored for an untouched form, Start over.
+- `CreateContainer.test.tsx` (+2): goes back to `return` after creating; ignores a `return` that leaves the app.
+- `test/setup.ts` clears `sessionStorage` before every test, so one test's draft never pre-fills the next.
+
+## Warehouse counter (FD-26, 2026-11-21)
+
+- `WarehouseDashboard.test.tsx` (+4, 2 updated): the reference field is focused on arrival; a full pickup by keyboard only (scan + Enter, code + Enter, focus back on the empty field with the toast shown); Look up with nothing entered explains rather than being disabled; no chip on a note that is not urgent; the title is "Pickups"; the urgent chip reads "Waiting 24h+".
+
+## Customer shipments wording (FD-27, 2026-11-21)
+
+- `pages/customer/shipmentStage.test.ts` (22): the stage of every container status; the by-stage summary; the arrival label for each status (expected, delayed with a past date, arrived from `arrived` onwards, nothing without a date).
+- `MyShipments.test.tsx` (+6): "3 in transit, 2 ready for pickup"; Delayed / Arrived / Expected arrival on the card; the card opens the shipment through one link with no button; total in ink and only the owed amount red. `MyShipmentDetail.test.tsx`: cartons asserted as rows.
+
+## Public tracking page (FD-28, 2026-11-21)
+
+- `PublicTrack.test.tsx` (new, 5): ShipX header and footer before a lookup; the company's name and colour after one (the `--color-primary` override on the theme wrapper); ShipX colours when the company has none; the shared stepper, the latest update and the sign-in link; Enter submits.
+- `tests/unit/test_tracking.py` (+6): `brand_color` returned only as a plain `#rrggbb` (named colours, short hex, a value carrying extra CSS and non-strings are dropped).
+
+## Tenant logo (FD-29, 2026-11-21)
+
+- `tests/unit/test_tenant_logo.py` (new, 20): the policy (PNG/JPEG/WebP accepted; SVG, PDF, HTML refused; over 5 MB refused (1 MB until 2026-11-24)); presign under `{tenant}/branding/logo/`; set stores the key, keeps the rest, returns a link not the key, audits, deletes the replaced file; set refuses another tenant's key, a non-logo key, a path that walks out, a nested key, an upload that never landed, and deletes an oversize one; remove drops the key and deletes the file; readers get a link and a foreign key is never signed; a branding save keeps the stored logo and ignores one sent by the client.
+- `CompanySettings.test.tsx` (+5): no forward-looking copy; upload to storage then set; SVG and over-5 MB refused before sending; the uploaded logo shows and Remove confirms first; a branding save never sends `logo_url`.
+- Verified live against a second local API on :3011 (2026-11-21): presign, PUT to Moto S3, set, fetch through `logo_url`, a branding save keeping the logo, staff 403, foreign key 422, remove.
+
+## Sign-up entry points (FD-30, 2026-11-21)
+
+- `pages/marketing/LandingPage.test.tsx` (new, 3): no link to `/register`; every "Request access" goes to `/get-started`; no "free trial", "30-day" or "no card required" copy. Off the untested-pages list.
+- `RegisterScreen.test.tsx` (rewritten chooser tests, +4): bare `/register` explains the company link with no "Which are you?"; the footer's Request access reaches `/get-started`; every channel starts unticked; nothing ticked sends `[]`, one ticked sends exactly that one.
+
+## Failed loads (FD-53, 2026-11-21)
+
+- `ActivityFeed.test.tsx` (+1): a failed request shows "Couldn't load activity", not the empty state, and Retry loads the entries. `StaffNotificationPanel.test.tsx` (+1): a failed list is not "No notifications yet.". `pages/customer/ReleaseNoteCard.test.tsx` (new, 2): nothing shown with no note; a failed load shows an error with a retry.
+
+## Unsaved changes (FD-54, 2026-11-21)
+
+- `shell/UnsavedChangesGuard.test.tsx` (new, 7, under `createMemoryRouter`): an untouched form leaves freely; unsaved input asks, Keep editing keeps it, Leave goes on; Back asks; an allowed destination does not; the tab-close prompt only while dirty; without a data router, the tab-close prompt only.
+- `CreatePackingList.test.tsx` (+2): leaving a half-filled wizard asks ("It stays in this tab") and the input is restored on return; an untouched wizard leaves without asking. `hooks/useTabDraft.test.tsx` (+3): a pending write is flushed on unmount and on `pagehide`; a cleared draft is not brought back.
+- Verified live (2026-11-21): the sidebar and in-app Back prompt on Company settings with an edit, Keep editing keeps it, reload gets the browser prompt; `scripts/headings.mjs` passes on every route under the data router.
+
+## Design step 4 gate: every role's main flow by primary actions (2026-11-21)
+
+- `frontend/e2e/flows/primary-actions.spec.ts` (local-stack, serial, 6): China office creates a packing list and submits it (through the wizard's "Create a container" round trip when none is loading); tenant admin approves it from the header primary; Nigeria office records a payment from the invoice's header primary; warehouse attendant scans a release note and records the pickup with the keyboard only; customer pays from the invoice's "Pay ₦…" primary (Paystack's `initialize` stubbed, since checkout leaves the app); platform admin onboards a tenant. Only the page header's primary (`[data-sticky-action]`), or a form's or dialog's single primary, is pressed. Run: `PW_E2E=local-stack npx playwright test e2e/flows/primary-actions.spec.ts --project=local-stack`. **All 6 passed 2026-11-21.** Each run creates a container (when none is loading), a packing list, a ₦1,000 payment, a pickup and a tenant in the local data; contacts it types are example.com. The warehouse flow skips once no active release note is left.
+
+## Documents (FD-39 to FD-42, FD-44, 2026-11-21)
+
+- `tests/unit/test_pdf_documents.py` (new, 44; replaces `test_export_release_note_pdf.py` and `test_export_receipt_pdf.py`): formats as in the app (₦, CBM 3 dp, kg 1 dp, half-up, Lagos dates); markup escaping and Chinese runs; the fonts cover ₦ and Chinese; brand fields and the green default; an unreadable logo falls back to initials; no table cell wider than its column; every document rendered with 40-character tags, 60 items and Chinese text and read back with pypdf: "Page n of N" on every page, title and author set, only the embedded Noto fonts, the content list per document, no column names or raw values; the QR payload is the bare reference; the new routes, roles and customer ownership; `?format=pdf` refused on the data exports; the logo read only from the tenant's prefix; download filenames. Dev dependency `pypdf==5.4.0`.
+- The release note's QR code was decoded from a rendered page with OpenCV (one-off check, 2026-11-21): `ACM-RN-20261121-0001`.
+- Frontend: `api/client.test.ts` (pdf tab opened before the request, sent to the link, closed on failure, current-tab fallback when blocked), `lib/documents.test.ts` (3), `MyBillingDetail.test.tsx` (invoice PDF, not the export; failure names itself). e2e `release-note-migration-fields.spec.ts`: Print opens the PDF in a new tab (was: the print page).
+
+## Receipts (FD-43, 2026-11-21)
+
+- `pages/nigeria/billingDetail/Breakdown.test.tsx` (new, 2): a receipt per payment, named by amount and date, opening that payment's receipt; a failure names itself. `PaymentSuccess.test.tsx` (+2): the receipt of the payment just confirmed (matched by reference); no button when it is not on the invoice yet. `design/toastRules.test.ts` reads `…Pdf` API methods as reads.
+
+## Logo limit raised to 5 MB (2026-11-24)
+
+- `test_tenant_logo.py`: over 5 MB refused, exactly 5 MB accepted, a 6 MB stored file deleted and refused. `CompanySettings.test.tsx`: a file over 5 MB is refused in the browser with "The limit is 5 MB.".

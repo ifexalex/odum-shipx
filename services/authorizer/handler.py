@@ -104,13 +104,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     clear_log_context()
     bind_log_context(request_id=event.get("requestContext", {}).get("requestId") or getattr(context, "aws_request_id", None))
-    method_arn = event.get("methodArn", "*")
-    auth_header = (event.get("headers") or {}).get("authorization", "")
-    if not auth_header.startswith("Bearer "):
+    method_arn = event.get("routeArn") or event.get("methodArn") or "*"
+    headers = event.get("headers") or {}
+    auth_header = next((str(v) for k, v in headers.items() if str(k).lower() == "authorization"), "")
+    if not auth_header.lower().startswith("bearer "):
         logger.warning("Missing or malformed Authorization header")
         raise Exception("Unauthorized")  # API GW interprets this as 401
 
-    token = auth_header[len("Bearer ") :]
+    token = auth_header[len("Bearer ") :].strip()
 
     claims = build_authorizer_claims(token)
     if claims is None:

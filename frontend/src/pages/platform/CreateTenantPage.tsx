@@ -5,13 +5,16 @@
  * then a success screen. Replaces the old modal, whose flat request body
  * didn't match the backend contract (nested initial_admin) and 422'd.
  */
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { platformApi, type OnboardingRequest, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono, PhoneField } from '../../design/components'
+import { platformApi, type OnboardingRequest, type PlanLimits, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
+import { usePlatformPlans } from '../../hooks/usePlatformSettings'
+import { Banner, Button, Card, Field, Icon, Mono, PhoneField, Pressable } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import { SectionHead } from '../../shell/SectionHead'
+import { toast } from '../../design/toast'
 
 /**
  * When provisioning is launched from a company onboarding lead, OnboardingRequests
@@ -22,42 +25,58 @@ interface ProvisionFromLead {
   lead?: OnboardingRequest
 }
 
-const PLANS: { tier: SubscriptionTier; name: string; features: string[] }[] = [
-  { tier: 'starter', name: 'Starter', features: ['10 staff users', '5 containers / month', '5 GB storage'] },
-  { tier: 'business', name: 'Business', features: ['50 staff users', '25 containers / month', '25 GB storage'] },
-  { tier: 'enterprise', name: 'Enterprise', features: ['Unlimited users', 'Unlimited containers', 'Unlimited storage'] },
+const DEFAULT_PLANS: { tier: SubscriptionTier; name: string; limits: PlanLimits }[] = [
+  { tier: 'starter', name: 'Starter', limits: { users: 10, containers_per_month: 5, storage_gb: 5 } },
+  { tier: 'business', name: 'Business', limits: { users: 50, containers_per_month: 25, storage_gb: 25 } },
+  { tier: 'enterprise', name: 'Enterprise', limits: { users: 999999, containers_per_month: 999999, storage_gb: 999999 } },
 ]
+
+function formatPlanFeatures(limits: PlanLimits): string[] {
+  return [
+    limits.users >= 999999 ? 'Unlimited staff users' : `${limits.users} staff users`,
+    limits.containers_per_month >= 999999 ? 'Unlimited containers / month' : `${limits.containers_per_month} containers / month`,
+    limits.storage_gb >= 999999 ? 'Unlimited storage' : `${limits.storage_gb} GB storage`,
+  ]
+}
 
 function PlanRadio({ name, features, selected, onSelect }: { name: string; features: string[]; selected: boolean; onSelect: () => void }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Pressable
       onClick={onSelect}
       style={{
         textAlign: 'left', cursor: 'pointer', flex: 1, minWidth: 180,
         border: `${selected ? 2 : 1}px solid ${selected ? 'var(--color-primary)' : 'var(--color-line-soft)'}`,
-        borderRadius: 12, padding: 16,
+        borderRadius: 'var(--radius-lg)', padding: 'var(--space-4)',
         background: selected ? 'var(--color-primary-tint)' : 'var(--color-surface)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
         <span style={{
           width: 18, height: 18, borderRadius: '50%',
           border: `${selected ? 5 : 1.5}px solid ${selected ? 'var(--color-primary)' : 'var(--color-line)'}`,
           background: 'var(--color-surface)', flexShrink: 0,
         }} />
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15 }}>{name}</span>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-lg)' }}>{name}</span>
       </div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--color-ink-3)', lineHeight: 1.8 }}>
+      <ul style={{ margin: 0, paddingLeft: 'var(--space-5)', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', lineHeight: 'var(--leading-body)' }}>
         {features.map((f) => <li key={f}>{f}</li>)}
       </ul>
-    </button>
+    </Pressable>
   )
 }
 
 export function CreateTenantPage(): JSX.Element {
   const navigate = useNavigate()
   const lead = (useLocation().state as ProvisionFromLead | null)?.lead
+  const plansQuery = usePlatformPlans()
+  const planCards = useMemo(() => {
+    const live = plansQuery.data?.plans
+    return DEFAULT_PLANS.map((p) => ({
+      tier: p.tier,
+      name: p.name,
+      features: formatPlanFeatures(live?.[p.tier] ?? p.limits),
+    }))
+  }, [plansQuery.data])
   const [companyName, setCompanyName] = useState(lead?.company_name ?? '')
   const [contactEmail, setContactEmail] = useState(lead?.contact_email ?? '')
   const [contactPhone, setContactPhone] = useState(lead?.contact_phone ?? '')
@@ -75,6 +94,17 @@ export function CreateTenantPage(): JSX.Element {
     adminEmail.trim().length > 3 &&
     !submitting
 
+  // Typed but not yet created (FD-54): anything that differs from the form as it opened (blank, or the lead's details).
+  const unsaved =
+    !created &&
+    !submitting &&
+    (companyName !== (lead?.company_name ?? '') ||
+      contactEmail !== (lead?.contact_email ?? '') ||
+      contactPhone !== (lead?.contact_phone ?? '') ||
+      adminName !== (lead?.contact_name ?? '') ||
+      adminEmail !== (lead?.contact_email ?? '') ||
+      tier !== 'starter')
+
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
@@ -87,6 +117,7 @@ export function CreateTenantPage(): JSX.Element {
         initial_admin: { email: adminEmail, full_name: adminName },
         ...(lead ? { onboarding_request_id: lead.id } : {}),
       })
+      toast.success('Tenant created')
       setCreated(result.tenant)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the tenant.')
@@ -97,21 +128,21 @@ export function CreateTenantPage(): JSX.Element {
 
   if (created) {
     return (
-      <div style={{ maxWidth: 560, margin: '0 auto', textAlign: 'center', paddingTop: 40 }}>
-        <div style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--color-success-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+      <div style={{ maxWidth: 560, margin: '0 auto', textAlign: 'center', paddingTop: 'var(--space-12)' }}>
+        <div style={{ width: 84, height: 84, borderRadius: '50%', background: 'var(--color-success-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto var(--space-6)' }}>
           <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
         </div>
-        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 26, margin: '0 0 8px' }}>
+        <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-2xl)', margin: '0 0 var(--space-2)' }}>
           {created.company_name} is live.
         </h2>
-        <p style={{ fontSize: 14, color: 'var(--color-ink-3)', margin: '0 0 24px' }}>
+        <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: '0 0 var(--space-6)' }}>
           Tenant <Mono>{created.slug}</Mono> created on the <strong style={{ textTransform: 'capitalize' }}>{created.subscription_tier}</strong> plan.
         </p>
         <Banner variant="info" title="Admin invite sent">
           {adminEmail} received a temporary password by email. They&apos;ll set their own password on first
           sign-in and can then invite the rest of the team.
         </Banner>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 24 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'center', marginTop: 'var(--space-6)' }}>
           <Button variant="secondary" onClick={() => navigate(`/platform/tenants/${created.id}`)}>
             Open tenant
           </Button>
@@ -125,14 +156,14 @@ export function CreateTenantPage(): JSX.Element {
 
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <UnsavedChangesGuard when={unsaved} />
       <PageHeader
-        eyebrow="Platform"
         title="Onboard a new tenant"
-        subtitle="Creates the tenant, provisions the first admin in Cognito, and applies default configuration."
+        meta="Creates the tenant account, emails login credentials to the first admin, and applies default configuration."
       />
 
       {lead && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="info" title="Provisioning from an onboarding request">
             Pre-filled from <strong>{lead.company_name}</strong>&apos;s request. Creating this tenant marks the
             request as <strong>provisioned</strong>. Review the details and the admin&apos;s name before creating.
@@ -140,40 +171,40 @@ export function CreateTenantPage(): JSX.Element {
         </div>
       )}
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Could not create tenant">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Could not create tenant">{error}</Banner></div>}
 
-      <Card padding={28} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead title="Company" />
         <div style={{ height: 12 }} />
         <Field label="Company name" name="company_name" required placeholder="Acme Logistics Ltd" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
           <Field label="Primary contact email" name="contact_email" icon="mail" required placeholder="ops@acme.com" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
           <PhoneField label="Contact phone" name="contact_phone" optional value={contactPhone} onChange={setContactPhone} />
         </div>
       </Card>
 
-      <Card padding={28} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead title="Initial admin" sub="Gets a temporary password by email and full tenant-admin access" />
         <div style={{ height: 12 }} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-4)' }}>
           <Field label="Full name" name="admin_name" required placeholder="Amara Okafor" value={adminName} onChange={(e) => setAdminName(e.target.value)} />
           <Field label="Email" name="admin_email" icon="mail" required placeholder="amara@acme.com" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
         </div>
       </Card>
 
-      <Card padding={28}>
+      <Card padding="large">
         <SectionHead title="Plan" sub="Limits can be overridden later from Platform Settings → Plans, or per-tenant" />
         <div style={{ height: 12 }} />
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {PLANS.map((p) => (
+        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          {planCards.map((p) => (
             <PlanRadio key={p.tier} name={p.name} features={p.features} selected={tier === p.tier} onSelect={() => setTier(p.tier)} />
           ))}
         </div>
       </Card>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>
         <Button variant="ghost" onClick={() => navigate('/platform/tenants')} disabled={submitting}>Cancel</Button>
-        <Button variant="accent" icon="plus" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+        <Button variant="primary" icon="plus" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
           Create tenant
         </Button>
       </div>

@@ -136,7 +136,7 @@ class PaginationMeta(BaseModel):
 **Request Models:**
 - `FileDamageClaimRequest`: container_id, cartons_affected: list[str], description
 - `StartInspectionRequest`: inspection_method (InspectionMethod)
-- `ResolveClaimRequest`: resolution_type, amount_usd?, amount_ngn?, discount_percentage?, reason (required)
+- `ResolveClaimRequest`: resolution_type, amount_usd?, amount_ngn?, discount_percentage?, reason (max 2,000 characters; **required, non-blank, when `resolution_type` is `no_action`**, validated by a model validator, because the customer is shown it)
 - `LogMissingItemRequest`: manifest_id, customer_id, carton_tags: list[str], description
 - `LogSeizedItemRequest`: container_id, customer_id, carton_tags: list[str], reason
 
@@ -153,7 +153,7 @@ class PaginationMeta(BaseModel):
 **Request Models:**
 - `ConfirmPaymentRequest`: amount_ngn (Decimal), payment_method?, payment_reference?
 - `GenerateReleaseNoteRequest`: billing_id, carton_tags: list[str], release_with_outstanding: bool = False, approval_notes? (required if release_with_outstanding)
-- `RecordPickupRequest`: cartons_released (int), is_delegate: bool = False, delegate_name?, delegate_phone?, delegate_id_type?, delegate_id_number?, notes?
+- `RecordPickupRequest`: cartons_released (int), is_delegate: bool = False, collected_by_name? (required when not a delegate), delegate_name?, delegate_phone?, delegate_id_type?, delegate_id_number?, notes?, pickup_code? (max 20; checked only for a release note that carries a code, UX-09)
 
 **Response Models:**
 - `PaymentConfirmationResponse`: payment_id, billing_id, amount_ngn, new_payment_status, outstanding_ngn, release_note_available, confirmed_at

@@ -6,6 +6,7 @@ Routes:
   PATCH /v1/manifests/{id}/verify            — china_office_staff, nigeria_office_staff
   PATCH /v1/manifests/{id}/revoke-verification — china_office_staff, nigeria_office_staff, tenant_admin
   POST  /v1/manifests/{id}/evidence          — china_office_staff, nigeria_office_staff (presigned upload)
+  POST  /v1/manifests/{id}/evidence/{evidence_id}/confirm — same (the upload finished; checks the stored size)
 
 Manifests are auto-created when packing lists are approved (Task 08); the only
 POST is the verification-evidence presigned-upload contract.
@@ -18,11 +19,12 @@ import uuid
 from typing import Any
 
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.pagination import parse_pagination_params
 from shared.responses import error_response, paginated, success
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
@@ -44,6 +46,7 @@ _READ_ROLES = (
 _VERIFY_ROLES = (
     UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.TENANT_ADMIN,
 )
 _RESOLVE_ROLES = (
     UserRole.NIGERIA_OFFICE_STAFF,
@@ -69,7 +72,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
@@ -163,10 +166,9 @@ def _manifest_routes(
                 filters["verification_status"] = _qp(event, "verification_status")
             if _qp(event, "container_id"):
                 filters["container_id"] = _qp(event, "container_id")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_manifests(tenant_id, filters, limit, cursor)
-            return paginated(page, next_cursor, has_more, request_id=request_id)
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
+            page, next_cursor, has_more, total = service.list_manifests(tenant_id, filters, limit, cursor)
+            return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
     elif manifest_id == "stats":
         # GET /v1/manifests/stats — per-status counts + overdue for the list
@@ -211,8 +213,16 @@ def _manifest_routes(
                 )
                 return success(result, request_id=request_id)
 
+            # POST /v1/manifests/{id}/evidence/{evidence_id}/confirm — the browser finished the upload
+            if action == "evidence" and len(parts) == 6 and parts[5] == "confirm" and method == "POST":
+                ctx.assert_role(*_VERIFY_ROLES)
+                result = service.confirm_evidence(
+                    tenant_id, manifest_id, parts[4], actor_id=ctx.user_id, ctx=ctx, ip_address=ip_address
+                )
+                return success(result, request_id=request_id)
+
             # POST /v1/manifests/{id}/evidence — presigned upload for a verify photo/doc
-            if action == "evidence" and method == "POST":
+            if action == "evidence" and len(parts) == 4 and method == "POST":
                 ctx.assert_role(*_VERIFY_ROLES)
                 body = _parse_body(event)
                 req = parse_validated(EvidenceUploadRequest, body)
@@ -223,6 +233,7 @@ def _manifest_routes(
                     content_type=req.content_type,
                     actor_id=ctx.user_id,
                     label=req.label,
+                    size_bytes=req.size_bytes,
                 )
                 return success(result, request_id=request_id, status_code=201)
 

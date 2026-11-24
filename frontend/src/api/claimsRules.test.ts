@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { canFileClaim, canResolveClaim, canStartInspection, canUpdateItem, isTerminalClaimStatus } from './claimsRules'
+import {
+  CLAIM_STATUS_ORDER,
+  canFileClaim,
+  canResolveClaim,
+  canStartInspection,
+  canUpdateItem,
+  CHINA_MISSING_ITEM_STATUSES,
+  canCompensateMissingItem,
+  canUpdateMissingItem,
+  customerInspectionLabel,
+  missingItemStatusesFor,
+  customerRefundLabel,
+  customerResolutionLabel,
+  isTerminalClaimStatus,
+} from './claimsRules'
 import type { Claim } from './claims'
+import { statusLabel } from '../design/status'
 
 function makeClaim(status: Claim['status']): Claim {
   return {
@@ -50,5 +65,77 @@ describe('isTerminalClaimStatus', () => {
     expect(isTerminalClaimStatus('closed')).toBe(true)
     expect(isTerminalClaimStatus('filed')).toBe(false)
     expect(isTerminalClaimStatus('pending_resolution')).toBe(false)
+  })
+})
+
+describe('customer-facing claim wording (UX-07)', () => {
+  it('has a label for every claim status, in progress order', () => {
+    expect(CLAIM_STATUS_ORDER.map((s) => statusLabel('claim', s, 'customer'))).toEqual([
+      'Filed',
+      'Under inspection',
+      'Inspection complete',
+      'Pending resolution',
+      'Resolved',
+      'Closed',
+    ])
+  })
+
+  it('says how a claim was checked, and that it has not been yet', () => {
+    expect(customerInspectionLabel('customer_evidence')).toBe('From the photos and videos you provided')
+    expect(customerInspectionLabel('delegate_visit')).toBe('An agent inspected the goods in person')
+    expect(customerInspectionLabel(null)).toBe('Not started yet')
+  })
+
+  it('says what was decided', () => {
+    const base = { amount_ngn: null, discount_percentage: null, resolved_at: 'x' }
+    expect(customerResolutionLabel({ ...base, resolution_type: 'refund' })).toBe('Refund')
+    expect(customerResolutionLabel({ ...base, resolution_type: 'compensation' })).toBe('Compensation')
+    expect(customerResolutionLabel({ ...base, resolution_type: 'no_action' })).toBe('Closed without a payout')
+    expect(customerResolutionLabel({ ...base, resolution_type: 'discount', discount_percentage: '15.00' })).toBe('15% discount')
+    expect(customerResolutionLabel({ ...base, resolution_type: 'discount' })).toBe('Discount')
+  })
+
+  it('collapses the refund pipeline into what a customer needs to know', () => {
+    for (const review of ['pending_review', 'accounts_reviewed', 'pending_approval']) {
+      expect(customerRefundLabel(review)).toBe('Being reviewed')
+    }
+    expect(customerRefundLabel('approved')).toBe('Approved: the payout is being arranged')
+    expect(customerRefundLabel('processed')).toBe('Paid')
+    expect(customerRefundLabel('applied_as_credit')).toBe('Applied as credit to your account')
+    expect(customerRefundLabel('rejected')).toBe('Not approved')
+  })
+
+  it('does not break on a status it has not heard of', () => {
+    expect(customerRefundLabel('some_future_status')).toBe('Being reviewed')
+  })
+})
+
+describe('missing items by office (UX-08)', () => {
+  it('lets China record an investigation but not a decision', () => {
+    expect(CHINA_MISSING_ITEM_STATUSES).toEqual(['investigating', 'found_and_shipping'])
+    expect(missingItemStatusesFor('china_office_staff')).toEqual(['investigating', 'found_and_shipping'])
+    expect(missingItemStatusesFor('nigeria_office_staff')).toHaveLength(5)
+  })
+
+  it('lets only the Nigeria office compensate', () => {
+    expect(canCompensateMissingItem('nigeria_office_staff')).toBe(true)
+    for (const role of ['china_office_staff', 'tenant_admin', 'warehouse_attendant', 'customer'] as const) {
+      expect(canCompensateMissingItem(role)).toBe(false)
+    }
+  })
+
+  it('stops China at a decision, and Nigeria at resolved', () => {
+    expect(canUpdateMissingItem('china_office_staff', 'reported')).toBe(true)
+    expect(canUpdateMissingItem('china_office_staff', 'investigating')).toBe(true)
+    expect(canUpdateMissingItem('china_office_staff', 'confirmed_lost')).toBe(false)
+    expect(canUpdateMissingItem('china_office_staff', 'resolved')).toBe(false)
+    expect(canUpdateMissingItem('nigeria_office_staff', 'confirmed_lost')).toBe(true)
+    expect(canUpdateMissingItem('nigeria_office_staff', 'resolved')).toBe(false)
+  })
+
+  it('offers nobody else an update', () => {
+    for (const role of ['tenant_admin', 'warehouse_attendant', 'customer', 'platform_admin'] as const) {
+      expect(canUpdateMissingItem(role, 'reported')).toBe(false)
+    }
   })
 })

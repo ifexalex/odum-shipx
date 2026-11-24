@@ -340,3 +340,19 @@ unprivileged probe role — that a tenant sees only its own rows, that PLATFORM
 scope still crosses tenants, that an unscoped connection sees nothing, and that
 `WITH CHECK` blocks a cross-tenant write. A future migration adding a table with
 a non-canonical policy fails CI.
+
+## `tenant_offboarding_export` (migration 067, 2026-11-17)
+
+Created with the canonical policy (`app.current_tenant_id` = `PLATFORM` or the row's `tenant_id`), ENABLE and FORCE, like `tenant_counter` (062). Only platform code touches it (PLATFORM scope); a tenant-scoped connection sees only its own rows. DML grants come from 059's default privileges.
+
+## `billing_credit_application` (migration 070, 2026-11-19)
+
+Canonical `tenant_isolation` policy (`FOR ALL`, PLATFORM-aware, USING and WITH CHECK) and `FORCE ROW LEVEL SECURITY`, as in 059. Covered by the default privileges from 059. DB test: another tenant reads no rows.
+
+## `claim_resolution` RLS & Ledger/Banner Invariants (migration 072, 2026-11-23)
+
+- `claim_resolution`: enabled and forced RLS with the canonical PLATFORM-aware `tenant_isolation` policy (`FOR ALL`, USING and WITH CHECK). Migration 059's catalog loop (`WHERE c.relrowsecurity`) had skipped `claim_resolution` because RLS was not enabled when the table was created.
+- `cbm_dispute.sla_breached_at`: nullable `TIMESTAMPTZ` stamped atomically by `services/scheduled/sla_check.py` so 24h unacknowledged SLA breaches are logged and notified once per dispute.
+- `misc_charge.ck_misc_charge_amount_positive`: `CHECK (amount_ngn > 0) NOT VALID`.
+- `uq_staff_notification_active_banner_per_role`: partial unique index on `staff_notification (tenant_id, target_role) WHERE banner_active = TRUE AND target_role IS NOT NULL`.
+- `uq_carryover_active_per_source_billing`: partial unique index on `carryover_ledger (tenant_id, source_billing_id) WHERE status IN ('outstanding', 'applied')`.

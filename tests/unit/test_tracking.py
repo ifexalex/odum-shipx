@@ -305,6 +305,10 @@ class TestUpdateContainerStatus:
         container = _container(status="customs_clearance")
         updated = {**container, "status": "cleared"}
         customers = [{"id": "cust-001", "name": "Alice"}, {"id": "cust-002", "name": "Bob"}]
+        created_rows = [
+            {"customer_id": "cust-001", "customer_name": "Alice", "status": "created", "reason": None},
+            {"customer_id": "cust-002", "customer_name": "Bob", "status": "created", "reason": None},
+        ]
 
         with (
             patch.object(service.repo, "get_container_by_id", return_value=container),
@@ -314,10 +318,10 @@ class TestUpdateContainerStatus:
             patch.object(service.repo, "get_customers_for_container", return_value=customers),
             patch.object(service.repo, "insert_container_event"),
             patch("services.tracking.service.publish_event") as mock_publish,
-            patch("services.tracking.service.handle_payment_due") as mock_handle_payment_due,
+            patch("services.tracking.service.generate_container_invoices", return_value=created_rows) as mock_generate,
             patch("services.tracking.service.log_audit"),
         ):
-            service.update_container_status(
+            result = service.update_container_status(
                 TENANT_ID, "container-001", "cleared", extra={}, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
 
@@ -331,21 +335,27 @@ class TestUpdateContainerStatus:
         # billing Lambda (infrastructure/aws/modules/eventbridge/main.tf only
         # fans it out to SMS/WhatsApp queues), so without this direct call a
         # cleared container would carry zero billing records forever.
-        assert mock_handle_payment_due.call_count == 2
-        called_customer_ids = {c.kwargs["customer_id"] for c in mock_handle_payment_due.call_args_list}
-        assert called_customer_ids == {"cust-001", "cust-002"}
-        for call in mock_handle_payment_due.call_args_list:
-            assert call.kwargs["tenant_id"] == TENANT_ID
-            assert call.kwargs["container_id"] == "container-001"
+        mock_generate.assert_called_once()
+        kwargs = mock_generate.call_args.kwargs
+        assert kwargs["tenant_id"] == TENANT_ID
+        assert kwargs["container_id"] == "container-001"
+        assert [c["id"] for c in kwargs["customers"]] == ["cust-001", "cust-002"]
 
-    def test_cleared_still_publishes_events_when_billing_generation_fails(self):
-        """A billing-generation failure for one customer must not block the
-        PaymentDue notification event or the other customers' billing."""
+        # The per-customer outcome is returned so staff see it at the moment of clearing.
+        assert result["billing_summary"] == created_rows
+
+    def test_cleared_reports_unbilled_customers_and_only_announces_the_invoiced(self):
+        """A customer whose invoice could not be created is reported in the
+        response and gets no PaymentDue event; the other customer is unaffected."""
         from services.tracking import service
 
         container = _container(status="customs_clearance")
         updated = {**container, "status": "cleared"}
         customers = [{"id": "cust-001", "name": "Alice"}, {"id": "cust-002", "name": "Bob"}]
+        rows = [
+            {"customer_id": "cust-001", "customer_name": "Alice", "status": "created", "reason": None},
+            {"customer_id": "cust-002", "customer_name": "Bob", "status": "failed", "reason": "GENERATION_ERROR"},
+        ]
 
         with (
             patch.object(service.repo, "get_container_by_id", return_value=container),
@@ -355,16 +365,17 @@ class TestUpdateContainerStatus:
             patch.object(service.repo, "get_customers_for_container", return_value=customers),
             patch.object(service.repo, "insert_container_event"),
             patch("services.tracking.service.publish_event") as mock_publish,
-            patch("services.tracking.service.handle_payment_due", side_effect=RuntimeError("boom")) as mock_handle_payment_due,
+            patch("services.tracking.service.generate_container_invoices", return_value=rows),
             patch("services.tracking.service.log_audit"),
         ):
-            service.update_container_status(
+            result = service.update_container_status(
                 TENANT_ID, "container-001", "cleared", extra={}, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
             )
 
-        assert mock_handle_payment_due.call_count == 2
-        event_types = [c[1]["detail_type"] for c in mock_publish.call_args_list]
-        assert event_types.count("PaymentDue") == 2
+        payment_due = [c[1]["payload"]["customer_id"] for c in mock_publish.call_args_list if c[1]["detail_type"] == "PaymentDue"]
+        assert payment_due == ["cust-001"]
+        assert result["billing_summary"][1]["status"] == "failed"
+        assert result["status"] == "cleared"
 
 
 # ---------------------------------------------------------------------------
@@ -743,6 +754,38 @@ class TestGetShipmentByCodeAndPhone:
             result = service.get_shipment_by_code_and_phone("TK-001", "+234801")
 
         assert result["company_name"] == "Branded Logistics"
+        assert result["brand_color"] is None
+
+    @pytest.mark.parametrize(
+        ("configured", "returned"),
+        [
+            ("#1B5E20", "#1B5E20"),
+            ("#1b5e20", "#1b5e20"),
+            ("red", None),
+            ("#fff", None),
+            ("#1B5E20; background:url(x)", None),
+            (123, None),
+        ],
+    )
+    def test_brand_color_is_returned_only_as_a_plain_hex(self, configured, returned):
+        # FD-28: the public page puts this in a style, so anything but #rrggbb is dropped.
+        from services.tracking import service
+
+        row = {
+            "id": "ship-001",
+            "tracking_code": "TK-001",
+            "status": "received",
+            "company_name": "ACME",
+            "branding_config": {"primary_color": configured},
+        }
+
+        with (
+            patch.object(service.repo, "get_shipment_by_tracking_code_and_phone", return_value=row),
+            patch.object(service.repo, "get_tracking_events", return_value=[]),
+        ):
+            result = service.get_shipment_by_code_and_phone("TK-001", "+234801")
+
+        assert result["brand_color"] == returned
 
 
 # ---------------------------------------------------------------------------
@@ -906,7 +949,7 @@ class TestShipmentUpdateNotification:
         notification (called separately) — a bare "status changed" ping
         here would be redundant with "here's what you owe"."""
 
-        with patch("services.tracking.service.handle_payment_due"):
+        with patch("services.tracking.service.generate_container_invoices", return_value=[]):
             _, mock_notify = self._transition("customs_clearance", "cleared")
         mock_notify.assert_not_called()
 

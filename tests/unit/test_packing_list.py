@@ -437,7 +437,7 @@ class TestSubmitNotifiesStaff:
 
         with (
             patch.object(service.repo, "get_packing_list_by_id", return_value=pl),
-            patch.object(service.repo, "list_packing_list_items", return_value=[]),
+            patch.object(service.repo, "list_packing_list_items", return_value=[{"id": "item-1"}]),
             patch.object(service.repo, "update_packing_list_status", return_value=updated),
             patch.object(service, "log_audit"),
             patch.object(service, "notify_staff") as mock_notify,
@@ -512,7 +512,7 @@ class TestBulkSubmit:
             )
 
         assert result["succeeded"] == ["pl-1"]
-        mock_set.assert_called_once_with(_BULK_TENANT_ID, ["pl-1"], "pending_approval", "staff-1")
+        mock_set.assert_called_once_with(_BULK_TENANT_ID, ["pl-1"], "pending_approval", "staff-1", expected_status="draft")
         reasons = {f["id"]: f["reason"] for f in result["failed"]}
         assert reasons == {
             "pl-2": "wrong_status:pending_approval",

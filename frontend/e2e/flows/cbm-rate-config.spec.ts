@@ -77,7 +77,7 @@ test.describe('CBM rate config', () => {
     await expect(input).toHaveValue('52')
     await page.getByRole('button', { name: 'Update rate' }).click()
 
-    await expect(page.getByText('CBM rate updated successfully.')).toBeVisible()
+    await expect(page.getByText('CBM rate updated')).toBeVisible()
     await expect(page.getByText('$52.00 per CBM')).toBeVisible()
 
     // Real reload — confirm the persisted value round-trips through a

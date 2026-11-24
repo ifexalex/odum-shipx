@@ -20,11 +20,11 @@ from typing import Any
 
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.pagination import parse_pagination_params
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
@@ -79,13 +79,14 @@ def sms_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 def _process_sms(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
     bind_log_context(tenant_id=tenant_id or None)
-    event_type = body.get("event_type", "")
-    recipient = body.get("recipient") or {}
+    event_type = body.get("event_type") or body.get("template_id") or ""
+    raw_recipient = body.get("recipient")
+    recipient = {"phone": raw_recipient} if isinstance(raw_recipient, str) else (raw_recipient or {})
     phone = recipient.get("phone", "")
     recipient_name = recipient.get("name")
     customer_id = body.get("customer_id")
     branding = extract_branding(body)
-    template_data = body.get("template_data") or {}
+    template_data = body.get("template_data") or body.get("template_vars") or {}
     locale = body.get("locale", "en")
 
     if not phone:
@@ -98,7 +99,7 @@ def _process_sms(body: dict[str, Any]) -> None:
     retry_of = body.get("_retry_of_log_id")
     template_override = (body.get("template_override") or {}).get("sms")
     message = service.format_sms(event_type, branding, template_data, template_override=template_override, locale=locale)
-    log_id = service.log_queued(
+    log_id = body.get("_queued_log_id") or service.log_queued(
         tenant_id,
         "sms",
         event_type,
@@ -149,13 +150,14 @@ def whatsapp_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 def _process_whatsapp(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
     bind_log_context(tenant_id=tenant_id or None)
-    event_type = body.get("event_type", "")
-    recipient = body.get("recipient") or {}
-    phone = recipient.get("phone", "")
+    event_type = body.get("event_type") or body.get("template_id") or ""
+    raw_recipient = body.get("recipient")
+    recipient = {"phone": raw_recipient} if isinstance(raw_recipient, str) else (raw_recipient or {})
+    phone = recipient.get("whatsapp") or recipient.get("phone", "")
     recipient_name = recipient.get("name")
     customer_id = body.get("customer_id")
     branding = extract_branding(body)
-    template_data = body.get("template_data") or {}
+    template_data = body.get("template_data") or body.get("template_vars") or {}
 
     if not phone:
         logger.warning(
@@ -173,7 +175,7 @@ def _process_whatsapp(body: dict[str, Any]) -> None:
         template_name = service.WA_TEMPLATE_MAP_ZH.get(event_type, "generic_notification_zh")
     else:
         template_name = service.WA_TEMPLATE_MAP.get(event_type, "generic_notification")
-    log_id = service.log_queued(
+    log_id = body.get("_queued_log_id") or service.log_queued(
         tenant_id,
         "whatsapp",
         event_type,
@@ -191,6 +193,21 @@ def _process_whatsapp(body: dict[str, Any]) -> None:
         # Meta's message id is what the delivery-status webhook matches on —
         # storing "" here meant every delivered/failed callback matched nothing.
         provider_message_id = service.send_whatsapp(phone, template_name, components, tenant_id, service.wa_language_code(locale))
+        if not provider_message_id:
+            # send_whatsapp returns "" without raising when the Meta credentials
+            # are missing or the recipient is suppressed. This used to fall
+            # straight through to log_sent + record_usage, which meant: the log
+            # said "sent" when nothing was sent, the tenant was metered for a
+            # message that never left, and — because no exception was raised —
+            # the SMS fallback below never fired, so the customer got nothing on
+            # either channel. The staff-facing invite screen said it had gone.
+            service.log_failed(tenant_id, log_id, "WhatsApp not sent (provider unconfigured or recipient suppressed)")
+            if log_id:
+                try:
+                    service.trigger_sms_fallback(tenant_id, log_id, "whatsapp_unconfigured")
+                except Exception:
+                    logger.exception("SMS fallback failed after unconfigured WhatsApp send")
+            return
         service.log_sent(tenant_id, log_id, "meta_whatsapp", provider_message_id, {})
         record_usage(tenant_id, "whatsapp_sent")
     except Exception as exc:
@@ -232,13 +249,14 @@ def email_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 def _process_email(body: dict[str, Any]) -> None:
     tenant_id = body.get("tenant_id", "")
     bind_log_context(tenant_id=tenant_id or None)
-    event_type = body.get("event_type", "")
-    recipient = body.get("recipient") or {}
+    event_type = body.get("event_type") or body.get("template_id") or ""
+    raw_recipient = body.get("recipient")
+    recipient = {"email": raw_recipient} if isinstance(raw_recipient, str) else (raw_recipient or {})
     to_email = recipient.get("email", "")
     to_name = recipient.get("name")
     customer_id = body.get("customer_id")
     branding = extract_branding(body)
-    template_data = body.get("template_data") or {}
+    template_data = body.get("template_data") or body.get("template_vars") or {}
 
     if not to_email:
         logger.warning(
@@ -250,16 +268,24 @@ def _process_email(body: dict[str, Any]) -> None:
     retry_of = body.get("_retry_of_log_id")
     locale = body.get("locale", "en")
     email_overrides = (body.get("template_override") or {}).get("email") or {}
-    if email_overrides.get("subject"):
-        subject = email_overrides["subject"]
-    elif locale == "zh":
-        subject = service.EMAIL_SUBJECTS_ZH.get(event_type, service._DEFAULT_EMAIL_SUBJECT_ZH)
-    else:
-        subject = service.EMAIL_SUBJECTS.get(event_type, service._DEFAULT_EMAIL_SUBJECT)
-    body_override = email_overrides.get("body")
-    html_body = body_override or service.render_email_html(branding, event_type, to_name, template_data)
-    text_body = service.render_email_text(branding, event_type, to_name, template_data)
-    log_id = service.log_queued(
+    subject = service.email_subject(event_type, branding, template_data, email_overrides.get("subject"), locale)
+    # A tenant's custom body was previously used as-is, so its `{name}` and
+    # `{invite_link}` placeholders were emailed literally — the link arrived as
+    # the eight characters "{invite_link}". It now goes through the same
+    # substitution the SMS path has always used.
+    html_body = ""
+    if email_overrides.get("body"):
+        html_body = service.render_email_override(email_overrides["body"], branding, template_data)
+    if not html_body:
+        # Either no override, or one whose placeholders could not be
+        # substituted — an empty body must never be what goes out.
+        html_body = service.render_email_html(branding, event_type, to_name, template_data, locale)
+    # The text alternative is derived from the same override, so the two parts
+    # of a multipart message cannot disagree about what was sent.
+    text_body = service.render_email_text(
+        branding, event_type, to_name, template_data, locale, body_override=email_overrides.get("body")
+    )
+    log_id = body.get("_queued_log_id") or service.log_queued(
         tenant_id,
         "email",
         event_type,
@@ -333,10 +359,37 @@ def _handle_whatsapp_delivery_status(event: dict[str, Any]) -> dict[str, Any]:
     delivered/read/failed status arrives. Always returns 200 — Meta retries on
     non-2xx responses which creates duplicate events.
     """
+    import base64
+    import hashlib
+    import hmac
     import json as _json
+    import os
+
+    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items() if isinstance(k, str)}
+    sig_header = str(headers.get("x-hub-signature-256") or "")
+    app_secret = os.environ.get("META_WHATSAPP_APP_SECRET", "").strip()
+    raw_body_str = event.get("body") or ""
+    if event.get("isBase64Encoded") and isinstance(raw_body_str, str):
+        try:
+            raw_bytes = base64.b64decode(raw_body_str)
+            raw_body_str = raw_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            logger.warning("Failed to base64-decode WhatsApp webhook body")
+            return {"statusCode": 400, "body": "Bad Request"}
+    else:
+        raw_bytes = raw_body_str.encode("utf-8") if isinstance(raw_body_str, str) else raw_body_str
+
+    if app_secret or service._is_production():
+        if not app_secret or not sig_header.startswith("sha256="):
+            logger.warning("WhatsApp webhook missing secret or X-Hub-Signature-256 header")
+            return {"statusCode": 401, "body": "Unauthorized"}
+        expected_sig = "sha256=" + hmac.new(app_secret.encode("utf-8"), raw_bytes, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig_header, expected_sig):
+            logger.warning("WhatsApp webhook signature mismatch")
+            return {"statusCode": 401, "body": "Unauthorized"}
 
     try:
-        body = _json.loads(event.get("body") or "{}")
+        body = _json.loads(raw_body_str or "{}")
         for entry in body.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
@@ -437,8 +490,14 @@ def http_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+            )
             if cached:
                 return cached
 
@@ -456,7 +515,14 @@ def http_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             response = _dispatch_log(event, method, path, tenant_ctx, request_id)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -496,8 +562,7 @@ def _dispatch_log(
         filters = {
             k: qp[k] for k in ("channel", "status", "event_type", "customer_id", "created_after", "created_before") if qp.get(k)
         }
-        limit = int(qp.get("limit", 20))
-        cursor = decode_cursor(qp.get("cursor"))
+        cursor, limit = parse_pagination_params(qp)
         page, next_cursor, has_more = service.list_logs(ctx.tenant_id, filters, limit, cursor)
         return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -536,8 +601,7 @@ def _dispatch_staff_notifications(
 
     # GET /v1/notifications/staff
     if sub is None and method == "GET":
-        limit = int(qp.get("limit", 20))
-        cursor = decode_cursor(qp.get("cursor"))
+        cursor, limit = parse_pagination_params(qp)
         unread_only = qp.get("unread_only") == "true"
         page, next_cursor, has_more = service.list_staff_notifications(
             ctx.tenant_id,
@@ -615,8 +679,7 @@ def _dispatch_customer_notifications(
 
     # GET /v1/notifications/customer
     if sub is None and method == "GET":
-        limit = int(qp.get("limit", 20))
-        cursor = decode_cursor(qp.get("cursor"))
+        cursor, limit = parse_pagination_params(qp)
         unread_only = qp.get("unread_only") == "true"
         page, next_cursor, has_more = service.list_staff_notifications(
             ctx.tenant_id,
@@ -695,7 +758,7 @@ def _handle_send_announcement(event: dict[str, Any], ctx: Any, request_id: str) 
     body = _parse_body(event)
     req = parse_validated(SendAnnouncementRequest, body)
 
-    if ctx.role == UserRole.NIGERIA_OFFICE_STAFF:
+    if not ctx.has_role(UserRole.TENANT_ADMIN):
         if req.audience != AnnouncementAudience.all_customers:
             from shared.exceptions import InsufficientPermissionsError
 
@@ -718,7 +781,7 @@ def _handle_send_announcement(event: dict[str, Any], ctx: Any, request_id: str) 
         body=req.body,
         audience=req.audience.value,
         actor_id=ctx.user_id,
-        actor_role=str(ctx.role),
+        actor_role=str(UserRole.TENANT_ADMIN),
     )
     return created(result, location="/v1/notifications/announce", request_id=request_id)
 
@@ -772,8 +835,7 @@ def _dispatch_announcements(
     # GET /v1/notifications/announcements/pending
     if sub == "pending" and p4 is None and method == "GET":
         ctx.assert_role(UserRole.TENANT_ADMIN)
-        limit = int(qp.get("limit", 20))
-        cursor = decode_cursor(qp.get("cursor"))
+        cursor, limit = parse_pagination_params(qp)
         page, next_cursor, has_more = service.list_pending_announcement_requests(ctx.tenant_id, limit, cursor)
         return paginated(page, next_cursor, has_more, request_id=request_id)
 

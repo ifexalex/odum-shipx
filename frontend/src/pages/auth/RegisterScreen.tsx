@@ -9,6 +9,10 @@
  * forced through the set-new-password flow (NEW_PASSWORD_REQUIRED).
  * So this screen collects profile + consent only — no password fields.
  *
+ * The confirmation never says whether the email was already registered: the
+ * backend answers both the same way (audit SEC-04), so a visitor cannot use this
+ * form to find out who is a customer of a given company.
+ *
  * Ground-truth fix: this used to resolve the tenant from the Host header,
  * which is unreachable in practice (the frontend calls a shared
  * VITE_API_BASE_URL, so the backend only ever sees API Gateway's own host).
@@ -16,10 +20,10 @@
  * sent explicitly; no more hostname guessing.
  */
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { registerApi } from '../../api/customer'
-import { Banner, Button, Check, Field, Icon, PhoneField } from '../../design/components'
+import { Banner, Button, Check, Field, Icon, Modal, PhoneField, Pressable, CheckboxField } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -36,11 +40,13 @@ export function RegisterScreen(): JSX.Element {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
-  const [channels, setChannels] = useState<string[]>(['sms', 'whatsapp', 'email'])
+  // Nothing ticked until the person ticks it: a pre-ticked box is not consent (FD-30, SEC-01).
+  const [channels, setChannels] = useState<string[]>([])
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [legalModal, setLegalModal] = useState<'terms' | 'privacy' | null>(null)
 
   function toggleChannel(key: string): void {
     setChannels((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]))
@@ -64,11 +70,10 @@ export function RegisterScreen(): JSX.Element {
       })
       setDone(true)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setError('An account with this email already exists. Try signing in instead.')
-      } else {
-        setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.')
-      }
+      // There is no "this email already exists" case to report: the backend answers a taken email
+      // exactly like a new one (and emails its owner), so the form cannot be used to find out who
+      // has an account.
+      setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -87,20 +92,21 @@ export function RegisterScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Account created.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 24 }}>
-            We sent a <strong>temporary password</strong> to <strong>{email}</strong>. Sign in with it
-            and you&apos;ll be asked to choose your own password.
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
+            We&apos;ve sent a message to <strong>{email}</strong>. If this is your first time, it has a{' '}
+            <strong>temporary password</strong>: sign in with it and you&apos;ll be asked to choose your own.
+            If you already have an account, it tells you so, with a link to sign in.
           </p>
           <Banner variant="info" title="Didn't receive the email?">
-            Check your spam folder. The temporary password expires in 7 days.
+            Check your spam folder. A temporary password expires in 7 days.
           </Banner>
-          <div style={{ marginTop: 24 }}>
+          <div style={{ marginTop: 'var(--space-6)' }}>
             <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
               Back to sign in
             </Button>
@@ -110,34 +116,45 @@ export function RegisterScreen(): JSX.Element {
     )
   }
 
+  if (!slug) {
+    return (
+      <AuthShell>
+        <FormHead
+          title="Create your customer account"
+          sub="For customers of a shipping company: track your shipments and pay your invoices."
+        />
+        <div style={{ marginBottom: 'var(--space-6)' }}>
+          {/* Only why the form cannot be sent from here; companies are no longer sent to this page (FD-30). */}
+          <Banner variant="info" title="Use your shipping company's link">
+            Sign up through the link your shipping company sent you, or wait for their invite. It connects your
+            account to them.
+          </Banner>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
+            Back to sign in
+          </Button>
+          <Button variant="secondary" size="lg" full onClick={() => navigate('/track')}>
+            Track a shipment without an account
+          </Button>
+        </div>
+        <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
+          Running a shipping company?{' '}
+          <Link to="/get-started" className={styles.link}>Request access</Link>
+        </p>
+      </AuthShell>
+    )
+  }
+
   return (
     <AuthShell>
       <FormHead
         title="Create your customer account"
-        sub="For customers of a shipping company — track your shipments and manage billing. Not onboarding a company?"
+        sub="For customers of a shipping company: track your shipments and pay your invoices."
       />
 
-      {!slug && (
-        <div style={{ marginBottom: 20 }}>
-          <Banner variant="warning" title="Which are you?">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <span>
-                <strong>A customer</strong> of a shipping company? Use the company-specific sign-up link your
-                shipping company gave you, or wait for their invite.
-              </span>
-              <span>
-                <strong>A shipping company</strong> wanting to run your operations on ShipX?{' '}
-                <button type="button" className={styles.link} onClick={() => navigate('/get-started')}>
-                  Get started here →
-                </button>
-              </span>
-            </div>
-          </Banner>
-        </div>
-      )}
-
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Registration failed">{error}</Banner>
         </div>
       )}
@@ -179,39 +196,80 @@ export function RegisterScreen(): JSX.Element {
           optional
         />
 
-        <div style={{ marginBottom: 16 }}>
-          <span style={{ display: 'block', fontWeight: 500, fontSize: 13, color: 'var(--color-ink-2)', marginBottom: 8 }}>
-            Notify me via
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <span style={{ display: 'block', fontWeight: 500, fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', marginBottom: 'var(--space-1)' }}>
+            Send me optional messages via
           </span>
-          <div style={{ display: 'flex', gap: 16 }}>
+          <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginBottom: 'var(--space-2)', lineHeight: 'var(--leading-body)' }}>
+            Announcements and offers. Updates about your shipments, invoices and claims, and account emails, are always sent.
+          </span>
+          <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
             {CHANNELS.map(({ key, label }) => (
-              <label key={key} className={styles.rememberLabel}>
-                <Check checked={channels.includes(key)} onChange={() => toggleChannel(key)} />
-                {label}
-              </label>
+              <CheckboxField key={key} className={styles.rememberLabel} label={label} checked={channels.includes(key)} onChange={() => toggleChannel(key)} />
             ))}
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, margin: '8px 0 24px' }}>
-          <Check checked={agreed} onChange={setAgreed} />
-          <span style={{ fontSize: 13, color: 'var(--color-ink-2)', lineHeight: 1.5 }}>
-            I agree to the <a className={styles.link} href="#terms">Terms of Service</a> and{' '}
-            <a className={styles.link} href="#privacy">Privacy Policy</a>.
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', margin: 'var(--space-2) 0 var(--space-6)' }}>
+          <Check label="I agree to the Terms of Service and Privacy Policy" checked={agreed} onChange={setAgreed} />
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', lineHeight: 'var(--leading-body)' }}>
+            I agree to the{' '}
+            <Pressable className={styles.link} onClick={() => setLegalModal('terms')}>Terms of Service</Pressable>
+            {' '}and{' '}
+            <Pressable className={styles.link} onClick={() => setLegalModal('privacy')}>Privacy Policy</Pressable>.
           </span>
         </div>
 
-        <Button type="submit" variant="accent" size="lg" full loading={submitting} disabled={!agreed || !slug}>
+        <Button type="submit" variant="accent" size="lg" full loading={submitting} disabled={!agreed}>
           Create account
         </Button>
       </form>
 
-      <p className={styles.footerLine} style={{ marginTop: 20 }}>
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Already have an account?{' '}
-        <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/login')}>
-          Sign in →
-        </button>
+        <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
       </p>
+      <p className={styles.footerLine}>
+        Running a shipping company?{' '}
+        <Link to="/get-started" className={styles.link}>Request access</Link>
+      </p>
+
+      <Modal
+        open={legalModal !== null}
+        onClose={() => setLegalModal(null)}
+        title={legalModal === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
+        size="sm"
+        footer={
+          <Button variant="primary" onClick={() => setLegalModal(null)}>
+            Close
+          </Button>
+        }
+      >
+        {legalModal === 'terms' ? (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', lineHeight: 'var(--leading-body)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <p style={{ margin: 0 }}>
+              Your ShipX customer account gives you access to shipment tracking, invoices, release notes, and
+              claims managed by your shipping company.
+            </p>
+            <p style={{ margin: 0 }}>
+              Keep your sign-in credentials and warehouse pickup codes confidential. Freight rates, customs clearance,
+              storage fees, and delivery terms are set directly by your shipping company.
+            </p>
+          </div>
+        ) : (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', lineHeight: 'var(--leading-body)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <p style={{ margin: 0 }}>
+              We collect your name, email address, phone number, and optional WhatsApp number solely to manage
+              your shipments, billing, release notes, and account security with your shipping company.
+            </p>
+            <p style={{ margin: 0 }}>
+              Transactional shipment and invoice notifications are sent automatically. Optional announcements and
+              offers are only sent via channels you explicitly opt into, and you may update your preferences or
+              request data export/erasure (NDPR / GDPR) at any time.
+            </p>
+          </div>
+        )}
+      </Modal>
     </AuthShell>
   )
 }

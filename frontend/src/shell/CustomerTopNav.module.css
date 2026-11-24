@@ -1,11 +1,14 @@
 .topnav {
+  position: sticky;
+  top: 0;
+  z-index: var(--layer-sticky);
   background: var(--color-primary);
   color: var(--color-on-brand);
-  height: 72px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32px;
+  padding: 0 var(--space-8);
   font-family: var(--font-body);
   flex-shrink: 0;
   box-shadow: var(--shadow-rest);
@@ -14,43 +17,47 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 .links {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
   align-items: center;
 }
 
 .navLink {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 16px;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 var(--space-4);
   border-radius: var(--radius-full);
   background: transparent;
   border: none;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--color-on-dark);
   font-family: var(--font-body);
   font-weight: 500;
-  font-size: 14px;
+  font-size: var(--text-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+.navLink:hover:not(.navLinkActive) {
+  background: var(--color-on-dark-fill);
 }
 
 .navLinkActive {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--color-on-dark-fill-strong);
   color: var(--color-on-brand);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .badge {
   background: var(--color-accent);
   color: var(--color-on-brand);
   border-radius: var(--radius-full);
-  padding: 1px 7px;
-  font-size: 10px;
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--text-xs);
   font-weight: 700;
   min-width: 18px;
   text-align: center;
@@ -59,7 +66,7 @@
 .right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .bellWrap {
@@ -72,7 +79,7 @@
   width: 38px;
   height: 38px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-on-dark-fill);
   border: none;
   display: flex;
   align-items: center;
@@ -87,12 +94,12 @@
   right: -2px;
   background: var(--color-accent);
   color: var(--color-on-brand);
-  border-radius: 999px;
-  font-size: 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
   font-weight: 700;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
+  padding: 0 var(--space-1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -107,15 +114,15 @@
   display: none;
   width: 38px;
   height: 38px;
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  background: var(--color-on-dark-fill);
   border: none;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
-  margin-right: 4px;
+  margin-right: var(--space-1);
 }
 .hamburger:focus-visible {
   outline: none;
@@ -125,8 +132,8 @@
 .drawerOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
-  z-index: 120;
+  background: var(--scrim-modal);
+  z-index: var(--layer-drawer);
 }
 
 .drawerPanel {
@@ -136,8 +143,8 @@
   box-shadow: var(--shadow-modal);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 20px 12px;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-3);
   animation: drawerIn 0.18s ease-out;
 }
 
@@ -153,9 +160,9 @@
 .drawerBrand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 12px 16px;
-  color: var(--color-primary);
+  gap: var(--space-3);
+  padding: 0 var(--space-3) var(--space-4);
+  color: var(--color-primary-text);
 }
 
 /* Dark-on-light nav links inside the drawer panel, overriding the
@@ -166,16 +173,16 @@
   justify-content: flex-start;
   width: 100%;
   height: 48px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
 }
 .drawerPanel .navLinkActive {
   background: var(--color-primary-soft);
-  color: var(--color-primary-deep);
+  color: var(--color-primary-on-soft);
 }
 
 @container sxapp (max-width: 860px) {
   .topnav {
-    padding: 0 16px;
+    padding: 0 var(--space-4);
   }
   .hamburger {
     display: inline-flex;

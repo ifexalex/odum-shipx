@@ -15,8 +15,9 @@ import logging
 from decimal import Decimal
 from typing import Any
 
-from shared.db import execute_with_tenant, execute_write_with_tenant
-from shared.encryption import decrypt_field
+from shared.billing_money import settle_overpayment_refund
+from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
+from shared.encryption import decrypt_field, encrypt_field
 from shared.pagination import build_paginated_query, extract_page
 
 logger = logging.getLogger(__name__)
@@ -25,13 +26,14 @@ logger = logging.getLogger(__name__)
 def _decrypt_refund_row(row: dict[str, Any]) -> dict[str, Any]:
     """Decrypt sensitive bank-detail fields before returning a refund_request row.
 
-    account_number / account_name / bank_name are encrypted at rest using
+    account_number / account_name are encrypted at rest using
     envelope encryption (shared.encryption). This must be called on every
     row returned from refund_request SELECTs so callers always receive
     plaintext values.
 
-    NOTE: When a "capture bank details" write path is added, the values
-    MUST be passed through encrypt_field() before the INSERT/UPDATE.
+    account_number / account_name are written through encrypt_field() by
+    create_refund_request (the customer refund form, 2026-11-19); bank_name is
+    not sensitive and is stored as typed.
     """
     return {
         **row,
@@ -51,6 +53,8 @@ _STATUS_EXTRA_FIELDS = frozenset(
         "approval_level",
         "approved_by",
         "approved_at",
+        "processed_by",
+        "processed_at",
         "rejected_by",
         "rejection_reason",
     }
@@ -79,7 +83,12 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | No
 def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT id, customer_id, balance_ngn FROM billing WHERE tenant_id = %s AND id = %s LIMIT 1",
+        """
+        SELECT id, customer_id, status, total_ngn, amount_paid_ngn, balance_ngn
+        FROM billing
+        WHERE tenant_id = %s AND id = %s
+        LIMIT 1
+        """,
         (tenant_id, billing_id),
     )
     return rows[0] if rows else None
@@ -88,10 +97,41 @@ def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
 def get_damage_claim_by_id(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT id FROM damage_claim WHERE tenant_id = %s AND id = %s LIMIT 1",
+        "SELECT id, customer_id, status FROM damage_claim WHERE tenant_id = %s AND id = %s LIMIT 1",
         (tenant_id, claim_id),
     )
     return rows[0] if rows else None
+
+
+def sum_active_refunds_for_billing(
+    tenant_id: str,
+    billing_id: str,
+    *,
+    refund_types: tuple[str, ...] | None = None,
+) -> Decimal:
+    """Sum non-rejected refund amounts already linked to a billing record."""
+    if refund_types:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT COALESCE(SUM(COALESCE(amount_approved_ngn, amount_ngn)), 0) AS total
+            FROM refund_request
+            WHERE tenant_id = %s AND billing_id = %s AND status != 'rejected'
+              AND refund_type = ANY(%s)
+            """,
+            (tenant_id, billing_id, list(refund_types)),
+        )
+    else:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT COALESCE(SUM(COALESCE(amount_approved_ngn, amount_ngn)), 0) AS total
+            FROM refund_request
+            WHERE tenant_id = %s AND billing_id = %s AND status != 'rejected'
+            """,
+            (tenant_id, billing_id),
+        )
+    return Decimal(str(rows[0]["total"])) if rows else Decimal("0")
 
 
 # ---------------------------------------------------------------------------
@@ -106,14 +146,22 @@ def create_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any
         INSERT INTO refund_request (
             tenant_id, customer_id, billing_id, damage_claim_id,
             refund_type, amount_ngn, reason, status,
-            customer_choice, requested_by
+            customer_choice, requested_by,
+            bank_name, account_number, account_name
         ) VALUES (
             %(tenant_id)s, %(customer_id)s, %(billing_id)s, %(damage_claim_id)s,
             %(refund_type)s, %(amount_ngn)s, %(reason)s, %(status)s,
-            %(customer_choice)s, %(requested_by)s
+            %(customer_choice)s, %(requested_by)s,
+            %(bank_name)s, %(account_number)s, %(account_name)s
         ) RETURNING *
         """,
-        data,
+        {
+            "bank_name": None,
+            **data,
+            # PII: encrypted at rest (migration 013, widened to TEXT by 071).
+            "account_number": encrypt_field(data.get("account_number")),
+            "account_name": encrypt_field(data.get("account_name")),
+        },
     )
     if row is None:
         return {}
@@ -121,9 +169,25 @@ def create_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any
 
 
 def get_refund_request_by_id(tenant_id: str, refund_id: str) -> dict[str, Any] | None:
+    """One refund request, with the names a reader needs instead of ids (FD-17).
+
+    Joins the customer's name, the invoice number and the damage claim's reference, each scoped to the same tenant, so
+    the detail page shows "Ngozi Adeyemi", "INV-A-002" and "DC-20261113-001" rather than three UUIDs.
+    """
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT * FROM refund_request WHERE tenant_id = %s AND id = %s LIMIT 1",
+        """
+        SELECT r.*,
+               c.name          AS customer_name,
+               b.invoice_number AS invoice_number,
+               d.reference     AS claim_reference
+          FROM refund_request r
+          LEFT JOIN customer c ON c.id = r.customer_id AND c.tenant_id = r.tenant_id
+          LEFT JOIN billing b ON b.id = r.billing_id AND b.tenant_id = r.tenant_id
+          LEFT JOIN damage_claim d ON d.id = r.damage_claim_id AND d.tenant_id = r.tenant_id
+         WHERE r.tenant_id = %s AND r.id = %s
+         LIMIT 1
+        """,
         (tenant_id, refund_id),
     )
     return _decrypt_refund_row(rows[0]) if rows else None
@@ -135,22 +199,31 @@ def list_refund_requests(
     limit: int = 50,
     cursor: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    conditions = ["tenant_id = %(tenant_id)s"]
+    conditions = ["r.tenant_id = %(tenant_id)s"]
     extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("status"):
-        conditions.append("status = %(status)s")
+        conditions.append("r.status = %(status)s")
         extra["status"] = filters["status"]
     if filters.get("customer_id"):
-        conditions.append("customer_id = %(customer_id)s")
+        conditions.append("r.customer_id = %(customer_id)s")
         extra["customer_id"] = filters["customer_id"]
 
-    base = f"SELECT * FROM refund_request WHERE {' AND '.join(conditions)}"
-    query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
+    base = (
+        "SELECT r.*, c.name AS customer_name, b.invoice_number AS invoice_number, d.reference AS claim_reference "
+        "FROM refund_request r "
+        "LEFT JOIN customer c ON c.id = r.customer_id AND c.tenant_id = r.tenant_id "
+        "LEFT JOIN billing b ON b.id = r.billing_id AND b.tenant_id = r.tenant_id "
+        "LEFT JOIN damage_claim d ON d.id = r.damage_claim_id AND d.tenant_id = r.tenant_id "
+        f"WHERE {' AND '.join(conditions)}"
+    )
+    query, params = build_paginated_query(base, cursor, limit, sort_field="r.created_at")
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
     page, cursor_out, has_more = extract_page(rows, limit)
-    return [_decrypt_refund_row(r) for r in page], cursor_out, has_more
+    # Never bulk-decrypt bank PII on list views (avoids 2*N KMS decrypts & bulk PII exposure).
+    sanitized = [{**r, "account_number": None, "account_name": None} for r in page]
+    return sanitized, cursor_out, has_more
 
 
 def update_refund_status(
@@ -158,9 +231,19 @@ def update_refund_status(
     refund_id: str,
     status: str,
     extra: dict[str, Any] | None = None,
+    expected_status: str | None = None,
 ) -> dict[str, Any]:
-    """Update refund_request status + optional allowlisted extra fields."""
+    """Update refund_request status + optional allowlisted extra fields.
+
+    With ``expected_status`` the update only applies if the refund is still in that
+    status, so two requests cannot both move it. Returns ``{}`` when nothing was
+    updated (not found, or no longer in ``expected_status``).
+    """
     params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": refund_id}
+    guard = ""
+    if expected_status is not None:
+        guard = " AND status = %(expected_status)s"
+        params["expected_status"] = expected_status
     extra_clause = ""
     if extra:
         safe = {k: v for k, v in extra.items() if k in _STATUS_EXTRA_FIELDS and v is not None}
@@ -173,7 +256,7 @@ def update_refund_status(
         f"""
         UPDATE refund_request
         SET status = %(status)s, updated_at = NOW(){extra_clause}
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s{guard}
         RETURNING *
         """,
         params,
@@ -181,6 +264,36 @@ def update_refund_status(
     if row is None:
         return {}
     return _decrypt_refund_row(row)
+
+
+def approve_refund_and_adjust_billing(
+    tenant_id: str,
+    refund_id: str,
+    final_status: str,
+    extra: dict[str, Any],
+    billing_id: str | None,
+    reduction_ngn: Decimal | None,
+) -> dict[str, Any]:
+    """Approve a refund and, for an overpayment/CBM-correction refund, settle excess cash atomically.
+
+    The refund moves out of ``pending_approval`` only if it is still there, so two
+    approvals cannot both settle the invoice. For overpayment/CBM-correction refunds,
+    ``settle_overpayment_refund`` reduces ``amount_paid_ngn`` by at most the current
+    overpayment excess (flipping ``overpaid`` back to ``paid``) without modifying
+    ``total_ngn`` or spawning a cascading overpayment refund.
+
+    Returns:
+        The updated refund row, or ``{}`` if it is no longer ``pending_approval``.
+    """
+    with tenant_transaction(tenant_id):
+        row = update_refund_status(tenant_id, refund_id, final_status, extra=extra, expected_status="pending_approval")
+        if not row:
+            return {}
+        if reduction_ngn and billing_id:
+            settled = settle_overpayment_refund(tenant_id, billing_id, reduction_ngn)
+            if settled is None:
+                raise RuntimeError(f"billing {billing_id} not found in tenant")
+    return row
 
 
 # ---------------------------------------------------------------------------
@@ -250,40 +363,3 @@ def get_refund_threshold_config(tenant_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Billing adjustment — on immediate refund approval
 # ---------------------------------------------------------------------------
-
-
-def reduce_billing_total(tenant_id: str, billing_id: str, reduction_amount: Any) -> dict[str, Any] | None:
-    """Subtract reduction_amount from billing.total_ngn; balance_ngn is GENERATED."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET total_ngn  = total_ngn - %(amount)s,
-            updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
-        RETURNING *
-        """,
-        {
-            "tenant_id": tenant_id,
-            "id": billing_id,
-            "amount": reduction_amount,
-        },
-    )
-
-
-def create_overpayment_refund_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    row = execute_write_with_tenant(
-        tenant_id,
-        """
-        INSERT INTO refund_request (
-            tenant_id, customer_id, billing_id, amount_ngn, reason, status
-        ) VALUES (
-            %(tenant_id)s, %(customer_id)s, %(billing_id)s,
-            %(amount_ngn)s, %(reason)s, 'pending_review'
-        ) RETURNING *
-        """,
-        data,
-    )
-    if row is None:
-        return {}
-    return _decrypt_refund_row(row)

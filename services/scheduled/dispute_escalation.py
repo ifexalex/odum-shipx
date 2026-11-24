@@ -15,7 +15,7 @@ from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.events import publish_event
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -46,6 +46,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             escalated += count
         except Exception:
             logger.exception("Dispute escalation failed for tenant %s", tenant_id)
+            record_failure("scheduled_job_step")
             errors += 1
 
     logger.info(
@@ -79,8 +80,7 @@ def _process_tenant(tenant_id: str) -> int:
                 updated_at = updated_at.replace(tzinfo=UTC)
             days_investigating = (now - updated_at).days
 
-            if days_investigating >= auto_escalate_days:
-                _escalate_dispute(tenant_id, dispute)
+            if days_investigating >= auto_escalate_days and _escalate_dispute(tenant_id, dispute) is not False:
                 escalated += 1
         except Exception:
             logger.exception(
@@ -88,24 +88,29 @@ def _process_tenant(tenant_id: str) -> int:
                 dispute["id"],
                 extra={"tenant_id": tenant_id},
             )
+            record_failure("scheduled_job_step")
 
     return escalated
 
 
-def _escalate_dispute(tenant_id: str, dispute: dict[str, Any]) -> None:
+def _escalate_dispute(tenant_id: str, dispute: dict[str, Any]) -> bool:
     dispute_id = str(dispute["id"])
 
-    execute_write_with_tenant(
+    updated = execute_write_with_tenant(
         tenant_id,
         """
         UPDATE cbm_dispute
-        SET status     = 'escalated',
-            updated_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        SET status     = 'escalated_china',
+             updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND status IN ('investigating', 'under_review')
         RETURNING id
         """,
         {"tenant_id": tenant_id, "id": dispute_id},
     )
+    if not updated:
+        return False
 
     publish_event(
         source="logistics.scheduled",
@@ -127,18 +132,24 @@ def _escalate_dispute(tenant_id: str, dispute: dict[str, Any]) -> None:
         dispute_id,
         extra={"tenant_id": tenant_id},
     )
+    return True
 
 
 def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
     """Enqueue notifications to admin-level recipients via platform SQS."""
-    # Fetch tenant admin contact info for notification routing
+    # Fetch tenant admin contact info for notification routing (including multi-role assignments)
     admins = execute_with_tenant(
         tenant_id,
         """
-        SELECT tu.email, tu.locale
+        SELECT DISTINCT tu.email, tu.locale
         FROM tenant_user tu
+        LEFT JOIN tenant_user_role tur
+          ON tur.user_id = tu.id AND tur.tenant_id = tu.tenant_id
         WHERE tu.tenant_id = %s
-          AND tu.role IN ('tenant_admin', 'china_office_staff')
+          AND (
+              tu.role IN ('tenant_admin', 'china_office_staff')
+              OR tur.role IN ('tenant_admin', 'china_office_staff')
+          )
           AND tu.status = 'active'
         LIMIT 10
         """,
@@ -147,6 +158,8 @@ def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
 
     template_vars = {
         "dispute_id": str(dispute["id"]),
+        "reference_number": str(dispute.get("reference_number") or dispute["id"]),
+        "status": "escalated_china",
         "disputed_cbm": str(dispute["disputed_cbm"]),
     }
 
@@ -212,7 +225,7 @@ def _get_investigating_disputes(tenant_id: str) -> list[dict[str, Any]]:
         """
         SELECT id, billing_id, customer_id, disputed_cbm, updated_at
         FROM cbm_dispute
-        WHERE tenant_id = %s AND status = 'under_review'
+        WHERE tenant_id = %s AND status IN ('investigating', 'under_review')
         ORDER BY updated_at ASC
         """,
         (tenant_id,),

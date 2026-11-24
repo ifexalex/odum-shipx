@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canApproveRefund, canRejectRefund, canReviewRefund, isTerminalRefundStatus, refundTypeLabel } from './refundsRules'
+import { bankDetailsProblem, canApproveRefund, canRejectRefund, canReviewRefund, isTerminalRefundStatus, refundTypeLabel } from './refundsRules'
 import type { Refund } from './refunds'
 
 function _refund(overrides: Partial<Refund> = {}): Refund {
@@ -95,3 +95,15 @@ describe('refundTypeLabel', () => {
     expect(refundTypeLabel(undefined as unknown as Refund['refund_type'])).toBe('Refund request')
   })
 })
+
+describe('bankDetailsProblem', () => {
+  const ok = { bankName: 'Zenith Bank', accountNumber: '0123456789', accountName: 'Ngozi Okonkwo' }
+  it('accepts a bank, a 10-digit number and a name', () => expect(bankDetailsProblem(ok)).toBeNull())
+  it('needs the bank', () => expect(bankDetailsProblem({ ...ok, bankName: ' ' })).toBe('Enter the name of your bank.'))
+  it('needs exactly 10 digits', () => {
+    expect(bankDetailsProblem({ ...ok, accountNumber: '012345678' })).toBe('Enter your 10-digit account number.')
+    expect(bankDetailsProblem({ ...ok, accountNumber: '01234567890' })).toBe('Enter your 10-digit account number.')
+  })
+  it('needs the account name', () => expect(bankDetailsProblem({ ...ok, accountName: '' })).toBe('Enter the name on the account.'))
+})
+

@@ -162,8 +162,8 @@ describe('BillingDetail', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
     })
     renderPage()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply carryover' })).toBeInTheDocument())
-    await userEvent.click(screen.getByRole('button', { name: 'Apply carryover' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'More invoice actions' }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Apply carryover' }))
     await waitFor(() =>
       expect(carryoverApi.list).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'outstanding', customer_id: 'cust1' }),
@@ -206,7 +206,7 @@ describe('BillingDetail', () => {
     const resolved = { ...DISPUTE_STUB, status: 'resolved_no_change' as const }
     const billingWithDispute = { ...BILLING_STUB, _active_disputes: [resolved] }
     renderPage('nigeria_office_staff', { billing: billingWithDispute })
-    await waitFor(() => expect(screen.getByText('Resolved — no change')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Resolved: no change')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Acknowledge' })).not.toBeInTheDocument()
   })
 
@@ -231,7 +231,7 @@ describe('BillingDetail', () => {
       }
     }
 
-    it('confirming a payment claim invalidates the billing query cache, not just local state', async () => {
+    it('confirming a payment claim requires confirmation and invalidates the billing query cache', async () => {
       vi.mocked(paymentClaimApi.listForBilling).mockResolvedValue([makeClaim()])
       vi.mocked(paymentClaimApi.confirm).mockResolvedValue(makeClaim({ status: 'confirmed' }))
       vi.mocked(billingApi.get).mockResolvedValue({ ...BILLING_STUB, payment_status: 'paid', outstanding_ngn: '0.00' })
@@ -240,9 +240,27 @@ describe('BillingDetail', () => {
 
       const confirmBtn = await screen.findByRole('button', { name: 'Confirm' })
       await userEvent.click(confirmBtn)
+      expect(paymentClaimApi.confirm).not.toHaveBeenCalled()
+
+      const dialog = screen.getByRole('dialog')
+      expect(within(dialog).getByText(/receipt\.jpg/)).toBeInTheDocument()
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm payment' }))
 
       await waitFor(() => expect(paymentClaimApi.confirm).toHaveBeenCalledWith('claim1'))
       await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['billing'] }))
+    })
+
+    it('keeps the invoice visible and shows an error banner when a payment claim action fails', async () => {
+      vi.mocked(paymentClaimApi.listForBilling).mockResolvedValue([makeClaim()])
+      vi.mocked(paymentClaimApi.confirm).mockRejectedValue(new Error('Network timeout'))
+      renderPage()
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Confirm' }))
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm payment' }))
+
+      expect(await screen.findByText('Could not confirm this payment claim.')).toBeInTheDocument()
+      // Invoice remains intact — not replaced by ErrorState
+      expect(screen.getByText('ACME001')).toBeInTheDocument()
     })
 
     it('rejecting a payment claim also invalidates the billing query cache', async () => {
@@ -252,8 +270,9 @@ describe('BillingDetail', () => {
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
       await userEvent.click(await screen.findByRole('button', { name: 'Reject' }))
-      await userEvent.type(screen.getByPlaceholderText('Reason for rejecting'), 'no funds received')
-      await userEvent.click(screen.getByRole('button', { name: 'Confirm reject' }))
+      const dialog = screen.getByRole('dialog')
+      await userEvent.type(within(dialog).getByPlaceholderText('Reason for rejecting'), 'no funds received')
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm reject' }))
 
       await waitFor(() => expect(paymentClaimApi.reject).toHaveBeenCalledWith('claim1', 'no funds received'))
       await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['billing'] }))
@@ -273,5 +292,45 @@ describe('BillingDetail', () => {
       await waitFor(() => expect(billingApi.recordPayment).toHaveBeenCalled())
       await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['billing'] }))
     })
+  })
+})
+
+describe('BillingDetail exchange-rate source (audit BE-11)', () => {
+  it('says when the invoice used the last known rate, and when it was fetched', async () => {
+    vi.mocked(billingApi.get).mockResolvedValue({
+      ...BILLING_STUB,
+      exchange_rate_source: 'last_known',
+      exchange_rate_fetched_at: '2026-11-16T08:00:00+00:00',
+    })
+    renderPage('nigeria_office_staff', null)
+    const note = await screen.findByRole('note')
+    expect(note).toHaveTextContent(/Last known market rate, fetched .*16 Nov.*9:00/)
+    expect(note).toHaveTextContent('The live rate could not be fetched when this invoice was issued.')
+  })
+
+  it.each([['live'], [null], [undefined]])('says nothing for a %s rate', async (source) => {
+    vi.mocked(billingApi.get).mockResolvedValue({ ...BILLING_STUB, exchange_rate_source: source as never })
+    renderPage('nigeria_office_staff', null)
+    await waitFor(() => expect(screen.getByText('ACME001')).toBeInTheDocument())
+    expect(screen.queryByText(/Last known market rate/)).not.toBeInTheDocument()
+  })
+})
+
+describe('BillingDetail next step (FD-23)', () => {
+  const headerOf = async (): Promise<HTMLElement> =>
+    (await screen.findByRole('heading', { level: 1 })).closest('[data-page-start]') as HTMLElement
+
+  it('leads with recording a payment while money is owed', async () => {
+    renderPage('nigeria_office_staff', { billing: BILLING_STUB })
+    expect(within(await headerOf()).getByRole('button', { name: 'Record payment' })).toBeInTheDocument()
+  })
+
+  it('leads with the release note once the invoice is paid', async () => {
+    renderPage('nigeria_office_staff', {
+      billing: { ...BILLING_STUB, payment_status: 'paid', total_paid_ngn: '174375.00', outstanding_ngn: '0' },
+    })
+    const header = await headerOf()
+    expect(within(header).getByRole('button', { name: 'Generate release note' })).toBeInTheDocument()
+    expect(within(header).queryByRole('button', { name: 'Record payment' })).toBeNull()
   })
 })

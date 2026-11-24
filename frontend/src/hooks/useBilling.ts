@@ -28,6 +28,7 @@ export function useBillingForCustomer(customerId: string) {
 export function useRecordPayment(billingId: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Payment recorded' },
     mutationFn: ({ body, idempotencyKey }: { body: RecordPaymentInput; idempotencyKey: string }) =>
       billingApi.recordPayment(billingId, body, idempotencyKey),
     onSuccess: () => {
@@ -40,6 +41,7 @@ export function useRecordPayment(billingId: string) {
 export function useFileDispute(billingId: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'CBM dispute filed' },
     mutationFn: (body: FileDisputeInput) => disputeApi.file(billingId, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: billingKeys.detail(billingId) })
@@ -51,6 +53,7 @@ export function useFileDispute(billingId: string) {
 export function useResolveDispute(disputeId: string, billingId: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Dispute resolved' },
     mutationFn: (body: ResolveCBMDisputeInput) => disputeApi.resolve(disputeId, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: billingKeys.detail(billingId) })

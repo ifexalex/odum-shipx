@@ -1,21 +1,24 @@
 .head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: var(--space-sm);
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .title {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 16px;
+  font-weight: 600;
+  font-size: var(--text-lg);
+  line-height: var(--text-lg-line);
   margin: 0;
   color: var(--color-ink);
-  letter-spacing: -0.005em;
+  letter-spacing: var(--tracking-tight);
 }
 
 .sub {
-  margin: 2px 0 0;
-  font-size: 12px;
+  margin: var(--space-0-5) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--text-xs-line);
   color: var(--color-ink-4);
 }

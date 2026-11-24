@@ -77,30 +77,29 @@ describe('StaffLayout', () => {
     )
     expect(screen.getByText('Dashboard content')).toBeInTheDocument()
     // Sidebar nav item for the current role.
-    expect(screen.getByText('Users')).toBeInTheDocument()
+    expect(screen.getByText('Staff')).toBeInTheDocument()
   })
 
-  it('shows a breadcrumb + TopBar title on a list route', () => {
+  it('adds no title of its own: the page’s PageHeader is the only heading (FD-14)', () => {
     renderLayout(
       makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated' }),
       '/containers',
       <div>Containers content</div>,
     )
-    // Breadcrumb (Operations / Containers) + TopBar h1 + sidebar nav all say "Containers"
-    expect(screen.getAllByText('Operations').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('Containers').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByRole('heading', { name: 'Containers' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull() // a top-level page
   })
 
-  it('suppresses the TopBar title on a form (…/new) route so the body PageHeader is the only heading', () => {
+  it('puts the breadcrumb at the top of the content, ahead of the page, even before the page has loaded', () => {
     renderLayout(
       makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated' }),
       '/containers/new',
       <div>Create form body</div>,
     )
-    // No TopBar <h1> title on form routes (title is blanked); breadcrumb still present.
-    expect(screen.queryByRole('heading', { name: 'Create container' })).toBeNull()
-    expect(screen.getByText('Create form body')).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(nav.closest('main')).not.toBeNull()
+    expect(nav.querySelector('a[href="/containers"]')).toHaveTextContent('Containers')
+    expect(nav.compareDocumentPosition(screen.getByText('Create form body')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('renders nothing when there is no session', () => {
@@ -108,7 +107,7 @@ describe('StaffLayout', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('switching the active role navigates to that role\'s home path, not just updating the sidebar', () => {
+  it('switching the active role navigates to that role\'s home path, not just updating the sidebar', async () => {
     const setActiveRole = vi.fn()
     renderLayout(
       makeContextValue({
@@ -122,7 +121,8 @@ describe('StaffLayout', () => {
     // Regression test: previously setActiveRole flipped session.role (updating
     // nav/breadcrumb) but never navigated, so the page stayed mounted at the
     // OLD role's route until the user separately clicked a nav link.
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'warehouse_attendant' } })
+    fireEvent.click(screen.getByRole('button', { name: /Nigeria Office Staff/ }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Work as Warehouse Attendant' }))
     expect(setActiveRole).toHaveBeenCalledWith('warehouse_attendant')
     expect(mockNavigate).toHaveBeenCalledWith('/warehouse')
   })
@@ -252,5 +252,25 @@ describe('StaffLayout', () => {
       <div>Dashboard content</div>,
     )
     expect(staffNotificationsApi.getBanner).not.toHaveBeenCalled()
+  })
+})
+
+describe('StaffLayout global search (UX-05)', () => {
+  const as = (role: Parameters<typeof makeSession>[0]) =>
+    makeContextValue({ session: makeSession(role), status: 'authenticated' })
+
+  it('shows the global search box on every page, not just list pages', () => {
+    renderLayout(as('tenant_admin'), '/dashboard', <div>Dashboard content</div>)
+    expect(screen.getByRole('combobox', { name: 'Search containers, invoices, customers…' })).toBeInTheDocument()
+  })
+
+  it('names only what the role can find', () => {
+    renderLayout(as('warehouse_attendant'), '/warehouse', <div>Warehouse</div>)
+    expect(screen.getByRole('combobox', { name: 'Search release notes…' })).toBeInTheDocument()
+  })
+
+  it('offers no search to a platform admin, who spans tenants and is refused by the server', () => {
+    renderLayout(as('platform_admin'), '/platform/dashboard', <div>Platform</div>)
+    expect(screen.queryByRole('combobox')).toBeNull()
   })
 })

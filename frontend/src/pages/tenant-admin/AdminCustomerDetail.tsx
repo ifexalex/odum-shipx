@@ -19,31 +19,22 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { billingApi, type Billing, type PaymentStatus } from '../../api/billing'
-import { claimsApi, type Claim, type DamageClaimStatus } from '../../api/claims'
+import { billingApi, type Billing } from '../../api/billing'
+import { claimsApi, type Claim } from '../../api/claims'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { billingKeys, claimKeys, customerKeys, packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import {
-  Action,
-  Avatar,
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Field,
-  Kvp,
-  Mono,
-  StatCard,
-  Table,
-  ViewLink,
-  type BadgeVariant,
-} from '../../design/components'
+import { Action, Badge, Banner, Button, Card, Check, ErrorState, Field, Kvp, Modal, Mono, PhoneField, StatCard, StatusBadge, Table, Select, PageSkeleton, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
+import { formatCbm, formatDate, formatDateTime, formatNgn, plural } from '../../lib/format'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
+import { toast } from '../../design/toast'
+import { DetailPage } from '../../shell/DetailPage'
 
 // ---------------------------------------------------------------------------
 // GDPR Anonymise Modal — MUST use exact "ANONYMISE" text confirmation
@@ -69,6 +60,7 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
     setError(null)
     try {
       await customersApi.anonymise(customer.id)
+      toast.success('Customer anonymised')
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not anonymise customer.')
@@ -78,14 +70,13 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Erase customer data (GDPR Art. 17)</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error">{error}</Banner></div>}
+    <Modal open onClose={onCancel} title="Erase customer data (GDPR Art. 17)" size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error">{error}</Banner>}
 
         <Banner variant="error" title="This action is irreversible">
           All personal data for <strong>{customer.name ?? customer.id}</strong> will be permanently erased —
-          name, email, phone, address, and contract details will be nulled. The customer's UUID and
+          name, email, phone, address, and contract details will be nulled. The customer&apos;s UUID and
           financial records are retained for legal and accounting purposes.
         </Banner>
 
@@ -114,7 +105,92 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
           </Action>
         </div>
       </div>
-    </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Edit Customer Details Modal
+// ---------------------------------------------------------------------------
+
+const CONSENT_CHANNELS = [
+  { key: 'sms', label: 'SMS' },
+  { key: 'whatsapp', label: 'WhatsApp' },
+  { key: 'email', label: 'Email' },
+] as const
+
+interface EditCustomerModalProps {
+  customer: Customer
+  onCancel: () => void
+  onSaved: (updated: Customer) => void
+}
+
+function EditCustomerModal({ customer, onCancel, onSaved }: EditCustomerModalProps): JSX.Element {
+  const [name, setName] = useState(customer.name ?? '')
+  const [phone, setPhone] = useState(customer.phone ?? '')
+  const [whatsapp, setWhatsapp] = useState(customer.whatsapp ?? '')
+  const [email, setEmail] = useState(customer.email ?? '')
+  const [address, setAddress] = useState(customer.address ?? '')
+  const [consent, setConsent] = useState<string[]>(customer.notification_consent ?? [])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function toggleConsent(channel: string, checked: boolean): void {
+    setConsent((prev) => (checked ? Array.from(new Set([...prev, channel])) : prev.filter((c) => c !== channel)))
+  }
+
+  async function handleSave(): Promise<void> {
+    if (!name.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      const updated = await customersApi.update(customer.id, {
+        name: name.trim(),
+        phone: phone.trim() || undefined,
+        whatsapp: whatsapp.trim() || undefined,
+        email: email.trim() || undefined,
+        address: address.trim() || undefined,
+        notification_consent: consent,
+      })
+      toast.success('Customer details updated', updated.name ?? undefined)
+      onSaved(updated)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save customer details.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal open onClose={onCancel} title="Edit customer details" size="md">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error">{error}</Banner>}
+        <Field label="Full name" name="customer_name" required value={name} onChange={(e) => setName(e.target.value)} />
+        <PhoneField label="Phone" name="customer_phone" optional value={phone} onChange={setPhone} />
+        <PhoneField label="WhatsApp" name="customer_whatsapp" optional value={whatsapp} onChange={setWhatsapp} />
+        <Field label="Email" name="customer_email" type="email" optional value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Field label="Address" name="customer_address" multiline rows={2} optional value={address} onChange={(e) => setAddress(e.target.value)} />
+        <div>
+          <div className={styles.prefLabel}>Notification consent</div>
+          <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
+            {CONSENT_CHANNELS.map((ch) => (
+              <Check
+                key={ch.key}
+                label={ch.label}
+                checked={consent.includes(ch.key)}
+                onChange={(checked) => toggleConsent(ch.key, checked)}
+              />
+            ))}
+          </div>
+        </div>
+        <div className={styles.modalActions}>
+          <Button variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button>
+          <Action variant="primary" loading={saving} disabled={!name.trim()} onClick={() => void handleSave()}>
+            Save changes
+          </Action>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -124,34 +200,8 @@ function AnonymiseModal({ customer, onCancel, onSuccess }: AnonymiseModalProps):
 
 const CONSENT_LABEL: Record<string, string> = { sms: 'SMS', whatsapp: 'WhatsApp', email: 'Email' }
 
-const PL_STATUS_VARIANT: Record<string, BadgeVariant> = {
-  draft: 'neutral',
-  pending_approval: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-const BILLING_VARIANT: Record<PaymentStatus, BadgeVariant> = {
-  unpaid: 'error',
-  partially_paid: 'warning',
-  paid: 'success',
-  overpaid: 'info',
-  waived: 'neutral',
-  released_with_outstanding: 'warning',
-  cancelled: 'neutral',
-}
-
-const CLAIM_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed: 'warning',
-  under_inspection: 'info',
-  inspection_complete: 'info',
-  pending_resolution: 'warning',
-  resolved: 'success',
-  closed: 'neutral',
-}
-
 function fmtNgn(value: number): string {
-  return `₦${value.toLocaleString()}`
+  return formatNgn(value)
 }
 
 interface ProfileTabProps {
@@ -176,6 +226,7 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
     setSavingLocale(true)
     try {
       onSaved(await customersApi.update(customer.id, { locale }))
+      toast.success('Message language updated', customer.name ?? undefined)
     } catch {
       // Non-fatal — the select snaps back to the stored value on re-render.
     } finally {
@@ -183,60 +234,55 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
     }
   }
 
+  const missing = customer.anonymised_at ? <em>Erased</em> : <span className={styles.notSet}>Not set</span>
   return (
     <>
       <div className={styles.profileGrid}>
-        <Card padding={20}>
+        <Card padding="default">
           <SectionHead title="Contact" />
-          <div style={{ height: 8 }} />
-          <Kvp label="Full name" value={customer.name ?? <em>Erased</em>} />
-          <Kvp label="Email" value={customer.email ? <Mono>{customer.email}</Mono> : <em>Erased</em>} />
-          <Kvp label="Phone" value={customer.phone ? <Mono>{customer.phone}</Mono> : <em>Erased</em>} />
-          <Kvp label="WhatsApp" value={customer.whatsapp ? <Mono>{customer.whatsapp}</Mono> : '—'} />
-          <Kvp label="Address" value={customer.address ?? <em>Erased</em>} />
-          <Kvp
-            label="Customer ID"
-            value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem' }}>{customer.id}</span>}
-            divider={false}
-          />
+          <div className={styles.spacer8} />
+          {/* "Erased" only after a GDPR erasure; a detail never given reads "Not set" (FD-17). No database id. */}
+          <Kvp label="Full name" value={customer.name ?? missing} />
+          <Kvp label="Email" value={customer.email || missing} />
+          <Kvp label="Phone" value={customer.phone ? <Mono>{customer.phone}</Mono> : missing} />
+          <Kvp label="WhatsApp" value={customer.whatsapp ? <Mono>{customer.whatsapp}</Mono> : missing} />
+          <Kvp label="Address" value={customer.address || missing} divider={false} />
         </Card>
 
-        <Card padding={20}>
+        <Card padding="default">
           <SectionHead title="Consent & GDPR" sub="Lawful-processing record (NDPR / GDPR Art. 6)" />
-          <div style={{ height: 8 }} />
+          <div className={styles.spacer8} />
           <Kvp
             label="Consent given"
-            value={customer.consent_given_at ? customer.consent_given_at.slice(0, 10) : '—'}
+            value={formatDate(customer.consent_given_at)}
           />
-          <div style={{ padding: '10px 0', borderBottom: '1px dashed var(--color-line-soft)' }}>
-            <div style={{ fontSize: 12, color: 'var(--color-ink-4)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+          <div className={styles.prefRow}>
+            <div className={styles.prefLabel}>
               Notification channels
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <div className={styles.chipRow}>
               {consent.length === 0 && <Badge variant="neutral">None granted</Badge>}
               {consent.map((c) => (
                 <Badge key={c} variant="success">{CONSENT_LABEL[c] ?? c}</Badge>
               ))}
             </div>
           </div>
-          <div style={{ padding: '10px 0', borderBottom: '1px dashed var(--color-line-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ fontSize: 12, color: 'var(--color-ink-4)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <div className={styles.prefRowInline}>
+            <div className={styles.prefLabelInline}>
               Message language
             </div>
-            <select
-              aria-label="Message language"
+            <Select label="Message language" hideLabel className={styles.compactSelectField}
               value={customer.locale ?? 'en'}
               disabled={savingLocale || customer.anonymised_at !== null}
               onChange={(e) => void handleLocaleChange(e.target.value as 'en' | 'zh')}
-              style={{ fontSize: 13, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--color-line)', background: 'transparent', color: 'var(--color-ink-1)' }}
-            >
+              >
               <option value="en">English</option>
               <option value="zh">中文 (简体)</option>
-            </select>
+            </Select>
           </div>
           <Kvp
             label="Anonymised at"
-            value={customer.anonymised_at ? customer.anonymised_at.slice(0, 10) : '—'}
+            value={formatDate(customer.anonymised_at)}
             divider={false}
           />
         </Card>
@@ -252,46 +298,71 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
   )
 }
 
-function ShipmentsTab({ customer, shipments, onOpen }: { customer: Customer; shipments: PackingList[] | null; onOpen: (id: string) => void }): JSX.Element {
+function ShipmentsTab({
+  customer,
+  shipments,
+  error,
+  onRetry,
+  onOpen,
+}: {
+  customer: Customer
+  shipments: PackingList[] | null
+  error: Error | null
+  onRetry: () => void
+  onOpen: (id: string) => void
+}): JSX.Element {
+  if (error) {
+    return <ErrorState compact title="Couldn't load shipments" error={error} onRetry={onRetry} />
+  }
   return (
-    <Card padding={0}>
-      <div style={{ padding: '18px 20px' }}>
+    <Card padding="none">
+      <div className={styles.cardPad}>
         <SectionHead
           title={`Shipments${customer.name ? ` · ${customer.name}` : ''}`}
-          sub={shipments ? `${shipments.length} total` : 'Loading…'}
+          sub={shipments ? `${shipments.length} total` : undefined}
         />
       </div>
       <Table
         columns={[
-          { title: 'Tracking code' },
-          { title: 'Container' },
-          { title: 'Status' },
-          { title: 'Cartons', align: 'right' },
-          { title: 'CBM', align: 'right' },
-          { title: 'Created' },
-          { title: '', width: '60px' },
+          { title: 'Tracking code', type: 'reference' },
+          { title: 'Container', type: 'reference' },
+          { title: 'Status', type: 'status' },
+          { title: 'Cartons', type: 'number' },
+          { title: 'Volume (CBM)', type: 'number' },
+          { title: 'Created', type: 'date' },
         ]}
         rows={(shipments ?? []).map((pl) => ({
+          onOpen: () => onOpen(pl.id),
           cells: [
             <Mono key="code">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
             <Mono key="cont">{pl.container_number ?? '—'}</Mono>,
-            <Badge key="status" variant={PL_STATUS_VARIANT[pl.status] ?? 'neutral'}>
-              {pl.status.replace(/_/g, ' ')}
-            </Badge>,
+            <StatusBadge key="status" kind="packingList" status={pl.status} />,
             <Mono key="cartons">{pl.carton_count}</Mono>,
-            <Mono key="cbm">{Number(pl.total_cbm).toFixed(3)}</Mono>,
-            <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{pl.created_at.slice(0, 10)}</span>,
-            <ViewLink key="view" onClick={() => onOpen(pl.id)} />,
+            <Mono key="cbm">{formatCbm(pl.total_cbm)}</Mono>,
+            <span key="created" className={styles.smallMuted}>{formatDate(pl.created_at)}</span>,
           ],
         }))}
         loading={shipments === null}
-        emptyState={shipments?.length === 0 ? <span>No shipments for this customer yet.</span> : undefined}
+        emptyState={shipments?.length === 0 ? <EmptyState compact title="No shipments for this customer yet" /> : undefined}
       />
     </Card>
   )
 }
 
-function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b: Billing) => void }): JSX.Element {
+function BillingTab({
+  billing,
+  error,
+  onRetry,
+  onOpen,
+}: {
+  billing: Billing[] | null
+  error: Error | null
+  onRetry: () => void
+  onOpen: (b: Billing) => void
+}): JSX.Element {
+  if (error) {
+    return <ErrorState compact title="Couldn't load billing records" error={error} onRetry={onRetry} />
+  }
   const totalBilled = billing?.reduce((s, b) => s + Number(b.total_due_ngn), 0) ?? null
   const totalPaid = billing?.reduce((s, b) => s + Number(b.total_paid_ngn), 0) ?? null
   const outstanding = billing?.reduce((s, b) => s + Number(b.outstanding_ngn), 0) ?? null
@@ -299,26 +370,26 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
   return (
     <>
       <div className={styles.statsRow}>
-        <StatCard label="Total billed" value={totalBilled != null ? fmtNgn(totalBilled) : '—'} icon="coin" sublabel={billing ? `across ${billing.length} record(s)` : undefined} />
+        <StatCard label="Total billed" value={totalBilled != null ? fmtNgn(totalBilled) : '—'} icon="coin" sublabel={billing ? `across ${plural(billing.length, 'invoice')}` : undefined} />
         <StatCard label="Total paid" value={totalPaid != null ? fmtNgn(totalPaid) : '—'} icon="check" />
         <StatCard label="Outstanding" value={outstanding != null ? fmtNgn(outstanding) : '—'} icon="warn" />
       </div>
 
-      <Card padding={0}>
-        <div style={{ padding: '18px 20px' }}>
+      <Card padding="none">
+        <div className={styles.cardPad}>
           <SectionHead title="Billing records" />
         </div>
         <Table
           columns={[
-            { title: 'Invoice' },
-            { title: 'Container' },
-            { title: 'Total NGN', align: 'right' },
-            { title: 'Paid', align: 'right' },
-            { title: 'Outstanding', align: 'right' },
-            { title: 'Status' },
-            { title: '', width: '60px' },
+            { title: 'Invoice', type: 'reference' },
+            { title: 'Container', type: 'reference' },
+            { title: 'Total (₦)', type: 'money' },
+            { title: 'Paid (₦)', type: 'money' },
+            { title: 'Outstanding (₦)', type: 'money' },
+            { title: 'Status', type: 'status' },
           ]}
           rows={(billing ?? []).map((b) => ({
+            onOpen: () => onOpen(b),
             cells: [
               <Mono key="ref">{b.invoice_number ?? b.id.slice(0, 8)}</Mono>,
               <Mono key="cont">{b.container_number ?? '—'}</Mono>,
@@ -327,47 +398,56 @@ function BillingTab({ billing, onOpen }: { billing: Billing[] | null; onOpen: (b
               <Mono key="out" color={Number(b.outstanding_ngn) > 0 ? 'var(--color-warning)' : 'var(--color-ink-3)'}>
                 {Number(b.outstanding_ngn) > 0 ? fmtNgn(Number(b.outstanding_ngn)) : '—'}
               </Mono>,
-              <Badge key="status" variant={BILLING_VARIANT[b.payment_status] ?? 'neutral'}>
-                {b.payment_status.replace(/_/g, ' ')}
-              </Badge>,
-              <ViewLink key="view" onClick={() => onOpen(b)} />,
+              <StatusBadge key="status" kind="invoice" status={b.payment_status} />,
             ],
           }))}
           loading={billing === null}
-          emptyState={billing?.length === 0 ? <span>No billing records for this customer yet.</span> : undefined}
+          emptyState={billing?.length === 0 ? <EmptyState compact title="No billing records for this customer yet" /> : undefined}
         />
       </Card>
     </>
   )
 }
 
-function ClaimsTab({ claims, onOpen }: { claims: Claim[] | null; onOpen: (c: Claim) => void }): JSX.Element {
+function ClaimsTab({
+  claims,
+  error,
+  onRetry,
+  onOpen,
+}: {
+  claims: Claim[] | null
+  error: Error | null
+  onRetry: () => void
+  onOpen: (c: Claim) => void
+}): JSX.Element {
+  if (error) {
+    return <ErrorState compact title="Couldn't load damage claims" error={error} onRetry={onRetry} />
+  }
   return (
-    <Card padding={0}>
-      <div style={{ padding: '18px 20px' }}>
-        <SectionHead title="Damage claims" sub={claims ? `${claims.length} total` : 'Loading…'} />
+    <Card padding="none">
+      <div className={styles.cardPad}>
+        <SectionHead title="Damage claims" sub={claims ? `${claims.length} total` : undefined} />
       </div>
       <Table
         columns={[
-          { title: 'Reference' },
-          { title: 'Container' },
-          { title: 'Status' },
-          { title: 'Cartons', align: 'right' },
-          { title: 'Filed' },
-          { title: '', width: '60px' },
+          { title: 'Reference', type: 'reference' },
+          { title: 'Container', type: 'reference' },
+          { title: 'Status', type: 'status' },
+          { title: 'Cartons', type: 'number' },
+          { title: 'Filed', type: 'date' },
         ]}
         rows={(claims ?? []).map((c) => ({
+          onOpen: () => onOpen(c),
           cells: [
             <Mono key="ref">{c.reference ?? c.id.slice(0, 8)}</Mono>,
             <Mono key="cont">{c.container_number ?? '—'}</Mono>,
-            <Badge key="status" variant={CLAIM_VARIANT[c.status] ?? 'neutral'}>{c.status.replace(/_/g, ' ')}</Badge>,
+            <StatusBadge key="status" kind="claim" status={c.status} />,
             <Mono key="cartons">{c.cartons_affected?.length ?? 0}</Mono>,
-            <span key="filed" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{c.created_at?.slice(0, 10) ?? '—'}</span>,
-            <ViewLink key="view" onClick={() => onOpen(c)} />,
+            <span key="filed" className={styles.smallMuted}>{formatDate(c.created_at)}</span>,
           ],
         }))}
         loading={claims === null}
-        emptyState={claims?.length === 0 ? <span>No claims filed by this customer.</span> : undefined}
+        emptyState={claims?.length === 0 ? <EmptyState compact title="No claims filed by this customer" /> : undefined}
       />
     </Card>
   )
@@ -385,9 +465,9 @@ function PrivacyTab({ customer, exporting, readOnly, onExport, onAnonymise }: Pr
   const isAnonymised = !!customer.anonymised_at
   return (
     <div className={styles.profileGrid}>
-      <Card padding={20}>
+      <Card padding="default">
         <SectionHead title="Data export" sub="GDPR Art. 20 / NDPR — data portability" />
-        <p style={{ fontSize: 13, color: 'var(--color-ink-3)', lineHeight: 1.55, margin: '8px 0 16px' }}>
+        <p className={styles.bodyText}>
           Downloads everything held about this customer — profile, shipments, billing, and claims —
           as a JSON bundle. Available even after anonymisation (financial records are retained).
         </p>
@@ -396,20 +476,20 @@ function PrivacyTab({ customer, exporting, readOnly, onExport, onAnonymise }: Pr
         </Button>
       </Card>
 
-      <Card padding={20}>
+      <Card padding="default">
         <SectionHead title="Right to erasure" sub="GDPR Art. 17 / NDPR — anonymisation" />
         {isAnonymised ? (
-          <p style={{ fontSize: 13, color: 'var(--color-ink-3)', lineHeight: 1.55, margin: '8px 0 0' }}>
-            This record was anonymised on <strong>{customer.anonymised_at!.slice(0, 10)}</strong>. Personal
+          <p className={styles.bodyTextLast}>
+            This record was anonymised on <strong>{formatDate(customer.anonymised_at)}</strong>. Personal
             data has been erased; the UUID and financial records are retained for legal compliance.
           </p>
         ) : (
           <>
-            <p style={{ fontSize: 13, color: 'var(--color-ink-3)', lineHeight: 1.55, margin: '8px 0 16px' }}>
+            <p className={styles.bodyText}>
               Permanently erases the customer's personal data (name, email, phone, address, contract
               details). Irreversible — requires typed confirmation.
             </p>
-            <Action variant="danger-outline" disabled={readOnly} onClick={onAnonymise}>
+            <Action variant="danger-ghost" disabled={readOnly} onClick={onAnonymise}>
               Erase data (GDPR)
             </Action>
           </>
@@ -447,8 +527,11 @@ export function AdminCustomerDetail(): JSX.Element {
     ...(stateCustomer ? { initialData: stateCustomer } : {}),
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(customer?.name)
   const [actionError, setActionError] = useState<string | null>(null)
   const [tab, setTab] = useState('profile')
+  const [showEdit, setShowEdit] = useState(false)
   const [showAnonymise, setShowAnonymise] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [invitingAccount, setInvitingAccount] = useState(false)
@@ -523,9 +606,10 @@ export function AdminCustomerDetail(): JSX.Element {
     setInviteMessage(null)
     try {
       const invite = await customersApi.invite(customer.id)
+      toast.success('Invite created', customer.name ?? undefined)
       setInviteMessage(
         `Invite sent via ${invite.sent_channel.toUpperCase()} to ${invite.sent_to_masked ?? 'the customer'}. ` +
-          `Expires ${new Date(invite.expires_at).toLocaleString()}.`
+          `Expires ${formatDateTime(invite.expires_at)}.`
       )
     } catch (err) {
       setInviteMessage(err instanceof ApiError ? err.message : 'Could not send the account invite.')
@@ -534,8 +618,14 @@ export function AdminCustomerDetail(): JSX.Element {
     }
   }
 
-  if (loading && !customer) return <div style={{ padding: 48, color: 'var(--color-text-muted)' }}>Loading…</div>
-  if (error && !customer) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+  if (loading && !customer) return <PageSkeleton kind="detail" label="Loading the page" />
+  if (error && !customer)
+    return (
+      <>
+        <PageHeader title="Customer" />
+        <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+      </>
+    )
   if (!customer) return <></>
 
   const isAnonymised = !!customer.anonymised_at
@@ -544,98 +634,146 @@ export function AdminCustomerDetail(): JSX.Element {
   const heroMeta: ReactNode[] = []
   if (customer.phone) heroMeta.push(<Mono key="phone">{customer.phone}</Mono>)
   if (customer.email) heroMeta.push(<span key="email">{customer.email}</span>)
-  if (customer.created_at) heroMeta.push(<span key="since">Customer since {customer.created_at.slice(0, 10)}</span>)
+  if (customer.created_at) heroMeta.push(<span key="since">Customer since {formatDate(customer.created_at)}</span>)
 
   return (
-    <div>
-      {session?.readOnly && (
-        <div style={{ marginBottom: 16 }}>
-          <Banner variant="warning" icon="eye" title="Read-only session">
-            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
-          </Banner>
-        </div>
-      )}
-
-      {/* Hero — prototype 3.6 */}
-      <div className={styles.customerHero}>
-        <div className={styles.customerHeroId}>
-          <Avatar size={64} name={customer.name ?? '?'} />
-          <div>
-            <div className={styles.customerHeroTitleRow}>
-              <h1 className={styles.customerHeroName}>{customer.name ?? 'Anonymised customer'}</h1>
-              <Badge variant={isAnonymised ? 'error' : 'success'}>{isAnonymised ? 'Anonymised' : 'Active'}</Badge>
+    <DetailPage
+      header={
+        <PageHeader
+          title={customer.name ?? 'Anonymised customer'}
+          status={
+            <>
+              <Badge variant={isAnonymised ? 'error' : 'success'}>
+                {isAnonymised ? 'Anonymised' : 'Active'}
+              </Badge>
               {!isAnonymised && hasLogin && <Badge variant="info">Has portal login</Badge>}
               {!isAnonymised && !hasLogin && customer.pending_invite_expires_at && (
                 <Badge variant="warning">
-                  Invited · expires {new Date(customer.pending_invite_expires_at).toLocaleDateString()}
+                  Invited · expires {formatDate(customer.pending_invite_expires_at)}
                 </Badge>
               )}
               {!isAnonymised && !hasLogin && !customer.pending_invite_expires_at && (
                 <Badge variant="warning">No login</Badge>
               )}
-            </div>
-            {heroMeta.length > 0 && (
-              <div className={styles.customerHeroMeta}>
-                {heroMeta.map((node, i) => (
-                  <span key={i} className={styles.customerHeroMetaItem}>
-                    {i > 0 && <span className={styles.customerHeroDot}>·</span>}
-                    {node}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+            </>
+          }
+          meta={heroMeta}
+          actions={
+            !isAnonymised && (
+              <>
+                <Action
+                  variant="secondary"
+                  icon="edit"
+                  disabled={!!session?.readOnly}
+                  onClick={() => setShowEdit(true)}
+                >
+                  Edit details
+                </Action>
+                {!hasLogin && (
+                  <Action
+                    variant="secondary"
+                    disabled={!!session?.readOnly}
+                    loading={invitingAccount}
+                    onClick={() => void handleSendInvite()}
+                  >
+                    {customer.pending_invite_expires_at ? 'Resend account invite' : 'Send account invite'}
+                  </Action>
+                )}
+              </>
+            )
+          }
+        />
+      }
+    >
+      {session?.readOnly && (
+        <div className={styles.bannerGap}>
+          <Banner variant="warning" icon="eye" title="Read-only session">
+            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but
+            every create, edit, approve, and delete action is disabled. The session ends
+            automatically after 30 minutes or when you exit.
+          </Banner>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {!isAnonymised && (
-            <Action
-              variant="secondary"
-              disabled={!!session?.readOnly}
-              loading={invitingAccount}
-              onClick={() => void handleSendInvite()}
-            >
-              {hasLogin ? 'Resend account invite' : 'Send account invite'}
-            </Action>
-          )}
-          <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/customers')}>
-            All customers
-          </Button>
-        </div>
-      </div>
+      )}
 
       {inviteMessage && (
         <div className={styles.banner}>
-          <Banner variant="info" title="Account invite" dismissible onDismiss={() => setInviteMessage(null)}>
+          <Banner
+            variant="info"
+            title="Account invite"
+            dismissible
+            onDismiss={() => setInviteMessage(null)}
+          >
             {inviteMessage}
           </Banner>
         </div>
       )}
 
-      {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
+      {error && (
+        <div className={styles.banner}>
+          <Banner variant="error">{error}</Banner>
+        </div>
+      )}
 
       {/* GDPR anonymised banner — persistent, per spec */}
       {isAnonymised && (
         <div className={styles.gdprBanner}>
           <p className={styles.gdprBannerTitle}>This record has been anonymised (GDPR Art. 17)</p>
           <p className={styles.gdprBannerBody}>
-            All personal data was erased on {customer.anonymised_at!.slice(0, 10)}. The customer
-            UUID and financial records are retained for legal compliance.
+            All personal data was erased on {formatDate(customer.anonymised_at)}. The customer UUID
+            and financial records are retained for legal compliance.
           </p>
         </div>
       )}
 
-      <Tabs items={TABS} active={tab} onChange={setTab} />
-      <div style={{ height: 16 }} />
+      <Tabs
+        items={TABS.map((t) => ({
+          ...t,
+          count:
+            t.key === 'shipments'
+              ? shipments?.length
+              : t.key === 'billing'
+                ? billing?.length
+                : t.key === 'claims'
+                  ? claims?.length
+                  : undefined,
+        }))}
+        active={tab}
+        onChange={setTab}
+      />
 
-      {tab === 'profile' && <ProfileTab customer={customer} shipments={shipments} billing={billing} claims={claims} onSaved={(updated) => qc.setQueryData(customerKeys.detail(id ?? ''), updated)} />}
+      {tab === 'profile' && (
+        <ProfileTab
+          customer={customer}
+          shipments={shipments}
+          billing={billing}
+          claims={claims}
+          onSaved={(updated) => qc.setQueryData(customerKeys.detail(id ?? ''), updated)}
+        />
+      )}
       {tab === 'shipments' && (
-        <ShipmentsTab customer={customer} shipments={shipments} onOpen={(plId) => navigate(`/packing-lists/${plId}`)} />
+        <ShipmentsTab
+          customer={customer}
+          shipments={shipments}
+          error={shipmentsQ.error}
+          onRetry={() => void shipmentsQ.refetch()}
+          onOpen={(plId) => navigate(`/packing-lists/${plId}`)}
+        />
       )}
       {tab === 'billing' && (
-        <BillingTab billing={billing} onOpen={(b) => navigate(`/billing/${b.id}`, { state: { billing: b } })} />
+        <BillingTab
+          billing={billing}
+          error={billingQ.error}
+          onRetry={() => void billingQ.refetch()}
+          onOpen={(b) => navigate(`/billing/${b.id}`, { state: { billing: b } })}
+        />
       )}
       {tab === 'claims' && (
-        <ClaimsTab claims={claims} onOpen={(c) => navigate(`/claims/${c.id}`, { state: { claim: c } })} />
+        <ClaimsTab
+          claims={claims}
+          error={claimsQ.error}
+          onRetry={() => void claimsQ.refetch()}
+          onOpen={(c) => navigate(`/claims/${c.id}`, { state: { claim: c } })}
+        />
       )}
       {tab === 'privacy' && (
         <PrivacyTab
@@ -644,6 +782,17 @@ export function AdminCustomerDetail(): JSX.Element {
           readOnly={!!session?.readOnly}
           onExport={() => void handleExport()}
           onAnonymise={() => setShowAnonymise(true)}
+        />
+      )}
+
+      {showEdit && (
+        <EditCustomerModal
+          customer={customer}
+          onCancel={() => setShowEdit(false)}
+          onSaved={(updated) => {
+            qc.setQueryData(customerKeys.detail(id ?? ''), updated)
+            setShowEdit(false)
+          }}
         />
       )}
 
@@ -656,6 +805,6 @@ export function AdminCustomerDetail(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }

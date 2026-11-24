@@ -246,7 +246,12 @@ export interface RateHistoryEntry {
 
 export interface TenantActivityEntry {
   id: string
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE'
+  /**
+   * The four generic actions, or a named one written by a specific operation
+   * (e.g. `EXPORT`, `BULK_APPROVE`, `PASSWORD_RESET_SENT`): `audit_log.action`
+   * has had no CHECK since migration 045.
+   */
+  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE' | (string & {})
   entity_type: string
   entity_id: string
   actor_id: string | null
@@ -268,10 +273,15 @@ export interface DollarRateConfig {
   base_rate: number
   markup_type: 'percentage' | 'flat'
   markup_value: number
-  /** Always "bybit_p2p" today — surfaced for transparency, not yet used to branch UI. */
+  /** The market feed: always "bybit_p2p" today. */
   source: string
-  /** When the underlying Bybit rate was last fetched (may be older than "now" if served from cache/fallback). */
-  fetched_at: string
+  /**
+   * Where this base rate came from (audit BE-11): `live` (fetched within the 10-minute cache), `last_known` (the feed
+   * is down; the last fetched rate), or `hardcoded` (no rate has ever been fetched; invoicing refuses it).
+   */
+  rate_source: 'live' | 'last_known' | 'hardcoded'
+  /** When the underlying Bybit rate was fetched; null for the hard-coded value, which never was. */
+  fetched_at: string | null
   currency_pair: string
   /** When the markup was last changed by an admin — "" if never changed. */
   effective_from: string
@@ -349,6 +359,14 @@ export interface WebhookConfig {
  * frontend writes and every consumer (print documents, ThemeProvider, sidebar
  * TenantBrand) reads. All fields optional: absent = fall back to defaults.
  */
+/** A presigned direct-to-storage upload: PUT the file to `upload_url` with `upload_headers`, then use `file_key`. */
+export interface PresignedUpload {
+  file_key: string
+  upload_url: string
+  upload_method?: string
+  upload_headers?: Record<string, string>
+}
+
 export interface BrandingConfig {
   /** Company name as shown on documents and the portal (may differ from the legal `tenant.company_name`). */
   display_name?: string
@@ -356,6 +374,11 @@ export interface BrandingConfig {
   tagline?: string
   /** Hex colour driving the tenant-scoped theme (ThemeProvider derives shades). */
   primary_color?: string
+  /**
+   * A short-lived link to the uploaded logo (FD-29), or absent for the initials tile. Read-only: the logo is set through
+   * `configApi.setLogo`, and the API ignores this field on a branding save.
+   */
+  logo_url?: string
   /** Multiline pickup address printed on release notes. */
   warehouse_address?: string
   pickup_hours?: string
@@ -523,6 +546,17 @@ export const configApi = {
   getConfig: () =>
     apiRequest<TenantConfig>({ method: 'GET', path: '/v1/tenant/config' }),
 
+  /** Presign the logo upload (FD-29): PNG, JPEG or WebP, at most 5 MB. */
+  getLogoUploadUrl: (body: { filename: string; content_type: string; size_bytes: number }) =>
+    apiRequest<PresignedUpload>({ method: 'POST', path: '/v1/tenant/config/logo/upload-url', body }),
+
+  /** Use the uploaded file as the logo; returns the branding with its new `logo_url`. */
+  setLogo: (fileKey: string) =>
+    apiRequest<BrandingConfig>({ method: 'PUT', path: '/v1/tenant/config/logo', body: { file_key: fileKey } }),
+
+  /** Stop using a logo: documents go back to the initials tile. */
+  removeLogo: () => apiRequest<BrandingConfig>({ method: 'DELETE', path: '/v1/tenant/config/logo' }),
+
   updateConfig: (body: {
     webhook_config?: Partial<Omit<WebhookConfig, 'secret'>>
     branding?: BrandingConfig
@@ -688,6 +722,22 @@ export const platformApi = {
       query: period ? { period } : undefined,
     }),
 
+  /** Where the offboarded tenant's data export stands (audit BE-10). */
+  offboardingExport: (id: string) =>
+    apiRequest<OffboardingExport>({ method: 'GET', path: `/v1/platform/tenants/${id}/offboarding-export` }),
+
+  /** Queue an export for an offboarded tenant with none, or whose export gave up. */
+  queueOffboardingExport: (id: string) =>
+    apiRequest<OffboardingExport>({ method: 'POST', path: `/v1/platform/tenants/${id}/offboarding-export`, body: {} }),
+
+  /** A five-minute download link to the completed archive. Each one is recorded in the platform audit log. */
+  offboardingExportLink: (id: string) =>
+    apiRequest<OffboardingExportLink>({
+      method: 'POST',
+      path: `/v1/platform/tenants/${id}/offboarding-export/link`,
+      body: {},
+    }),
+
   /** Per-tenant quota override; empty body clears the override. */
   setQuotaOverride: (id: string, body: Partial<PlanLimits>) =>
     apiRequest<{ tenant_id: string; override: Partial<PlanLimits>; effective_limits: PlanLimits }>({
@@ -695,6 +745,37 @@ export const platformApi = {
       path: `/v1/platform/tenants/${id}/quota-override`,
       body,
     }),
+}
+
+/** `none`: nothing is queued for the tenant's current offboarding. */
+export type OffboardingExportStatus = 'none' | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+/** GET /v1/platform/tenants/{id}/offboarding-export (audit BE-10). */
+export interface OffboardingExport {
+  tenant_status: TenantStatus
+  status: OffboardingExportStatus
+  export_id: string | null
+  requested_at: string | null
+  completed_at: string | null
+  size_bytes: number | null
+  sha256: string | null
+  row_count: number | null
+  attempts: number
+  max_attempts: number
+  /** Failed, with attempts left: the hourly job will try again. */
+  retrying: boolean
+  /** A platform admin may queue a new export now. */
+  can_queue: boolean
+  /** When the 90-day cleanup deletes the tenant, the archive with it. */
+  deletion_scheduled_at: string | null
+}
+
+export interface OffboardingExportLink {
+  download_url: string
+  expires_at: string
+  filename: string
+  size_bytes: number | null
+  sha256: string | null
 }
 
 export interface PlatformDashboardStats {

@@ -17,16 +17,22 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, paymentClaimApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Icon, Kvp, Mono, Table, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Icon, Kvp, Mono, StatusBadge, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { CustomerStepper } from './CustomerStepper'
+import { ReleaseNoteCard } from './ReleaseNoteCard'
 import styles from './customer.module.css'
+import { formatCbm, formatKg, formatNgn, plural, todayIso } from '../../lib/format'
+import { arrivalLabel } from './shipmentStage'
+import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
+import { DetailPage } from '../../shell/DetailPage'
 
 // Ground truth: api/tracking.ts's ContainerStatus (services/tracking + the
 // `container` table) — the 9 real values. This map previously used fictional
@@ -35,30 +41,6 @@ import styles from './customer.module.css'
 // literal fallback string; combined with the detail endpoint not returning
 // container_status at all (see repository.py fix), the badge always showed
 // "Preparing" regardless of the container's actual state.
-const CONTAINER_STATUS_LABELS: Record<string, string> = {
-  loading: 'Preparing',
-  sealed: 'Packed',
-  in_transit: 'In transit',
-  arrived: 'Arrived in Nigeria',
-  customs_clearance: 'Customs clearance',
-  cleared: 'Customs cleared',
-  at_warehouse: 'At warehouse',
-  fully_released: 'Completed',
-  cancelled: 'Cancelled',
-}
-
-const CONTAINER_STATUS_VARIANT: Record<string, BadgeVariant> = {
-  loading: 'neutral',
-  sealed: 'info',
-  in_transit: 'info',
-  arrived: 'warning',
-  customs_clearance: 'warning',
-  cleared: 'primary',
-  at_warehouse: 'primary',
-  fully_released: 'success',
-  cancelled: 'neutral',
-}
-
 // Customer-friendly "where is it now" hint per status (prototype's green banner).
 const STATUS_HINT: Record<string, string> = {
   loading: 'Your cartons are being received and packed at the China warehouse.',
@@ -72,7 +54,7 @@ const STATUS_HINT: Record<string, string> = {
 }
 
 function fmtNgn(value: number): string {
-  return `₦${value.toLocaleString()}`
+  return formatNgn(value)
 }
 
 export function MyShipmentDetail(): JSX.Element {
@@ -84,6 +66,8 @@ export function MyShipmentDetail(): JSX.Element {
     enabled: !!code,
     staleTime: STALE_30S,
   })
+  // Names this record in the breadcrumb once loaded (FD-46).
+  useBreadcrumbLabel(pl?.reference ?? code)
 
   const error = loadError
     ? loadError instanceof ApiError
@@ -119,17 +103,13 @@ export function MyShipmentDetail(): JSX.Element {
   })
   const pendingClaim = paymentClaims.find((c) => c.status === 'pending') ?? null
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading your shipment…</div>
+  if (loading) return <PageSkeleton kind="detail" label="Loading your shipment" />
 
   if (error || !pl) {
     return (
       <div className={styles.page}>
+        <PageHeader title="Shipment" />
         <Banner variant="error">{error ?? 'Shipment not found.'}</Banner>
-        <div className={styles.backLink}>
-          <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/my-shipments')}>
-            Back to shipments
-          </Button>
-        </div>
       </div>
     )
   }
@@ -137,41 +117,33 @@ export function MyShipmentDetail(): JSX.Element {
   const status = pl.container_status ?? 'loading'
   const totalCbm = Number(pl.total_cbm)
   const outstanding = shipmentBilling ? Number(shipmentBilling.outstanding_ngn) : 0
+  // Expected, delayed or arrived, by the container's real stage (FD-27).
+  const arrival = arrivalLabel(pl.container_status, pl.container_eta, todayIso())
 
   return (
-    <div className={styles.page}>
-      <button type="button" className={styles.detailBackLink} onClick={() => navigate('/my-shipments')}>
-        <Icon name="arrowleft" size={14} stroke={2.5} /> My shipments
-      </button>
-
-      {/* Hero — prototype 10.2 */}
-      <div className={styles.shipmentHero}>
-        <div className={styles.shipmentHeroIcon}>
-          <Icon name="ship" size={26} stroke={2} />
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div className={styles.shipmentHeroTitleRow}>
-            <h1 className={styles.shipmentHeroCode}>{pl.reference ?? pl.id.slice(0, 8)}</h1>
-            <Badge variant={CONTAINER_STATUS_VARIANT[status] ?? 'neutral'}>
-              {CONTAINER_STATUS_LABELS[status] ?? status}
-            </Badge>
-          </div>
-          <div className={styles.shipmentHeroMeta}>
-            {pl.container_number ? (
+    <DetailPage
+      header={
+        <PageHeader
+          title={pl.reference ? `Shipment ${pl.reference}` : 'Shipment'}
+          status={<StatusBadge kind="container" status={status} audience="customer" />}
+          meta={[
+            pl.container_number ? (
               <>
                 Container <Mono color="var(--color-ink)">{pl.container_number}</Mono>
               </>
             ) : (
               'Awaiting container assignment'
-            )}
-            {' · '}
-            {pl.carton_count} carton{pl.carton_count === 1 ? '' : 's'}
-          </div>
-        </div>
-      </div>
+            ),
+            plural(pl.carton_count, 'carton'),
+            arrival && (arrival.detail ? `${arrival.label}: ${arrival.detail}` : arrival.label),
+          ]}
+        />
+      }
+    >
+      <ReleaseNoteCard containerId={pl.container_id} />
 
       {/* Tracking */}
-      <Card padding={28}>
+      <Card padding="large">
         <SectionHead title="Tracking" sub="Where your cargo is right now" />
         <div style={{ height: 20 }} />
         <CustomerStepper containerStatus={pl.container_status ?? null} />
@@ -185,80 +157,98 @@ export function MyShipmentDetail(): JSX.Element {
 
       <div className={styles.detailGrid}>
         {/* My cartons */}
-        <Card padding={0}>
-          <div style={{ padding: '18px 20px' }}>
+        <Card padding="none">
+          <div className={styles.cardHeader}>
             <SectionHead
               title="My cartons"
-              sub={`${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'} · ${totalCbm.toFixed(3)} CBM total`}
+              sub={`${pl.carton_count} carton${pl.carton_count === 1 ? '' : 's'} · ${formatCbm(totalCbm)} CBM total`}
             />
           </div>
-          <Table
-            dense
-            columns={[
-              { title: 'Tag' },
-              { title: 'Description' },
-              { title: 'Weight', align: 'right' },
-              { title: 'CBM', align: 'right' },
-            ]}
-            rows={pl.items.map((item) => ({
-              cells: [
-                <Mono key="tag">{item.carton_tag ?? item.tracking_code ?? '—'}</Mono>,
-                <span key="desc" style={{ fontSize: 13 }}>{item.description}</span>,
-                <Mono key="wt">
-                  {item.weight_actual_kg ?? item.weight_dispatch_kg
-                    ? `${Number(item.weight_actual_kg ?? item.weight_dispatch_kg).toFixed(1)} kg`
-                    : '—'}
-                </Mono>,
-                <Mono key="cbm" color="var(--color-primary)">
-                  {item.cbm ? Number(item.cbm).toFixed(3) : '—'}
-                </Mono>,
-              ],
-            }))}
-            emptyState={<span style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>No cartons recorded yet.</span>}
-          />
+          {/* One compact row per carton (FD-27): the table became a card per carton on a phone, which does not
+              scale to fifty cartons. */}
+          {pl.items.length === 0 ? (
+            <EmptyState compact title="No cartons recorded yet" />
+          ) : (
+            <ul className={styles.cartonList} aria-label="Cartons">
+              {pl.items.map((item) => {
+                const kg = item.weight_actual_kg ?? item.weight_dispatch_kg
+                return (
+                  <li key={item.id} className={styles.cartonRow}>
+                    <span className={styles.cartonTag}>
+                      <Mono>{item.carton_tag ?? item.tracking_code ?? '—'}</Mono>
+                    </span>
+                    <span className={styles.cartonDesc}>{item.description}</span>
+                    <span className={styles.cartonMetrics}>
+                      {[kg ? `${formatKg(kg)} kg` : null, item.cbm ? `${formatCbm(item.cbm)} CBM` : null]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
         </Card>
 
         {/* Billing summary */}
-        <Card padding={20}>
+        <Card padding="default">
           <SectionHead
             title="Billing"
             action={
               shipmentBilling ? (
-                <button
-                  type="button"
+                <Link
+                  to={`/my-billing/${shipmentBilling.id}`}
+                  state={{ billing: shipmentBilling }}
                   className={styles.viewFullLink}
-                  onClick={() => navigate(`/my-billing/${shipmentBilling.id}`, { state: { billing: shipmentBilling } })}
                 >
-                  View full →
-                </button>
+                  View full invoice <Icon name="arrowright" size={12} />
+                </Link>
               ) : undefined
             }
           />
           <div style={{ height: 8 }} />
-          {billing === null && <p className={styles.billingNote}>Loading billing…</p>}
+          {billing === null && <LinesSkeleton label="Loading billing" />}
           {billing !== null && !shipmentBilling && (
             <p className={styles.billingNote}>
-              No bill yet for this shipment — billing is generated when the container arrives and is measured.
+              No bill yet for this shipment — billing is generated when the container arrives and is
+              measured.
             </p>
           )}
           {shipmentBilling && (
             <>
-              <Kvp label="Shipping cost" value={<Mono>{fmtNgn(Number(shipmentBilling.subtotal_ngn))}</Mono>} />
+              <Kvp
+                label="Shipping cost"
+                value={<Mono>{fmtNgn(Number(shipmentBilling.subtotal_ngn))}</Mono>}
+              />
               {/* Itemized by real description, not a lump "Misc fees" line —
                   see MyBillingDetail.tsx's matching fix and
                   frontend/07_domain_modules.md. */}
               {shipmentBilling.misc_fees.map((fee, i) => (
-                <Kvp key={i} label={fee.description} value={<Mono>{fmtNgn(Number(fee.amount_ngn))}</Mono>} />
+                <Kvp
+                  key={i}
+                  label={fee.description}
+                  value={<Mono>{fmtNgn(Number(fee.amount_ngn))}</Mono>}
+                />
               ))}
               {Number(shipmentBilling.storage_fees_ngn) > 0 && (
-                <Kvp label="Storage fees" value={<Mono>{fmtNgn(Number(shipmentBilling.storage_fees_ngn))}</Mono>} />
+                <Kvp
+                  label="Storage fees"
+                  value={<Mono>{fmtNgn(Number(shipmentBilling.storage_fees_ngn))}</Mono>}
+                />
               )}
-              <Kvp label="Total" value={<Mono>{fmtNgn(Number(shipmentBilling.total_due_ngn))}</Mono>} />
-              <Kvp label="Paid" value={<Mono color="var(--color-success)">{fmtNgn(Number(shipmentBilling.total_paid_ngn))}</Mono>} />
+              <Kvp
+                label="Total"
+                value={<Mono>{fmtNgn(Number(shipmentBilling.total_due_ngn))}</Mono>}
+              />
+              <Kvp
+                label="Paid"
+                value={<Mono>{fmtNgn(Number(shipmentBilling.total_paid_ngn))}</Mono>}
+              />
               <Kvp
                 label="Outstanding"
                 value={
-                  <Mono color={outstanding > 0 ? 'var(--color-error)' : 'var(--color-success)'}>
+                  // Money in ink; red only for an amount still owed (FD-27).
+                  <Mono color={outstanding > 0 ? 'var(--color-error)' : undefined}>
                     {fmtNgn(outstanding)}
                   </Mono>
                 }
@@ -267,8 +257,8 @@ export function MyShipmentDetail(): JSX.Element {
               {outstanding > 0 && pendingClaim && (
                 <div className={styles.payCtaWrap}>
                   <Banner variant="warning" title="Payment submitted — awaiting confirmation">
-                    You told us you sent ₦{Number(pendingClaim.amount_ngn).toLocaleString()}. Staff will confirm
-                    it shortly.
+                    You told us you sent {formatNgn(pendingClaim.amount_ngn)}. Staff will confirm it
+                    shortly.
                   </Banner>
                 </div>
               )}
@@ -278,7 +268,11 @@ export function MyShipmentDetail(): JSX.Element {
                     variant="accent"
                     full
                     icon="coin"
-                    onClick={() => navigate(`/my-billing/${shipmentBilling.id}`, { state: { billing: shipmentBilling } })}
+                    onClick={() =>
+                      navigate(`/my-billing/${shipmentBilling.id}`, {
+                        state: { billing: shipmentBilling },
+                      })
+                    }
                   >
                     Pay outstanding
                   </Button>
@@ -300,10 +294,15 @@ export function MyShipmentDetail(): JSX.Element {
             File a claim within 7 days of receiving your shipment — we inspect and respond quickly.
           </div>
         </div>
-        <Button variant="secondary" size="sm" icon="plus" onClick={() => navigate('/my-claims/new')}>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="plus"
+          onClick={() => navigate('/my-claims/new')}
+        >
           File a claim
         </Button>
       </div>
-    </div>
+    </DetailPage>
   )
 }

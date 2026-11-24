@@ -9,45 +9,22 @@
  */
 import { useEffect, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
+import { } from '../../api/containerRules'
 import { type ContainerStats, type ContainerStatus } from '../../api/tracking'
 import { useContainerList } from '../../hooks/useContainers'
-import { Badge, Button, Card, Chip, Icon, ListFooter, Mono, Table, type BadgeVariant } from '../../design/components'
+import { Button, Card, Chip, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './DashboardPipeline.module.css'
+import { isoDateOffset, formatDate } from '../../lib/format'
+import { statusColor, statusLabel } from '../../design/status'
 
 // Pipeline order, loading → fully released (cancelled is not a pipeline stage).
-const STAGES: ContainerStatus[] = [
-  'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released',
+// "All active" covers in-flight stages only (excludes completed fully_released).
+const ACTIVE_STAGES: ContainerStatus[] = [
+  'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse',
 ]
-const ACTIVE_STATUS_PARAM = STAGES.join(',')
-
-// Stage accent reuses the app's status semantics (same hues as the status
-// badges elsewhere), so a stage reads the same colour everywhere: cool while
-// at sea, amber while it needs attention (arrived/customs), green once cleared.
-const STAGE_ACCENT: Record<ContainerStatus, string> = {
-  loading: 'var(--color-ink-4)',
-  sealed: 'var(--color-info)',
-  in_transit: 'var(--color-info)',
-  arrived: 'var(--color-warning)',
-  customs_clearance: 'var(--color-warning)',
-  cleared: 'var(--color-primary)',
-  at_warehouse: 'var(--color-primary)',
-  fully_released: 'var(--color-success)',
-  cancelled: 'var(--color-ink-4)',
-}
-
-const CONTAINER_BADGE: Record<string, BadgeVariant> = {
-  loading: 'neutral',
-  sealed: 'info',
-  in_transit: 'info',
-  arrived: 'warning',
-  customs_clearance: 'warning',
-  cleared: 'primary',
-  at_warehouse: 'primary',
-  fully_released: 'success',
-  cancelled: 'neutral',
-}
+const STAGES: ContainerStatus[] = [...ACTIVE_STAGES, 'fully_released']
+const ACTIVE_STATUS_PARAM = ACTIVE_STAGES.join(',')
 
 type Selected = ContainerStatus | 'all'
 
@@ -61,7 +38,7 @@ const ETA_PRESETS: { key: EtaPreset; label: string }[] = [
 ]
 
 function isoOffsetDays(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10)
+  return isoDateOffset(days)
 }
 
 function etaRange(preset: EtaPreset | null): { eta_after?: string; eta_before?: string } {
@@ -71,7 +48,7 @@ function etaRange(preset: EtaPreset | null): { eta_after?: string; eta_before?: 
 }
 
 function etaCell(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : '—'
+  return formatDate(iso)
 }
 
 export function ContainerPipeline({ counts }: { counts: ContainerStats | undefined }): JSX.Element {
@@ -90,27 +67,26 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
   // The full, paginated list for the current stage + search + ETA filter —
   // not a 6-card sample. Stage (rail), search (q), and ETA are independent AND
   // filters, so any container is reachable by narrowing, then load-more.
-  const { items, hasMore, loadMore, isFetchingMore, isLoading, totalCount } = useContainerList({
+  const { items, hasMore, loadMore, isFetchingMore, isLoading, totalCount, error, refetch } = useContainerList({
     status: selected === 'all' ? ACTIVE_STATUS_PARAM : selected,
     ...(debouncedSearch ? { q: debouncedSearch } : {}),
     ...etaRange(etaPreset),
     limit: 12,
   })
 
-  const activeTotal = counts ? counts.total - counts.cancelled : undefined
+  const activeTotal = counts ? counts.total - counts.cancelled - counts.fully_released : undefined
   const maxCount = Math.max(1, ...STAGES.map((s) => counts?.[s] ?? 0))
 
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <SectionHead
         title="Container pipeline"
         sub="Every container by stage — select a stage to see all of them"
-        action={<Button variant="secondary" size="sm" onClick={() => navigate('/containers')}>All containers →</Button>}
+        action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/containers')}>All containers</Button>}
       />
 
       <div className={styles.rail}>
-        <button
-          type="button"
+        <Pressable
           className={[styles.stage, styles.allStage, selected === 'all' ? styles.stageActive : ''].join(' ')}
           onClick={() => setSelected('all')}
           aria-pressed={selected === 'all'}
@@ -121,48 +97,34 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
           </span>
           <span className={styles.stageCount}>{activeTotal ?? '—'}</span>
           <span className={styles.meterTrack}><span className={styles.meterFill} style={{ width: '100%' }} /></span>
-        </button>
+        </Pressable>
 
         {STAGES.map((stage) => {
           const n = counts?.[stage] ?? 0
           return (
-            <button
+            <Pressable
               key={stage}
               type="button"
               className={[styles.stage, selected === stage ? styles.stageActive : ''].join(' ')}
-              style={{ ['--accent' as string]: STAGE_ACCENT[stage] }}
+              style={{ ['--accent' as string]: statusColor('container', stage) }}
               onClick={() => setSelected(stage)}
               aria-pressed={selected === stage}
             >
               <span className={styles.stageTop}>
                 <span className={styles.stageDot} />
-                <span className={styles.stageLabel}>{CONTAINER_STATUS_LABELS[stage]}</span>
+                <span className={styles.stageLabel}>{statusLabel('container', stage)}</span>
               </span>
               <span className={styles.stageCount}>{n}</span>
               <span className={styles.meterTrack}>
                 <span className={styles.meterFill} style={{ width: `${Math.round((n / maxCount) * 100)}%` }} />
               </span>
-            </button>
+            </Pressable>
           )
         })}
       </div>
 
       <div className={styles.toolbar}>
-        <div className={styles.searchWrap}>
-          <Icon name="search" size={14} color="var(--color-ink-4)" />
-          <input
-            className={styles.searchInput}
-            placeholder="Search container number or vessel…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search containers"
-          />
-          {search && (
-            <button type="button" className={styles.searchClear} aria-label="Clear search" onClick={() => setSearch('')}>
-              <Icon name="x" size={13} color="var(--color-ink-4)" />
-            </button>
-          )}
-        </div>
+        <SearchField label="Search containers" placeholder="Search container number or vessel…" value={search} onChange={setSearch} />
         <div className={styles.etaChips}>
           <span className={styles.etaLabel}>Arriving</span>
           <Chip active={etaPreset === null} onClick={() => setEtaPreset(null)}>Any</Chip>
@@ -176,7 +138,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
 
       <div className={styles.tableMeta}>
         <span className={styles.tableTitle}>
-          {selected === 'all' ? 'All active containers' : CONTAINER_STATUS_LABELS[selected]}
+          {selected === 'all' ? 'All active containers' : statusLabel('container', selected)}
           {(debouncedSearch || etaPreset) && <span className={styles.filterNote}> · filtered</span>}
         </span>
       </div>
@@ -185,14 +147,14 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
         dense
         cardBreakpoint={700}
         columns={[
-          { title: 'Container' },
+          { title: 'Container', type: 'reference' },
           { title: 'Route' },
-          { title: 'Status' },
-          { title: 'ETA / Arrival' },
-          { title: 'Packing lists', align: 'right' },
-          { title: '', width: '64px' },
+          { title: 'Status', type: 'status' },
+          { title: 'ETA / Arrival', type: 'date' },
+          { title: 'Packing lists', type: 'number' },
         ]}
         rows={items.map((c) => ({
+          onOpen: () => navigate(`/containers/${c.id}`),
           cells: [
             <div key="num">
               <Mono>{c.container_number}</Mono>
@@ -201,26 +163,22 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
             <span key="route" className={styles.subCell} style={{ marginTop: 0 }}>
               {c.origin} → {c.destination}
             </span>,
-            <Badge key="status" variant={CONTAINER_BADGE[c.status] ?? 'neutral'}>
-              {CONTAINER_STATUS_LABELS[c.status] ?? c.status}
-            </Badge>,
-            <span key="eta" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+            <StatusBadge key="status" kind="container" status={c.status} />,
+            <span key="eta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
               {c.status === 'arrived' || c.status === 'customs_clearance' || c.status === 'cleared' || c.status === 'at_warehouse' || c.status === 'fully_released'
                 ? etaCell(c.actual_arrival_date ?? c.estimated_arrival_date)
                 : etaCell(c.estimated_arrival_date)}
             </span>,
             <Mono key="pl">{c.packing_list_count ?? 0}</Mono>,
-            <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
           ],
         }))}
         loading={isLoading}
         emptyState={
-          !isLoading ? (
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
-              {debouncedSearch || etaPreset
-                ? 'No containers match your search and filters.'
-                : `No containers in ${selected === 'all' ? 'the pipeline' : CONTAINER_STATUS_LABELS[selected]}.`}
-            </span>
+          // A failed load is not "No containers in the pipeline" (FD-53).
+          !isLoading && error ? (
+            <ErrorState compact title="Couldn't load containers" error={error} onRetry={refetch} />
+          ) : !isLoading ? (
+            <EmptyState compact title={debouncedSearch || etaPreset ? 'No containers match your search and filters' : `No containers in ${selected === 'all' ? 'the pipeline' : statusLabel('container', selected)}`} />
           ) : undefined
         }
       />
@@ -232,6 +190,7 @@ export function ContainerPipeline({ counts }: { counts: ContainerStats | undefin
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="containers"
+        nounOne="container"
       />
     </Card>
   )

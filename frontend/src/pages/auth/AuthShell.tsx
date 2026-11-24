@@ -45,10 +45,10 @@ function BrandIllustration(): JSX.Element {
           <rect x="-18" y="-2" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
           <rect x="-18" y="5" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
         </g>
-        <text x="80" y="105" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fill: colors.primaryBright, letterSpacing: '0.1em' }}>
+        <text x="80" y="105" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.primaryBright, letterSpacing: 'var(--tracking-label)' }}>
           CN · GZG
         </text>
-        <text x="320" y="312" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fill: colors.accentHover, letterSpacing: '0.1em' }}>
+        <text x="320" y="312" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.accentHover, letterSpacing: 'var(--tracking-label)' }}>
           NG · LOS
         </text>
       </svg>
@@ -71,11 +71,12 @@ export function AuthShell({ children }: AuthShellProps): JSX.Element {
         </div>
         <div className={styles.tagline}>
           <BrandIllustration />
-          <h1 className={styles.heroHeading}>
+          {/* The brand line, not the page's heading: the form's title is the h1 (FD-49). */}
+          <p className={styles.heroHeading}>
             Cargo logistics,
             <br />
             <span className={styles.heroAccent}>engineered to move.</span>
-          </h1>
+          </p>
           <p className={styles.heroSub}>
             Guangzhou to Lagos. End-to-end. Unstoppable. Built for the operators, customers, and developers
             who lead every shipment.
@@ -91,7 +92,13 @@ export function AuthShell({ children }: AuthShellProps): JSX.Element {
       </div>
 
       <div className={styles.formPanel}>
-        <div className={styles.formWrap}>{children}</div>
+        <div className={styles.formWrap}>
+          <div className={styles.mobileBrand}>
+            <KolaMark size={24} color="var(--color-primary)" />
+            <ShipxWordmark size={18} />
+          </div>
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -105,7 +112,7 @@ export interface FormHeadProps {
 export function FormHead({ title, sub }: FormHeadProps): JSX.Element {
   return (
     <div className={styles.formHead}>
-      <h2 className={styles.formTitle}>{title}</h2>
+      <h1 className={styles.formTitle}>{title}</h1>
       {sub && <p className={styles.formSub}>{sub}</p>}
     </div>
   )
@@ -118,21 +125,21 @@ export function PasswordStrength({ password }: { password: string }): JSX.Elemen
   const labels = ['', 'Weak', 'Fair', 'Strong', 'Excellent']
   const barColors = ['', 'var(--color-error)', 'var(--color-warning)', 'var(--color-success)', 'var(--color-success)']
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', gap: 4 }}>
+    <div style={{ marginTop: 'var(--space-2)' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
         {[1, 2, 3, 4].map((i) => (
           <div
             key={i}
             style={{
               flex: 1,
               height: 4,
-              borderRadius: 2,
+              borderRadius: 'var(--radius-sm)',
               background: i <= level ? barColors[level] : 'var(--color-line-soft)',
             }}
           />
         ))}
       </div>
-      <div style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: barColors[level] }}>
+      <div style={{ marginTop: 'var(--space-1)', fontSize: 'var(--text-xs)', fontWeight: 600, color: barColors[level] }}>
         Password strength: {labels[level]}
       </div>
     </div>
@@ -141,10 +148,17 @@ export function PasswordStrength({ password }: { password: string }): JSX.Elemen
 
 export function scorePassword(pw: string): 0 | 1 | 2 | 3 | 4 {
   if (!pw) return 0
-  let score = 0
-  if (pw.length >= 8) score += 1
-  if (pw.length >= 12) score += 1
-  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw) && /\d/.test(pw)) score += 1
-  if (/[^A-Za-z0-9]/.test(pw)) score += 1
-  return Math.max(1, Math.min(score, 4)) as 1 | 2 | 3 | 4
+  const hasMinLen = pw.length >= 12
+  const hasMixedCase = /[a-z]/.test(pw) && /[A-Z]/.test(pw)
+  const hasNumber = /\d/.test(pw)
+  const hasSpecial = /[^A-Za-z0-9]/.test(pw)
+  const checks = [hasMinLen, hasMixedCase, hasNumber, hasSpecial].filter(Boolean).length
+
+  // Never report "Strong" or "Excellent" until the 12-character policy floor is met.
+  if (!hasMinLen) {
+    return (pw.length >= 8 && checks >= 2 ? 2 : 1) as 1 | 2
+  }
+  if (checks === 4) return 4
+  if (checks === 3) return 3
+  return 2
 }

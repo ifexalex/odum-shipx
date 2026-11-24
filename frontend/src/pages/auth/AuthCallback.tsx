@@ -12,6 +12,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { homePathForRole } from '../../auth/roleHome'
+import { takeNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button } from '../../design/components'
 import { AuthShell, FormHead } from './AuthShell'
@@ -50,7 +51,7 @@ export function AuthCallback(): JSX.Element {
     if (initialError || !code || !state || !completeLogin) return
 
     completeLogin(code, state)
-      .then((session) => navigate(homePathForRole(session.role), { replace: true }))
+      .then((session) => navigate(takeNext() ?? homePathForRole(session.role), { replace: true }))
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : 'Sign-in could not be completed. Please try again.')
       })
@@ -65,7 +66,7 @@ export function AuthCallback(): JSX.Element {
         <Banner variant="error" title="Couldn't sign in">
           {error}
         </Banner>
-        <div style={{ marginTop: 24 }}>
+        <div style={{ marginTop: 'var(--space-6)' }}>
           <Button variant="primary" size="lg" full onClick={() => navigate('/login', { replace: true })}>
             Back to sign in
           </Button>
@@ -77,7 +78,7 @@ export function AuthCallback(): JSX.Element {
   return (
     <AuthShell>
       <FormHead title="Signing you in…" sub="Completing your Microsoft Entra sign-in." />
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-6) 0' }}>
         <div
           aria-label="Signing in"
           role="status"

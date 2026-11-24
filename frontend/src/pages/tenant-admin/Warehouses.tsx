@@ -8,24 +8,35 @@
  * pickup letterhead. tenant_admin only (route-guarded).
  */
 import { useCallback, useRef, useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { warehousesApi, type CreateWarehouseInput, type Warehouse } from '../../api/warehouses'
-import { useSetDefaultWarehouse, useWarehouses } from '../../hooks/useWarehouses'
+import { type CreateWarehouseInput, type Warehouse } from '../../api/warehouses'
+import {
+  useCreateWarehouse,
+  useDeactivateWarehouse,
+  useRemoveWarehouse,
+  useSetDefaultWarehouse,
+  useUpdateWarehouse,
+  useWarehouses,
+} from '../../hooks/useWarehouses'
 import {
   Badge,
   Banner,
   Button,
   Card,
-  Check,
   CountrySelect,
   Field,
+  Modal,
   PhoneField,
   StateSelect,
   Table,
+  DialogGuard,
+  CheckboxField,
+  EmptyState,
+  LinesSkeleton,
 } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './admin.module.css'
+import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 interface WarehouseModalProps {
   existing: Warehouse | null
@@ -49,6 +60,8 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
   const [makeDefault, setMakeDefault] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const createWarehouse = useCreateWarehouse()
+  const updateWarehouse = useUpdateWarehouse()
 
   const canSubmit = name.trim().length > 0 && !submitting
 
@@ -66,9 +79,9 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
     }
     try {
       if (isEdit && existing) {
-        await warehousesApi.update(existing.id, body)
+        await updateWarehouse.mutateAsync({ id: existing.id, body })
       } else {
-        await warehousesApi.create(body)
+        await createWarehouse.mutateAsync(body)
       }
       onSuccess()
     } catch (err) {
@@ -80,6 +93,7 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
 
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
       <div
         className={styles.modalPanel}
         onClick={(e) => e.stopPropagation()}
@@ -150,17 +164,13 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
           onChange={setPhone}
         />
         {!isEdit && (
-          <label
-            style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, cursor: 'pointer' }}
-          >
-            <Check checked={makeDefault} onChange={setMakeDefault} disabled={submitting} />
-            <span style={{ fontSize: 13 }}>
-              Make this the default warehouse
-              <span style={{ color: 'var(--color-ink-3)', display: 'block', fontSize: 12 }}>
-                Pre-selected on new packing lists and used on release-note letterheads.
-              </span>
-            </span>
-          </label>
+          <CheckboxField
+            label="Make this the default warehouse"
+            hint="Pre-selected on new packing lists and used on release-note letterheads."
+            checked={makeDefault}
+            onChange={setMakeDefault}
+            disabled={submitting}
+          />
         )}
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>
@@ -181,15 +191,19 @@ function WarehouseModal({ existing, onCancel, onSuccess }: WarehouseModalProps):
   )
 }
 
+/**
+ * A removal waiting on the user's answer: first "delete for real?", then, if the warehouse turned out to be in use,
+ * "retire it instead?" with the server's reason.
+ */
+type PendingRemoval = { warehouse: Warehouse; stage: 'delete' } | { warehouse: Warehouse; stage: 'retire'; reason: string }
+
 export function Warehouses(): JSX.Element {
-  const navigate = useNavigate()
   const [actionError, setActionError] = useState<string | null>(null)
   const [modal, setModal] = useState<{ open: boolean; existing: Warehouse | null }>({
     open: false,
     existing: null,
   })
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   // The error banner renders at the top of the page, above the table. An action
   // taken on a row further down could therefore fail with its only feedback
   // scrolled out of view — reported as "I click it and nothing happens". Scroll
@@ -227,13 +241,12 @@ export function Warehouses(): JSX.Element {
   async function handleSetDefault(id: string): Promise<void> {
     setBusyId(id)
     setActionError(null)
-    setNotice(null)
     try {
       const updated = await setDefaultWarehouse.mutateAsync(id)
       // Confirm explicitly. The only previous signal was the row's badge
       // changing, which is easy to miss and indistinguishable from nothing
       // having happened.
-      setNotice(`${updated.name} is now the default warehouse.`)
+      toast.success(`${updated.name} is now the default warehouse.`)
     } catch (err) {
       fail(err instanceof ApiError ? err.message : 'Could not set default warehouse.')
     } finally {
@@ -241,58 +254,65 @@ export function Warehouses(): JSX.Element {
     }
   }
 
+  const removeWarehouse = useRemoveWarehouse()
+  const deactivateWarehouse = useDeactivateWarehouse()
+  const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null)
+  const confirming = removeWarehouse.isPending || deactivateWarehouse.isPending
+
   /**
-   * Delete a warehouse for real.
+   * Delete a warehouse for real, once the user has confirmed.
    *
    * The backend refuses with rule_id WAREHOUSE_IN_USE when a release note,
    * pickup record, payment record or packing list references it — those records
    * must keep the warehouse they were issued against. Rather than dead-ending,
-   * offer to retire it instead, which hides it from pickers and (since migration
-   * 056) frees its name.
+   * the dialog turns into an offer to retire it instead, which hides it from
+   * pickers and (since migration 056) frees its name.
    */
-  async function handleRemove(warehouse: Warehouse): Promise<void> {
-    if (!window.confirm(`Permanently delete “${warehouse.name}”? This cannot be undone.`)) return
-    setBusyId(warehouse.id)
+  async function confirmDelete(warehouse: Warehouse): Promise<void> {
     setActionError(null)
-    setNotice(null)
     try {
-      await warehousesApi.remove(warehouse.id)
-      setNotice(`${warehouse.name} was deleted.`)
+      await removeWarehouse.mutateAsync(warehouse.id)
+      setPendingRemoval(null)
+      toast.success(`${warehouse.name} was deleted.`)
     } catch (err) {
       if (err instanceof ApiError && err.ruleId === 'WAREHOUSE_IN_USE') {
-        const retire = window.confirm(
-          `${err.message}\n\nRetire “${warehouse.name}” instead?`,
-        )
-        if (retire) {
-          try {
-            await warehousesApi.deactivate(warehouse.id)
-            setNotice(`${warehouse.name} was retired. Its name is free to reuse.`)
-          } catch (retireErr) {
-            fail(
-              retireErr instanceof ApiError ? retireErr.message : 'Could not retire warehouse.',
-            )
-          }
-        }
-      } else {
-        fail(err instanceof ApiError ? err.message : 'Could not delete warehouse.')
+        setPendingRemoval({ warehouse, stage: 'retire', reason: err.message })
+        return
       }
-    } finally {
-      setBusyId(null)
+      setPendingRemoval(null)
+      fail(err instanceof ApiError ? err.message : 'Could not delete warehouse.')
     }
   }
 
-  useTopBarSlot({
-    subtitle:
-      'Destination warehouses your customers’ goods arrive at — the arrival-warehouse picker and release-note letterheads draw from this list.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setModal({ open: true, existing: null })}>
-        Add warehouse
-      </Button>
-    ),
-  })
+  async function confirmRetire(warehouse: Warehouse): Promise<void> {
+    setActionError(null)
+    try {
+      await deactivateWarehouse.mutateAsync(warehouse.id)
+      toast.success(`${warehouse.name} was retired. Its name is free to reuse.`)
+    } catch (err) {
+      fail(err instanceof ApiError ? err.message : 'Could not retire warehouse.')
+    } finally {
+      setPendingRemoval(null)
+    }
+  }
 
   return (
     <div>
+      <PageHeader
+        title="Warehouses"
+        meta={
+          'Destination warehouses your customers’ goods arrive at — the arrival-warehouse picker and release-note letterheads draw from this list.'
+        }
+        primary={
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => setModal({ open: true, existing: null })}
+          >
+            Add warehouse
+          </Button>
+        }
+      />
       <div ref={bannerRef}>
         {error && (
           <div className={styles.banner}>
@@ -301,33 +321,26 @@ export function Warehouses(): JSX.Element {
             </Banner>
           </div>
         )}
-        {notice && !error && (
-          <div className={styles.banner}>
-            <Banner variant="success" title="Done">
-              {notice}
-            </Banner>
-          </div>
-        )}
       </div>
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Name' },
             { title: 'Location' },
             { title: 'Phone' },
-            { title: 'Status' },
-            { title: '', width: '210px' },
+            { title: 'Status', type: 'status' },
+            { title: '', type: 'action', width: '210px' },
           ]}
           rows={warehouses.map((w) => ({
             cells: [
-              <span key="name" style={{ fontWeight: 600, fontSize: 13 }}>
+              <span key="name" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                 {w.name}
               </span>,
-              <span key="loc" style={{ color: 'var(--color-ink-2)', fontSize: 13 }}>
+              <span key="loc" style={{ color: 'var(--color-ink-2)', fontSize: 'var(--text-sm)' }}>
                 {[w.city, w.state].filter(Boolean).join(', ') || '—'}
               </span>,
-              <span key="phone" style={{ color: 'var(--color-ink-2)', fontSize: 13 }}>
+              <span key="phone" style={{ color: 'var(--color-ink-2)', fontSize: 'var(--text-sm)' }}>
                 {w.phone || '—'}
               </span>,
               w.is_default ? (
@@ -339,7 +352,7 @@ export function Warehouses(): JSX.Element {
                   Active
                 </Badge>
               ),
-              <span key="action" style={{ display: 'inline-flex', gap: 6 }}>
+              <span key="action" style={{ display: 'inline-flex', gap: 'var(--space-2)' }}>
                 {!w.is_default && (
                   <Button
                     variant="ghost"
@@ -355,10 +368,10 @@ export function Warehouses(): JSX.Element {
                 </Button>
                 {!w.is_default && (
                   <Button
-                    variant="ghost"
+                    variant="danger-ghost"
                     size="sm"
-                    loading={busyId === w.id}
-                    onClick={() => void handleRemove(w)}
+                    disabled={busyId === w.id}
+                    onClick={() => setPendingRemoval({ warehouse: w, stage: 'delete' })}
                   >
                     Delete
                   </Button>
@@ -366,19 +379,49 @@ export function Warehouses(): JSX.Element {
               </span>,
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
-              {loading ? 'Loading warehouses…' : 'No warehouses configured.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading warehouses" /> : <EmptyState compact title="No warehouses configured" />}
         />
       </Card>
 
-      <div style={{ marginTop: 24 }}>
-        <Button variant="ghost" icon="arrowleft" onClick={() => navigate('/admin/config')}>
-          Back to configuration
-        </Button>
-      </div>
+      <Modal
+        open={pendingRemoval !== null}
+        onClose={confirming ? undefined : () => setPendingRemoval(null)}
+        title={pendingRemoval?.stage === 'retire' ? 'Retire this warehouse instead?' : 'Delete this warehouse?'}
+        size="sm"
+        footer={
+          pendingRemoval && (
+            <>
+              <Button variant="ghost" onClick={() => setPendingRemoval(null)} disabled={confirming}>
+                Cancel
+              </Button>
+              {pendingRemoval.stage === 'delete' ? (
+                <Button variant="danger" loading={confirming} onClick={() => void confirmDelete(pendingRemoval.warehouse)}>
+                  Delete warehouse
+                </Button>
+              ) : (
+                <Button variant="danger" loading={confirming} onClick={() => void confirmRetire(pendingRemoval.warehouse)}>
+                  Retire warehouse
+                </Button>
+              )}
+            </>
+          )
+        }
+      >
+        {pendingRemoval?.stage === 'delete' && (
+          <p>
+            <strong>{pendingRemoval.warehouse.name}</strong> will be deleted permanently. This cannot be undone.
+          </p>
+        )}
+        {pendingRemoval?.stage === 'retire' && (
+          <>
+            <p>{pendingRemoval.reason}</p>
+            <p>
+              Retiring <strong>{pendingRemoval.warehouse.name}</strong> hides it from the warehouse pickers and frees
+              its name. The records issued against it keep it.
+            </p>
+          </>
+        )}
+      </Modal>
 
       {modal.open && (
         <WarehouseModal

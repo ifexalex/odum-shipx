@@ -77,6 +77,8 @@ On success: returns updated manifest with `verification_status = 'pending'` and 
 
 **Wire note:** Both `GET /v1/manifests` and `GET /v1/manifests/{id}` now include `container_number` and `container_status` (joined from the `container` table). Previously they returned only `container_id`.
 
+**Wire note (2026-11-17):** `GET /v1/manifests` now returns `meta.pagination.total_count`: how many manifests match the same filters (`verification_status`, `container_id`), counted by `repository.count_manifests` from the shared `_manifest_predicates`. Before, it returned only `has_more`, although the frontend typed the total as always present.
+
 **Wire note (2026-10-03):** Both list and detail now also include `package_mix` — a JSONB map of package unit → total quantity for the container, e.g. `{ "carton": 120, "bale": 8, "bag": 30 }` (NULL when the manifest has no approved packing-list items). Computed live in `repository.py` via a LATERAL subquery over the manifest's **approved** packing lists (`_PACKAGE_MIX_LATERAL`, summing each item's `quantity` per `package_unit`; blank units fall under `unspecified`). This is more accurate than the stored, denormalised `total_cartons`, which counts item *rows* and so (a) can go stale between `recalculate_manifest_totals` runs and (b) under-reports mixed cargo — a container with 5 cartons + 4 bales stored `total_cartons = 5`, hiding the bales. The `ManifestList` table replaced its "Cartons" column with a **"Packages"** breakdown cell (`5 ctn · 4 bale`) and added a **Weight** column; `ManifestDetail` shows a "Packages" stat card (`9`, sub-label `5 ctn · 4 bale`). Frontend helper: `orderedPackageMix()` + `PACKAGE_UNIT_ORDER`/`ABBR` in `frontend/src/api/manifest.ts`.
 
 **Revoke-verification guard — container must be `loading`.** `revoke_verification()` in `service.py` checks `manifest["container_status"]`. If the container has already advanced past `loading` (e.g., `sealed`, `in_transit`), the request is rejected with HTTP 422 `CONTAINER_ALREADY_ADVANCED`: `"Cannot revoke verification — the container is already '{status}'. Verification can only be revoked while the container is still in 'loading' status."` This prevents undoing a manifest verification after the physical container has departed.
@@ -107,3 +109,17 @@ being selected.
 The source manifest pairs **NAME** with **CONTACT** on every row for a reason: when cargo lands,
 staff ring the customer. Requiring a click through to the customer record to get the number made the
 operational tables less useful than the paper document they replace.
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+
+## Upload confirmation (2026-11-19)
+
+**New route:** `POST /v1/manifests/{id}/evidence/{evidence_id}/confirm` — china_office_staff, nigeria_office_staff. Call it after the PUT to storage. Returns the evidence in the shape `GET /v1/manifests/{id}` lists (`id`, `file_name`, `file_type`, `label`, `created_at`, `download_url`). The row written at presign time is not listed until the client confirms the upload. The confirm call reads the stored file's size; a file over 5 MB is deleted, with its row, and refused (422 `FILE_TOO_LARGE`); nothing at the key is 422 `UPLOAD_NOT_FOUND` (the row stays hidden). Confirming twice returns the same result without reading storage again. This is the size check that holds on Azure, where an upload SAS cannot bind the length (AWS already refuses a different length at the PUT). Each upload's key now ends `{32 hex}-{safe name}`, so two uploads of one name never overwrite each other; `file_name` stays the plain name. Rows from before migration 069 were backfilled as confirmed. `GET /v1/manifests/{id}` lists confirmed evidence only.
+
+**Ground-truth gap found and fixed:** the presign route matched any POST under `/evidence`, so it would also have answered `/evidence/{id}/confirm`; it now matches the exact path.
+
+### Manifest PDF (FD-39, 2026-11-21)
+
+`GET /v1/manifests/{id}/pdf` (excel service; platform_admin, tenant_admin, china/nigeria office staff) returns a five-minute link to the branded manifest (vessel, voyage, one row per customer with totals, verification). `GET /v1/manifests/{id}/export?format=pdf` is now 422. See `19_excel_import_export.md`.

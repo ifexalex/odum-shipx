@@ -6,30 +6,37 @@
  * `tenant.branding_config` (PUT /v1/tenant/config {branding}): company
  * identity, warehouse/contact details, and the document footer, with a live
  * preview of how branding renders on generated documents. Consumers:
- * PrintPackingList / PrintReleaseNote (header + footer) and StaffLayout's
+ * the generated PDFs (services/excel/pdf_theme.py: brand block and footer) and StaffLayout's
  * ThemeProvider (primary_color).
  *
  * Renders inside ConfigLayout (persistent config sub-nav rail — routes.tsx).
  *
- * Divergence from the prototype (documented in AUDIT_GAPS.md): the logo is an
- * initials tile + brand colour, not an uploaded image — there is no
- * tenant-scoped upload endpoint yet (the only presigned-upload route is
- * claim-scoped). The tile mirrors exactly what TenantBrand renders in-app.
+ * The logo (FD-29) is an uploaded image (PNG, JPEG or WebP, up to 5 MB) through
+ * the tenant-scoped logo endpoints, saved as soon as it is chosen rather than with
+ * the form; until one is uploaded, the initials on the brand colour stand in.
+ * `TenantLogo` draws it here, in the live preview and on the printed documents.
  */
-import { useMemo, useState, type JSX } from 'react'
+import { useMemo, useRef, useState, type JSX } from 'react'
+import { Link } from 'react-router-dom'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
-import { Banner, Button, Card, Field, PhoneField } from '../../design/components'
-import { useBranding, useSaveBranding } from '../../hooks/useConfig'
+import { ApiError } from '../../api/client'
+import { LogoFileError } from '../../api/uploads'
+import { Banner, Button, Card, Field, Modal, PageSkeleton, PhoneField, Pressable, ColorField, ConfirmDialog, ErrorState, FileInput } from '../../design/components'
+import { useBranding, useSaveBranding, useTenantLogo } from '../../hooks/useConfig'
+import { TenantLogo } from '../../shell/TenantLogo'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CompanySettings.module.css'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Form state
 // ---------------------------------------------------------------------------
 
-type FormState = Required<{ [K in keyof BrandingConfig]: string }>
+// The logo is not a form field: it is uploaded and saved on its own (FD-29).
+type FormState = Required<{ [K in Exclude<keyof BrandingConfig, 'logo_url'>]: string }>
 
 const EMPTY_FORM: FormState = {
   display_name: '',
@@ -62,24 +69,15 @@ function brandingFromForm(form: FormState): BrandingConfig {
   return out
 }
 
-function initialsFor(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return '?'
-  return words
-    .slice(0, 2)
-    .map((w) => w[0]!.toUpperCase())
-    .join('')
-}
 
 // ---------------------------------------------------------------------------
 // Live document preview (prototype DocPreview) — driven by the form state so
 // edits render immediately. Mirrors the real print layouts
-// (PrintPackingList/PrintReleaseNote), which read the same branding fields.
+// (services/excel/pdf_theme.py), which read the same branding fields.
 // ---------------------------------------------------------------------------
 
-function DocPreview({ form, doc }: { form: FormState; doc: 'pl' | 'rn' }): JSX.Element {
+function DocPreview({ form, doc, logoUrl }: { form: FormState; doc: 'pl' | 'rn'; logoUrl?: string }): JSX.Element {
   const name = form.display_name.trim() || 'Your company name'
-  const brandColor = isValidHexColor(form.primary_color) ? form.primary_color : 'var(--color-primary)'
   const footerLines = form.document_footer.trim()
     ? form.document_footer.trim().split('\n')
     : ['Set a document footer to see it here.']
@@ -88,9 +86,7 @@ function DocPreview({ form, doc }: { form: FormState; doc: 'pl' | 'rn' }): JSX.E
     <div className={styles.docPreview} data-testid="doc-preview">
       <div className={styles.docHead}>
         <div className={styles.docBrand}>
-          <div className={styles.docLogo} style={{ background: brandColor }}>
-            {initialsFor(name)}
-          </div>
+          <TenantLogo name={name} color={form.primary_color} logoUrl={logoUrl} className={styles.docLogo} />
           <div>
             <div className={styles.docCompany}>{name}</div>
             {form.tagline.trim() && <div className={styles.docTagline}>{form.tagline}</div>}
@@ -175,6 +171,102 @@ function DocPreview({ form, doc }: { form: FormState; doc: 'pl' | 'rn' }): JSX.E
 }
 
 // ---------------------------------------------------------------------------
+// Logo (FD-29): uploaded and saved on its own, not with the form
+// ---------------------------------------------------------------------------
+
+function LogoBlock({
+  name,
+  color,
+  logoUrl,
+  disabled,
+}: {
+  name: string
+  color: string
+  logoUrl?: string
+  disabled: boolean
+}): JSX.Element {
+  const { upload, remove } = useTenantLogo()
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState(false)
+
+  async function handleFile(file: File | undefined): Promise<void> {
+    if (!file) return
+    setProblem(null)
+    try {
+      await upload.mutateAsync(file)
+      toast.success(logoUrl ? 'Logo replaced' : 'Logo uploaded', 'Your documents show it from now on.')
+    } catch (err) {
+      setProblem(
+        err instanceof LogoFileError || err instanceof ApiError ? err.message : 'The logo could not be uploaded. Try again.',
+      )
+    } finally {
+      if (fileInput.current) fileInput.current.value = ''
+    }
+  }
+
+  async function handleRemove(): Promise<void> {
+    await remove.mutateAsync()
+    setConfirmRemove(false)
+    toast.success('Logo removed', 'Your initials on your brand colour are used instead.')
+  }
+
+  return (
+    <div className={styles.logoBlock}>
+      <TenantLogo name={name} color={color} logoUrl={logoUrl} className={styles.logoTile} />
+      <div className={styles.logoMeta}>
+        <div className={styles.logoTitle}>Logo</div>
+        <div className={styles.logoDesc}>
+          {logoUrl
+            ? 'Shown on your packing lists and release notes.'
+            : 'Until you upload one, your initials on your brand colour are used.'}{' '}
+          PNG, JPEG or WebP, up to 5 MB. Saved as soon as you choose it.
+        </div>
+        {problem && (
+          <p className={styles.logoProblem} role="alert">
+            {problem}
+          </p>
+        )}
+      </div>
+      <div className={styles.logoActions}>
+        <FileInput
+          ref={fileInput}
+          label="Logo file"
+          accept="image/png,image/jpeg,image/webp"
+          onChange={(e) => void handleFile(e.target.files?.[0])}
+        />
+        <Button
+          variant="secondary"
+          icon="upload"
+          loading={upload.isPending}
+          disabled={disabled}
+          onClick={() => fileInput.current?.click()}
+        >
+          {logoUrl ? 'Replace logo' : 'Upload logo'}
+        </Button>
+        {logoUrl && (
+          <Button variant="danger-ghost" disabled={disabled} onClick={() => setConfirmRemove(true)}>
+            Remove logo
+          </Button>
+        )}
+      </div>
+      <ConfirmDialog
+        open={confirmRemove}
+        title="Remove your logo?"
+        confirmLabel="Remove logo"
+        undo="You can upload it again at any time."
+        busy={remove.isPending}
+        error={remove.error ? (remove.error instanceof ApiError ? remove.error.message : 'The logo could not be removed.') : null}
+        onConfirm={handleRemove}
+        onCancel={() => setConfirmRemove(false)}
+      >
+        Documents will show your initials on your brand colour instead.
+      </ConfirmDialog>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -201,8 +293,8 @@ function CompanySettingsForm({
   const save = useSaveBranding()
 
   const [form, setForm] = useState<FormState>(() => formFromBranding(branding))
-  const [saved, setSaved] = useState(false)
   const [previewDoc, setPreviewDoc] = useState<'pl' | 'rn'>('pl')
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
 
   const dirty = useMemo(
     () => JSON.stringify(brandingFromForm(form)) !== JSON.stringify(brandingFromForm(formFromBranding(branding))),
@@ -213,7 +305,6 @@ function CompanySettingsForm({
 
   function set<K extends keyof FormState>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setSaved(false)
       setForm((f) => ({ ...f, [key]: e.target.value }))
     }
   }
@@ -222,27 +313,37 @@ function CompanySettingsForm({
   // event (PhoneField emits E.164, CountrySelect/StateSelect emit a name).
   function setValue<K extends keyof FormState>(key: K) {
     return (value: string) => {
-      setSaved(false)
       setForm((f) => ({ ...f, [key]: value }))
     }
   }
 
   async function handleSave(): Promise<void> {
-    setSaved(false)
     await save.mutateAsync(brandingFromForm(form))
-    setSaved(true)
+    toast.success('Company settings saved', 'Documents and the portal show the change.')
   }
 
   return (
     <div>
+      {/* Ask before leaving with unsaved edits (FD-54); the logo saves on its own, so it never counts. */}
+      <UnsavedChangesGuard when={dirty && !save.isPending} />
       <PageHeader
         title="Company settings"
-        subtitle="Your identity on packing lists, release notes, and the customer portal."
+        meta="Your identity on packing lists, release notes, and the customer portal."
+        actions={
+          <Button
+            variant="secondary"
+            icon="file"
+            className={styles.mobilePreviewBtn}
+            onClick={() => setPreviewModalOpen(true)}
+          >
+            Preview documents
+          </Button>
+        }
       />
 
       {loadError && (
-        <div style={{ marginBottom: 16 }}>
-          <Banner variant="error" title="Couldn't load settings">{loadError.message}</Banner>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <ErrorState compact title="Couldn't load settings" error={loadError} />
         </div>
       )}
 
@@ -269,46 +370,40 @@ function CompanySettingsForm({
               helper="Shown beneath the logo on documents."
               disabled={isLoading}
             />
-            <div className={styles.logoRow}>
-              <div
-                className={styles.logoTile}
-                style={{ background: isValidHexColor(form.primary_color) ? form.primary_color : 'var(--color-primary)' }}
-              >
-                {initialsFor(form.display_name || '?')}
-              </div>
-              <div className={styles.logoMeta}>
-                <div className={styles.logoTitle}>Logo mark</div>
-                <div className={styles.logoDesc}>
-                  Your initials on your brand colour — used in the sidebar and on documents. Image
-                  upload is coming once file storage for branding lands.
-                </div>
-              </div>
-              <div className={styles.colorField}>
-                <Field
-                  label="Brand colour"
-                  name="primary_color"
-                  optional
-                  placeholder="#1a73e8"
-                  value={form.primary_color}
-                  onChange={set('primary_color')}
-                  error={colorInvalid ? 'Use a hex colour like #1a73e8.' : undefined}
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
+            <LogoBlock
+              name={form.display_name || '?'}
+              color={form.primary_color}
+              logoUrl={branding?.logo_url}
+              disabled={isLoading}
+            />
+            <ColorField
+              label="Brand colour"
+              name="primary_color"
+              optional
+              value={form.primary_color}
+              onChange={(hex) => setForm((f) => ({ ...f, primary_color: hex }))}
+              error={colorInvalid ? 'Use a hex colour like #1a73e8.' : undefined}
+              helper="Buttons and highlights across your workspace, and the initials tile when there is no logo."
+              disabled={isLoading}
+            />
           </Card>
 
           <Card>
-            <SectionHead title="Warehouse & contact" sub="Where customers collect goods and reach you" />
+            <SectionHead title="Default warehouse & contact" sub="Fallback pickup details and customer support channels" />
             <div style={{ height: 16 }} />
             <Field
-              label="Warehouse address"
+              label="Default warehouse address"
               name="warehouse_address"
               multiline
               rows={3}
               value={form.warehouse_address}
               onChange={set('warehouse_address')}
-              helper="Printed on release notes for customer pickup."
+              helper={
+                <>
+                  Printed on release notes when a specific branch isn&apos;t set. Manage multiple pickup locations under{' '}
+                  <Link to="/admin/config/warehouses" className={styles.inlineLink}>Warehouses</Link>.
+                </>
+              }
               disabled={isLoading}
             />
             <div className={styles.grid2}>
@@ -340,11 +435,6 @@ function CompanySettingsForm({
           {save.error && (
             <Banner variant="error" title="Couldn't save">{save.error.message}</Banner>
           )}
-          {saved && (
-            <Banner variant="success" title="Saved">
-              Branding updated — documents and the app theme now use it.
-            </Banner>
-          )}
 
           <div className={styles.saveBar}>
             <Button
@@ -367,38 +457,73 @@ function CompanySettingsForm({
         </div>
 
         <div className={styles.previewCol}>
-          <Card padding={20}>
+          <Card padding="default">
             <SectionHead title="Live preview" sub="How your branding appears on documents" />
             <div style={{ height: 16 }} />
             <div className={styles.previewToggle} role="tablist">
-              <button
+              <Pressable
                 role="tab"
                 aria-selected={previewDoc === 'pl'}
                 className={[styles.previewTab, previewDoc === 'pl' ? styles.previewTabActive : ''].join(' ')}
                 onClick={() => setPreviewDoc('pl')}
               >
                 Packing list
-              </button>
-              <button
+              </Pressable>
+              <Pressable
                 role="tab"
                 aria-selected={previewDoc === 'rn'}
                 className={[styles.previewTab, previewDoc === 'rn' ? styles.previewTabActive : ''].join(' ')}
                 onClick={() => setPreviewDoc('rn')}
               >
                 Release note
-              </button>
+              </Pressable>
             </div>
             <div style={{ height: 16 }} />
-            <DocPreview form={form} doc={previewDoc} />
+            <DocPreview form={form} doc={previewDoc} logoUrl={branding?.logo_url} />
           </Card>
         </div>
       </div>
+
+      <Modal open={previewModalOpen} onClose={() => setPreviewModalOpen(false)} title="Document preview" size="sm">
+        <div className={styles.previewToggle} role="tablist">
+          <Pressable
+            role="tab"
+            aria-selected={previewDoc === 'pl'}
+            className={[styles.previewTab, previewDoc === 'pl' ? styles.previewTabActive : ''].join(' ')}
+            onClick={() => setPreviewDoc('pl')}
+          >
+            Packing list
+          </Pressable>
+          <Pressable
+            role="tab"
+            aria-selected={previewDoc === 'rn'}
+            className={[styles.previewTab, previewDoc === 'rn' ? styles.previewTabActive : ''].join(' ')}
+            onClick={() => setPreviewDoc('rn')}
+          >
+            Release note
+          </Pressable>
+        </div>
+        <div style={{ height: 16 }} />
+        <DocPreview form={form} doc={previewDoc} logoUrl={branding?.logo_url} />
+      </Modal>
     </div>
   )
 }
 
 export function CompanySettings(): JSX.Element {
   const { branding, isLoading, error: loadError } = useBranding()
+
+  if (isLoading && !branding) {
+    return (
+      <div>
+        <PageHeader
+          title="Company settings"
+          meta="Your identity on packing lists, release notes, and the customer portal."
+        />
+        <PageSkeleton kind="form" label="Loading company settings" />
+      </div>
+    )
+  }
 
   // Keyed on whether branding has ARRIVED, not on its contents: the form needs
   // seeding exactly once, when the fetch resolves. Keying on the contents would

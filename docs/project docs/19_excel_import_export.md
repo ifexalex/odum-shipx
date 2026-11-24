@@ -16,9 +16,12 @@ services/excel/
 ├── handler.py               # Lambda entry point for all export/import routes
 ├── service.py               # Orchestration: fetch data → generate → upload S3
 ├── export_packing_list.py        # Packing list .xlsx generator
-├── export_packing_list_pdf.py    # Branded A4 packing list PDF (reportlab)
-├── export_release_note_pdf.py    # Branded A4 release note PDF with QR code (reportlab)
-├── export_receipt_pdf.py    # Branded A4 cash receipt PDF with QR code (reportlab)
+├── pdf_theme.py             # The one PDF theme (FD-41): fonts, tokens, formats, brand block, pages, tables
+├── export_invoice_pdf.py    # The invoice PDF (FD-39)
+├── export_manifest_pdf.py   # The manifest PDF (FD-39)
+├── export_packing_list_pdf.py    # The packing list PDF
+├── export_release_note_pdf.py    # The release note PDF (QR holds the bare reference, FD-42)
+├── export_receipt_pdf.py    # The payment receipt PDF
 ├── export_manifest.py       # Manifest .xlsx generator
 ├── export_billing.py        # Billing .xlsx generator
 ├── import_packing_list.py   # Packing list .xlsx parser + validator (exact header)
@@ -32,36 +35,48 @@ services/excel/
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/v1/packing-lists/{id}/export` | china_office_staff, tenant_admin, nigeria_office_staff | Export single packing list (`?format=xlsx\|csv\|pdf`) |
+| GET | `/v1/packing-lists/{id}/export` | china_office_staff, tenant_admin, nigeria_office_staff | Export single packing list (`?format=xlsx\|csv`) |
 | GET | `/v1/packing-lists/{id}/pdf` | china_office_staff, tenant_admin, nigeria_office_staff, customer (own only) | Branded A4 PDF; 5-min presigned URL; EXPORT audit |
+| GET | `/v1/billing/{id}/pdf` | nigeria_office_staff, tenant_admin, customer (own only) | **The invoice** (FD-39, 2026-11-21): branded A4 PDF; 5-min link; EXPORT audit |
+| GET | `/v1/manifests/{id}/pdf` | platform_admin, tenant_admin, china_office_staff, nigeria_office_staff | **The manifest** (FD-39): branded A4 PDF; 5-min link; EXPORT audit |
 | GET | `/v1/release-notes/{id}/pdf` | nigeria_office_staff, tenant_admin, warehouse_attendant, customer (own only) | Branded A4 PDF with QR code; 5-min presigned URL; EXPORT audit |
 | GET | `/v1/payments/{id}/receipt/pdf` | nigeria_office_staff, tenant_admin, customer (own only) | Branded A4 cash-receipt PDF with QR code; 5-min presigned URL; EXPORT audit |
-| GET | `/v1/manifests/{id}/export` | china_office_staff, tenant_admin, nigeria_office_staff | Export manifest (`?format=xlsx\|csv\|pdf`) |
-| GET | `/v1/billing/{id}/export` | tenant_admin, nigeria_office_staff, customer (own only) | Export billing (`?format=xlsx\|csv\|pdf`) — the `pdf` format doubles as the customer's downloadable invoice |
-| GET | `/v1/containers/{id}/billing/export` | tenant_admin, nigeria_office_staff | Export all billing for a container (`?format=xlsx\|csv\|pdf`) |
+| GET | `/v1/manifests/{id}/export` | china_office_staff, tenant_admin, nigeria_office_staff | Export manifest (`?format=xlsx\|csv`) |
+| GET | `/v1/billing/{id}/export` | tenant_admin, nigeria_office_staff, customer (own only) | Export billing (`?format=xlsx\|csv`). ~~The `pdf` format doubled as the customer's downloadable invoice~~ — replaced by `/v1/billing/{id}/pdf` (FD-39) |
+| GET | `/v1/containers/{id}/billing/export` | tenant_admin, nigeria_office_staff | Export all billing for a container (`?format=xlsx\|csv`) |
+| GET | `/v1/billing/report/export` | tenant_admin | **Report export** (2026-11-20): the reports page's billing by container for its period, every container (`?created_after=&created_before=&format=xlsx\|csv`) |
+| GET | `/v1/billing/export` | tenant_admin | **List export** (2026-11-16; tenant admin only since 2026-11-17, owner decision): every invoice matching the invoice list's filters and sort (`?format=xlsx\|csv`) |
+| GET | `/v1/containers/export` | tenant_admin, nigeria_office_staff, china_office_staff | **List export** (2026-11-16): every container matching the container list's filters and sort (`?format=xlsx\|csv`) |
 | POST | `/v1/packing-lists/import/presigned-url` | china_office_staff | Get a cloud-neutral **PUT** presigned URL for an import .xlsx (`content_type` must be the xlsx MIME type); returns `{ upload_url, upload_method, upload_headers, file_key }`. Reused unchanged by the manifest import flow below — there is no second presigned-url endpoint. |
 | POST | `/v1/packing-lists/import` | china_office_staff | Import packing list from .xlsx (exact header, pre-existing container + customers required) |
 | POST | `/v1/manifests/import` | china_office_staff | Import a China-side freight-forwarder manifest .xlsx (flexible header matching; auto-creates container/customers/packing lists) — see "Manifest Import" below |
 
-### PDF Export Details
+### PDF documents (FD-39 to FD-42, 2026-11-21)
 
-**Packing list PDF** (`export_packing_list_pdf.py`):
-- Header: tenant `company_display_name` in brand colour
-- Meta: Customer, Container, Status, Generated date
-- "✓ APPROVED" stamp when `status IN ('approved', 'recorded')`
-- Line-item table: Carton Tag | Description | Dispatch kg | Actual kg | CBM | Tracking Code
-- Totals row; S3 key `{tenant_id}/exports/{date}/{stem}.pdf`
+**One document per record, built on one theme.** `pdf_theme.py` holds everything about how a document looks; each `export_*_pdf.py` describes only its content. The server PDF is the single version of each document (owner decision, 2026-11-21): the browser print pages (`/packing-lists/:id/print`, `/release-notes/:id/print`) are retired and "Print" opens the PDF.
 
-**Release note PDF** (`export_release_note_pdf.py`):
-- Header strip (brand colour): company name left | QR code right (encodes `RELEASE:{reference_number}`)
-- Meta: Customer, Phone, Container, Payment Reference, Carton Count, Status, Valid From, plus — only when present on the note — Warehouse (name/address/city/state), Document No. (`physical_document_number`), Invoice No(s). (`packing_list_invoice_numbers`), Cartons Balance, and either "ON CREDIT — granted by {name}" or Amount Paid/Balance Outstanding, plus Receipt No. Field list built by the pure, independently-tested `build_meta_pairs()` helper.
-- Signature block: 4 named lines — Customer's Rep, Customer Service Officer, Accounting Officer, Warehouse Attendant (parity with `PrintReleaseNote.tsx`'s HTML signature block; previously 3 generic "Authorized Signature / Date / Name" columns naming no one)
-- Footer validity statement + the "goods must be confirmed before leaving" disclaimer (from the reference paper "Goods Release Note" form)
-- QR via `reportlab.graphics.barcode.qr.QrCodeWidget` (no extra deps)
+- **Fonts**: Noto Sans (with ₦) and a Noto Sans SC subset (GB2312) embedded from `shared/fonts/` (OFL; see its README). `markup()` escapes `&`, `<`, `>` in every value (a description typed as `<b>` used to break the PDF) and sets Chinese runs in the Chinese font. `missing_glyphs()` names anything neither font can draw. No built-in Helvetica/Times anywhere, including reportlab's defaults for a page's first font, table cells and drawings.
+- **Look**: token colours (ink, lines, the app's green `#1c7922` by default, never `#1a56db`), the type scale scaled for print. The tenant's brand colour rules the brand block and table headers.
+- **Values**: as the app formats them: `₦174,375`, CBM to 3 decimals, kg to 1, half-up rounding, "21 Nov 2026" and "21 Nov 2026, 12:58 WAT" in Lagos time, statuses as words ("Released with outstanding"). No `utcnow`.
+- **Pages**: the brand block opens page one (logo or initials tile, name, tagline, address, phone · email; the title, reference and key facts on the right). Later pages carry a running header. Every page ends with the tenant's document footer and "Page n of N". Tables wrap cells (long tags break) and repeat their header row. PDF title, author (the company), subject and creator are set.
+- **Logo**: `service._brand()` reads `branding_config.logo_key` from storage only under `{tenant_id}/branding/logo/` (FD-29); an unreadable logo leaves the initials.
+- **Links**: five minutes, `Content-Disposition: inline; filename="{Company}_{kind}_{reference}.pdf"` signed into the link (spreadsheets: `attachment`), EXPORT audit per download.
+
+| Document | Route | Contents |
+| --- | --- | --- |
+| Invoice | `GET /v1/billing/{id}/pdf` | Number, issue date, status; bill-to and phone; container, cartons, total CBM, due date; lines: shipping (CBM × $rate per CBM × ₦exchange per $), each extra charge, storage fees, carryover, credit applied (negative); total due, paid, outstanding (red when owed); how to pay from the tenant's `bank_transfer_config` and Paystack, else its contact details. A cancelled invoice shows its reason instead. |
+| Packing list | `GET /v1/packing-lists/{id}/pdf` | Reference, status, printed time; customer and phone, container, arrival warehouse, delivery and loading dates; items: tag, description, type, qty, L × W × H, CBM, dispatch and actual kg, with totals; packed by / approved by with dates. The old "APPROVED" stamp drawn over its own border is gone (status is in the header). |
+| Release note | `GET /v1/release-notes/{id}/pdf` | Reference, issued, valid until, status; customer, phone, container, invoice, cartons authorised ("(partial release)"), pick-up address and phone, document no., packing list invoices, cartons still to collect, payment status and amounts or "On credit, granted by"; every carton tag with a drawn "Collected" box; QR code holding the **bare reference** (FD-42; the warehouse scanner opens it; it held `RELEASE:{ref}`, which found nothing); four signature lines; terms. |
+| Receipt | `GET /v1/payments/{id}/receipt/pdf` | Number and date; amount in figures and words; received from and phone, method, payment reference, bank, cheque, where received, paper receipt no.; invoice, invoice total, this payment, balance after this payment; received by (name) and signature lines. |
+| Manifest | `GET /v1/manifests/{id}/pdf` | Container, vessel, voyage, shipping line, route, departed, arrived/expected; one row per customer (cartons, weight, CBM) with totals; verification status, verified by and on. |
+
+**Data exports are spreadsheets only (FD-39).** `?format=pdf` on `/export` routes is 422 ("A record's PDF has its own /pdf link"); `_rows_to_pdf` (a landscape table of column names such as "Cbm Rate Usd", raw `released_with_outstanding`, `2.000000`) is deleted.
+
+**Repository additions**: names for packed/approved/verified/issued/recorded by (`tenant_user.full_name`), the customer's phone on the packing list and invoice, the warehouse phone on the release note, `balance_after_ngn` on the receipt (invoice total less every payment up to and including this one), `get_bank_transfer_config`, `paystack_enabled`.
 
 **Ground-truth gap fixed (2026-09-13):** `get_release_note_for_pdf`'s query already joined `customer_phone`, `warehouse_name/address/city/state`, `billing_total_ngn/amount_paid_ngn/balance_ngn`, `payment_status`, and `receipt_number`, plus `rn.*` already carried `is_on_credit`/`credit_granted_by_name`/`physical_document_number`/`packing_list_invoice_numbers`/`packages_balance` — but `generate_release_note_pdf` only ever read 7 of the ~20 available fields, silently dropping the rest from the printed document. Same class of bug as the `_fmt_release_note`/`create_split_release_note` gaps fixed the same day in `services/payment_release`. Fixed by reading every joined field, matching the print HTML view's field completeness.
 
-**QR rendering bug fixed (2026-09-13):** `_qr_image()` in both `export_release_note_pdf.py` and `export_receipt_pdf.py` set `.transform` on the `QrCodeWidget` itself — reportlab's `AttrMap` validation rejects that (`AttributeError: Illegal attribute 'transform' in class QrCodeWidget`), so **every call to `generate_release_note_pdf` and `generate_receipt_pdf` has always raised, meaning both PDF exports have never worked in production**. Fixed by setting `.transform` on the enclosing `Drawing` instead (the correct reportlab pattern for scaling a widget within a Drawing). No unit test previously exercised the reportlab call path (mocks stopped at `repo.get_release_note_for_pdf`/`repo.get_payment_for_receipt_pdf`), so this was invisible to the suite; `tests/unit/test_export_release_note_pdf.py` and `tests/unit/test_export_receipt_pdf.py` now render a real PDF end-to-end and assert on the `%PDF` magic bytes.
+**QR rendering bug fixed (2026-09-13):** `_qr_image()` in both `export_release_note_pdf.py` and `export_receipt_pdf.py` set `.transform` on the `QrCodeWidget` itself — reportlab's `AttrMap` validation rejects that (`AttributeError: Illegal attribute 'transform' in class QrCodeWidget`), so **every call to `generate_release_note_pdf` and `generate_receipt_pdf` has always raised, meaning both PDF exports have never worked in production**. Fixed by setting `.transform` on the enclosing `Drawing` instead (the correct reportlab pattern for scaling a widget within a Drawing). No unit test previously exercised the reportlab call path (mocks stopped at `repo.get_release_note_for_pdf`/`repo.get_payment_for_receipt_pdf`), so this was invisible to the suite; `tests/unit/test_export_release_note_pdf.py` and `tests/unit/test_export_receipt_pdf.py` now render a real PDF end-to-end and assert on the `%PDF` magic bytes. *(2026-11-21: both replaced by `tests/unit/test_pdf_documents.py`, which reads every document back with pypdf; the QR code is now drawn by `pdf_theme.QrCode`.)*
 
 **Customer ownership**: when role is CUSTOMER, the endpoint fetches the customer_id from `customer.user_id` and returns 404 (never 403) if the record doesn't belong to them.
 
@@ -73,7 +88,7 @@ All four export endpoints accept an optional `?format=` query parameter:
 |---|---|---|
 | `xlsx` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | Default. Full-featured workbook with summary sheet. |
 | `csv` | `text/csv` | Flat CSV, UTF-8 BOM encoded for Excel compatibility. |
-| `pdf` | `application/pdf` | Landscape A4, blue header row, alternating row shading (reportlab). |
+| ~~`pdf`~~ | — | Removed 2026-11-21 (FD-39): 422. A record's PDF is its own document under `/pdf`. |
 
 Invalid `?format=` values return 422 with `VALIDATION_ERROR`. Dependencies: `openpyxl` (xlsx), stdlib `csv` (csv), `reportlab>=4.0` (pdf) — bundled in the shared Lambda layer (pyproject `layer` deps).
 
@@ -208,6 +223,36 @@ def generate_packing_list_xlsx(
 | F | Carton Tags | String (comma-separated) |
 
 **Sheet 2: "All Items"** — flat list of all packing_list_items across all customers for this container, with columns matching the packing list export Sheet 1.
+
+## List exports: the invoice list and the container list (2026-11-16, master plan 7.189)
+
+The **Export** button on the invoice list and the container list downloads *what the screen shows*: every row matching the list's filters and sort, across all pages, not just the rows loaded.
+
+**Query string** (`ListExportQuery` / `ContainerListExportQuery` in `services/excel/models.py`): the list's own names. `format` (`xlsx` default, or `csv`; `pdf` is 422, a list can run to thousands of rows), `status` (comma-separated), `q`, `created_after`, `created_before` (`YYYY-MM-DD`), `sort`, `direction`; the container export also takes `eta_after`, `eta_before`. Anything else is ignored. A malformed value is `422`.
+
+**One filter for the list and its export.** The WHERE clause comes from `shared/list_filters.py` (`billing_filter`, `container_filter`), which `list_billing_all`, `list_containers` and the two export queries all call, so an export cannot disagree with the screen about which rows match. The extraction was verified byte-for-byte: the list SQL and parameters were captured for 14 filter combinations before and after, and are identical. `tests/unit/test_list_exports.py::TestExportsUseTheListsFilter` pins that each export query contains the shared clause; `tests/db/test_list_exports.py` compares the row ids and order of list and export on a real database.
+
+| | Invoice list | Container list |
+|---|---|---|
+| Roles | `tenant_admin`, `nigeria_office_staff` (and `platform_admin`, who has no tenant data) | `tenant_admin`, `nigeria_office_staff`, `china_office_staff` |
+| Columns | `export_lists.BILLING_LIST_COLUMNS`: invoice number, customer, container, billed at (UTC), status, CBM, rates, subtotals, misc fees, carryover, storage fees, total due, paid, outstanding (`balance_ngn`, the database's generated column) | `CONTAINER_LIST_COLUMNS`: container, status, vessel, voyage, shipping line, origin, destination, ship date, ETA, arrived, packing lists, approved packing lists, CBM packed, capacity, seal number, created at (UTC) |
+| Carryover / storage fees | The same aggregates the single-invoice export uses; a waived storage fee is not counted | |
+
+**Limit.** More than `EXPORT_ROW_LIMIT` (10,000) matching rows is refused with `422 EXPORT_TOO_LARGE` ("Narrow the filters (status, dates or search) and export again"), not cut short: a partial file that looks complete is worse than none. The query asks for one row more than the limit to know.
+
+**Spreadsheet formula safety (CWE-1236).** Customers can type their own name (self-registration), and a cell starting with `=`, `+`, `-` or `@` runs as a formula when the file is opened in Excel. `services/excel/_tables.py` writes text columns as text (xlsx cell type forced to string; csv gets a leading `'`), and writes numbers and money as real numbers, so a negative amount is not mistaken for a formula. The older single-record exports were fixed the same day: they call `_tables.neutralise_formulas(workbook)` before saving, and `_rows_to_csv` passes values through `_tables.csv_safe` (`tests/unit/test_export_formula_safety.py`).
+
+**Other behaviour.** Timestamps are written in UTC and the header says so (a spreadsheet has no time zones; Lagos time is a separate owner decision, FE-03). csv is UTF-8 with a byte-order mark and CRLF line ends. Money in csv is the exact decimal text; in xlsx it is a number with a `#,##0.00` format. Each export is audited (`EXPORT`, entity `billing` or `container`, a fresh id for the export itself): format, row count, filename and the filters, but **not** the search text, which can be a customer's name or phone number (only `text_search: true`). The response is the usual `{filename, download_url, expires_at, file_size_bytes, format}` plus `row_count`. No N+1: misc fees are a total column, not itemised.
+
+**Credits on exports (2026-11-17, BE-07).** The credit an invoice absorbed (`billing.credits_applied_ngn`) is now exported: `credits_applied_ngn` in the single-invoice csv/pdf (it was left out because nothing filled it), a negative "Adjustments (NGN)" in the billing xlsx (was always 0), and a "Credits Applied (NGN)" column in the invoice list export. Without it the parts did not add up to the total.
+
+**Who may export the invoice list (owner decision, 2026-11-17).** Only the tenant admin: the file is every customer's invoices in one download. `GET /v1/billing/export` asserts `_BILLING_LIST_EXPORT_ROLES = (tenant_admin,)`; Nigeria office staff, who were allowed for one day, now get 403 (they still export a single invoice or one container's billing), as do China staff, warehouse, customers and the platform admin (`tests/unit/test_list_exports.py`). The container list export is unchanged.
+
+**Routes.** `GET /v1/billing/export` and `GET /v1/containers/export` are routed to the excel service by `resolve_service` (path ends in `/export`) and by two literal API Gateway routes, which win over the `{id}` routes on the same path.
+
+**Report export (2026-11-20).** The reports page's two Export buttons had no handler. `GET /v1/billing/report/export` (`export_report_container_billing`) writes the "CBM & billing by container" table for the report's period: one row per container (Container, Customers, Volume (CBM), Average CBM Rate (USD), Average Dollar Rate (NGN per USD), Billed, Collected, Outstanding (NGN)), largest billed first. It has every container; the page lists the top 200 (`REPORT_CONTAINER_ROWS`). Page and export share one query, `services/billing/repository.py::get_container_billing`, so their figures cannot drift; the export asks for `EXPORT_ROW_LIMIT + 1` rows and refuses (422 `EXPORT_TOO_LARGE`, "Narrow the period") past 10,000. Tenant admin only, like the invoice list export (`_BILLING_LIST_EXPORT_ROLES`). Query: `ReportExportQuery` (`created_after` / `created_before` as `YYYY-MM-DD`, `format` xlsx or csv). File `{tenant}_billing_by_container_{date}`. Audited as `EXPORT` on `billing` with the period. `_list_export` gained `stem_noun` and `narrow_by` for the file name and the refusal wording. Routed by `resolve_service` (ends in `/export`) and a literal API Gateway route. Tests: `tests/unit/test_report_export.py` (19), `tests/db/test_list_exports.py::TestReportExportEndToEnd` (2, real Postgres).
+
+~~Not run against a real database.~~ `tests/db/test_list_exports.py` (42 tests) ran on 2026-11-17 against local Postgres: all pass. With the report export, 44 tests pass (2026-11-20).
 
 ## Billing Excel Export (Backend Spec §7.4)
 
@@ -673,3 +718,13 @@ importer post-fix (`ShipX_API.postman_collection.json` unaffected — no wire-fo
 already a documented response field via `packing_list.*`).
 
 **Ground-truth gap found while auditing log coverage (2026-09-07):** `import_packing_list` and `process_manifest_import` — both bulk-create containers/customers/packing lists/cartons in a single call — had no `log_audit()` call at all, so goods entering the system through either import path left zero trail in the tenant's audit log. Both now write **one summary entry per import** (not one per row — a single import can create dozens of records), `entity_type="packing_list"`/`"manifest"`, recording counts (containers/customers/packing lists/items created, errors, source file key). Full account in `07_api_tenant_management.md`'s "Tenant Activity Log" section.
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+
+Both imports (`POST /v1/packing-lists/import`, the manifest import) check the stored file's size before reading it (`check_stored_size`), refusing over 5 MB.
+
+## Container tracking events export (2026-11-19)
+
+**New route:** `GET /v1/containers/{id}/events/export?format=xlsx|csv` (excel service) — tenant_admin, nigeria_office_staff, china_office_staff, warehouse_attendant (everyone who can read `GET /v1/containers/{id}/events`). The container's tracking events, oldest first: Time (UTC), From, To, Updated By, Role, Notes; statuses and roles in words ("In transit", "China office staff"). Notes are staff-typed, so formulas are neutralised (`_tables`). Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`; filename `{tenant}_tracking_{container_number}_{yyyymmdd}`. PDF → 422. Audited as `EXPORT` on the container (`scope: tracking_events`). Another tenant's container → 404. Columns: `CONTAINER_EVENT_COLUMNS` in `export_lists.py`; service `export_container_events`, which reads `services.tracking.repository.get_container_events` (one query for both the tab and the file).

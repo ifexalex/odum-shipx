@@ -261,12 +261,37 @@ describe('apiDownloadFile', () => {
     },
   }
 
-  it('opens the presigned download_url in a new tab for pdf — not the JSON envelope itself', async () => {
+  /** A stand-in for the tab window.open returns, recording where it is sent. */
+  function fakeTab() {
+    return { opener: {}, document: { title: '', body: { style: {}, textContent: '' } }, location: { replace: vi.fn() }, close: vi.fn() }
+  }
+
+  it('opens the tab inside the click, then sends it to the presigned PDF — not the JSON envelope (FD-44)', async () => {
+    const tab = fakeTab()
+    openSpy.mockReturnValue(tab)
+    let resolveFetch: (value: Response) => void = () => {}
+    fetchMock.mockReturnValue(new Promise<Response>((resolve) => (resolveFetch = resolve)))
+
+    const pending = apiDownloadFile('/v1/billing/b1/pdf', 'pdf', 'invoice-b1.pdf')
+    // Opened before the request returns, so a browser counts it as part of the click and does not block it.
+    expect(openSpy).toHaveBeenCalledWith('', '_blank')
+    expect(tab.opener).toBeNull()
+    expect(tab.document.body.textContent).toBe('Preparing your document…')
+
+    resolveFetch(jsonResponse(EXPORT_ENVELOPE))
+    await pending
+    expect(tab.location.replace).toHaveBeenCalledWith(EXPORT_ENVELOPE.data.download_url)
+  })
+
+  it('opens the PDF in this tab when the browser blocks a new one', async () => {
+    openSpy.mockReturnValue(null)
+    const assign = vi.fn()
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, assign } as Location)
     fetchMock.mockResolvedValue(jsonResponse(EXPORT_ENVELOPE))
 
-    await apiDownloadFile('/v1/billing/b1/export', 'pdf', 'billing-b1.pdf')
+    await apiDownloadFile('/v1/billing/b1/pdf', 'pdf', 'invoice-b1.pdf')
 
-    expect(openSpy).toHaveBeenCalledWith(EXPORT_ENVELOPE.data.download_url, '_blank', 'noopener,noreferrer')
+    expect(assign).toHaveBeenCalledWith(EXPORT_ENVELOPE.data.download_url)
   })
 
   it('triggers an <a download> against the presigned URL for xlsx, using the server-provided filename', async () => {
@@ -282,8 +307,47 @@ describe('apiDownloadFile', () => {
   it('throws ApiError on a non-ok response instead of trying to open an error body', async () => {
     fetchMock.mockResolvedValue(problemResponse(404, { error_code: 'RESOURCE_NOT_FOUND', detail: 'billing not found' }))
 
-    await expect(apiDownloadFile('/v1/billing/b1/export', 'pdf', 'billing-b1.pdf')).rejects.toThrow(ApiError)
-    expect(openSpy).not.toHaveBeenCalled()
+    const tab = fakeTab()
+    openSpy.mockReturnValue(tab)
+
+    await expect(apiDownloadFile('/v1/billing/b1/pdf', 'pdf', 'invoice-b1.pdf')).rejects.toThrow(ApiError)
+    // The holding tab does not stay open on a failure.
+    expect(tab.close).toHaveBeenCalled()
+    expect(tab.location.replace).not.toHaveBeenCalled()
+  })
+
+  it('forwards a list export\'s filters and sort alongside the format', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ data: { ...EXPORT_ENVELOPE.data, filename: 'invoices.csv', format: 'csv' } }))
+
+    await apiDownloadFile('/v1/billing/export', 'csv', 'invoices.csv', {
+      status: 'unpaid,paid',
+      q: 'ngozi',
+      created_after: '2026-01-01',
+      sort: 'billed_at',
+      direction: 'desc',
+      cursor: undefined,
+    })
+
+    const url = new URL(fetchMock.mock.calls[0]![0] as string)
+    expect(url.pathname).toBe('/v1/billing/export')
+    const sent: Record<string, string> = {}
+    url.searchParams.forEach((value, key) => {
+      sent[key] = value
+    })
+    expect(sent).toEqual({
+      status: 'unpaid,paid',
+      q: 'ngozi',
+      created_after: '2026-01-01',
+      sort: 'billed_at',
+      direction: 'desc',
+      format: 'csv',
+    })
+  })
+
+  it('lets the format argument win over a stray format in the query', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(EXPORT_ENVELOPE))
+    await apiDownloadFile('/v1/billing/export', 'xlsx', 'x.xlsx', { format: 'pdf' })
+    expect(new URL(fetchMock.mock.calls[0]![0] as string).searchParams.get('format')).toBe('xlsx')
   })
 })
 

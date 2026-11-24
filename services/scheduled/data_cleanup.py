@@ -1,14 +1,19 @@
 """Tenant Data Cleanup — runs daily at 02:00 UTC.
 
-For each tenant with status = 'offboarded':
-  If (NOW() - offboarded_at) > 90 days:
-    1. Delete tables that have no tenant_id column (via subquery).
-    2. Delete all tenant data in FK-safe order (tables with tenant_id).
-    3. Delete tenant S3 prefix (TENANT_DATA_BUCKET / tenant_id/).
-    4. Delete Cognito users for this tenant (COGNITO_USER_POOL_ID).
-    5. Anonymise platform_audit_log rows referencing this tenant (GDPR Art. 17).
-    6. Delete the tenant record itself.
-    7. Log in audit_log (platform scope).
+For each tenant offboarded more than 90 days ago:
+  0. Refuse (and log) if no offboarding export has completed since it was offboarded (audit BE-10): its data must
+     be handed over before it is destroyed. A platform admin sees the export's state on the tenant page.
+  1. Purge the tenant's object-storage prefix ({tenant_id}/), the export archive included. A failure here stops the
+     tenant's deletion until tomorrow, so files are never orphaned behind a deleted tenant.
+  2. In one transaction: delete every table in ``shared.tenant_data.TENANT_TABLES`` in reverse (children first),
+     delete the tenant's impersonation sessions, anonymise the platform audit rows about it, delete the tenant.
+  3. Delete its Cognito users (best effort).
+  4. Log in audit_log (platform scope).
+
+The table list used to be kept here by hand and had fallen about twenty tables behind the schema, so the final
+``DELETE FROM tenant`` (or a parent table's delete) failed on a foreign key for any tenant that had used payment
+claims, warehouses, staff notifications and more. The shared inventory is checked against the migrations by
+``tests/unit/test_tenant_data.py``.
 """
 
 import logging
@@ -18,12 +23,14 @@ from typing import Any
 
 import boto3
 
+from shared import tenant_export
 from shared.audit import log_audit
-from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.providers import get_storage_provider
 from shared.tenant_context import PLATFORM_TENANT_ID
+from shared.tenant_data import TENANT_TABLES
 
 setup_logging()
 init_tracing()
@@ -33,45 +40,6 @@ logger = logging.getLogger(__name__)
 _RETENTION_DAYS = 90
 _SYSTEM_ACTOR = "system"
 _SYSTEM_ROLE = "scheduler"
-
-# Tables deleted in FK-safe leaf-first order (all have a tenant_id column).
-# claim_evidence is intentionally absent: it has no tenant_id and is
-# cascade-deleted automatically when damage_claim rows are removed.
-_DELETE_ORDER = [
-    "storage_fee_log",  # → billing, container, customer
-    "pickup_record",  # → release_note, customer
-    "release_note",  # → billing, customer, container
-    "payment_record",  # → billing
-    "carryover_ledger",  # → billing, customer
-    "claim_resolution",  # → damage_claim (RESTRICT FK — must precede damage_claim)
-    "refund_request",  # → damage_claim, customer, billing
-    "damage_claim",  # cascade-deletes claim_evidence automatically
-    "cbm_dispute",  # → billing, customer, packing_list
-    "missing_item",  # → manifest, customer, packing_list
-    "seized_item",  # → container, customer, packing_list_item
-    "audit_log",
-    "usage_record",
-    "shipment_tracking",  # → container
-    "manifest",  # → container, packing_list
-    "packing_list",  # → customer, container (cascade-deletes packing_list_item)
-    "billing",  # → customer, container, packing_list
-    "container",
-    "customer",
-    "tenant_user",
-    "tenant_config",
-]
-
-# Tables that have no tenant_id column and must be deleted via a subquery
-# before the main _DELETE_ORDER loop runs.
-_SPECIAL_DELETES: list[tuple[str, str]] = [
-    (
-        "packing_list_item",
-        "DELETE FROM packing_list_item "
-        "WHERE packing_list_id IN "
-        "(SELECT id FROM packing_list WHERE tenant_id = %(tenant_id)s) "
-        "RETURNING id",
-    ),
-]
 
 # Module-level boto3 clients (object storage is accessed via get_storage_provider)
 _cognito_client = None
@@ -99,25 +67,27 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     cutoff = now - timedelta(days=_RETENTION_DAYS)
 
     tenants = _get_offboarded_tenants(cutoff)
-    deleted = errors = 0
+    deleted = errors = refused = 0
 
     for tenant in tenants:
         tenant_id = str(tenant["id"])
         bind_log_context(tenant_id=tenant_id)
         try:
+            if not tenant_export.has_completed_export(tenant_id, since=tenant["offboarded_at"]):
+                logger.warning("Refusing to delete tenant %s: no offboarding export has completed", tenant_id)
+                record_failure("tenant_deletion_refused")  # counted, not alarmed: it repeats daily until handled
+                refused += 1
+                continue
             _delete_tenant(tenant_id, tenant)
             deleted += 1
             logger.info("Tenant data deleted: %s", tenant_id)
         except Exception:
             logger.exception("Data cleanup failed for tenant %s", tenant_id)
+            record_failure("scheduled_job_step")
             errors += 1
 
-    logger.info(
-        "Data cleanup job done: deleted=%d errors=%d",
-        deleted,
-        errors,
-    )
-    return {"deleted": deleted, "errors": errors}
+    logger.info("Data cleanup job done: deleted=%d errors=%d refused=%d", deleted, errors, refused)
+    return {"deleted": deleted, "errors": errors, "refused": refused}
 
 
 # ---------------------------------------------------------------------------
@@ -128,38 +98,20 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 def _delete_tenant(tenant_id: str, tenant: dict[str, Any]) -> None:
     params = {"tenant_id": tenant_id}
 
-    # 1. Delete tables that have no tenant_id column (subquery-based)
-    for table, query in _SPECIAL_DELETES:
-        try:
-            execute_write_with_tenant(PLATFORM_TENANT_ID, query, params)  # noqa: S608
-        except Exception:
-            logger.exception("Failed special delete of %s for tenant %s", table, tenant_id)
-            raise
-
-    # 2. Delete all relational data in FK-safe order
-    for table in _DELETE_ORDER:
-        try:
-            execute_write_with_tenant(
-                PLATFORM_TENANT_ID,
-                f"DELETE FROM {table} WHERE tenant_id = %(tenant_id)s RETURNING id",  # noqa: S608
-                params,
-            )
-        except Exception:
-            logger.exception("Failed to delete %s rows for tenant %s", table, tenant_id)
-            raise
-
-    # 3. Delete S3 prefix
+    # 1. Files first: if this fails, nothing else is deleted and tomorrow's run tries again.
     _delete_s3_prefix(tenant_id)
 
-    # 4. Delete Cognito users
-    _delete_cognito_users(tenant_id)
-
-    # 5. Anonymise platform_audit_log rows that reference this tenant.
-    #    Nulling target_tenant_id and details satisfies the FK constraint
-    #    on tenant(id) while honouring GDPR Art. 17 (right to erasure).
-    #    The existence of each admin action (action, actor_id, created_at)
-    #    is preserved for internal governance purposes.
-    try:
+    # 2. Every row, or none.
+    with tenant_transaction(PLATFORM_TENANT_ID):
+        for entry in reversed(TENANT_TABLES):
+            execute_write_with_tenant(PLATFORM_TENANT_ID, entry.delete_sql(), params)
+        # The platform's records about the tenant: support sessions point at it with a NOT NULL key; the audit rows
+        # keep that an action happened (action, actor, time) and lose which tenant it was about (GDPR Art. 17).
+        execute_write_with_tenant(
+            PLATFORM_TENANT_ID,
+            "DELETE FROM impersonation_session WHERE target_tenant_id = %(tenant_id)s RETURNING 1",
+            params,
+        )
         execute_write_with_tenant(
             PLATFORM_TENANT_ID,
             """
@@ -171,18 +123,16 @@ def _delete_tenant(tenant_id: str, tenant: dict[str, Any]) -> None:
             """,
             params,
         )
-    except Exception:
-        logger.exception("Failed to anonymise platform_audit_log for tenant %s", tenant_id)
-        raise
+        if (
+            execute_write_with_tenant(PLATFORM_TENANT_ID, "DELETE FROM tenant WHERE id = %(tenant_id)s RETURNING id", params)
+            is None
+        ):
+            raise RuntimeError("the tenant row was already gone")
 
-    # 6. Delete tenant record
-    execute_write_with_tenant(
-        PLATFORM_TENANT_ID,
-        "DELETE FROM tenant WHERE id = %(tenant_id)s RETURNING id",
-        params,
-    )
+    # 3. Cognito users
+    _delete_cognito_users(tenant_id)
 
-    # 7. Log in audit_log (platform scope)
+    # 4. Log in audit_log (platform scope)
     log_audit(
         tenant_id=PLATFORM_TENANT_ID,
         entity_type="tenant",
@@ -198,20 +148,17 @@ def _delete_tenant(tenant_id: str, tenant: dict[str, Any]) -> None:
 
 
 def _delete_s3_prefix(tenant_id: str) -> None:
-    bucket = os.environ.get("TENANT_DATA_BUCKET", "")
-    if not bucket:
-        logger.warning("TENANT_DATA_BUCKET not set — object-storage cleanup skipped for %s", tenant_id)
-        return
+    # Tenant files live in the assets bucket (`get_storage_provider()`'s default). TENANT_DATA_BUCKET was required here
+    # but set by no deployment, so the purge was always skipped and a deleted tenant's files stayed. It is now only an
+    # override for a deployment that keeps tenant data in a separate bucket.
+    bucket = os.environ.get("TENANT_DATA_BUCKET") or None
 
     # delete_prefix purges current objects plus non-current versions and
     # delete-markers (GDPR Art. 17 immediate erasure, not lifecycle-deferred).
-    try:
-        total_deleted = get_storage_provider(bucket).delete_prefix(f"{tenant_id}/")
-        if total_deleted:
-            logger.info("Deleted %d storage objects/versions for tenant %s", total_deleted, tenant_id)
-    except Exception:
-        logger.exception("Object-storage cleanup failed for tenant %s", tenant_id)
-        # Non-fatal — continue with Cognito + DB deletion
+    # A failure propagates: the caller deletes nothing else for this tenant today.
+    total_deleted = get_storage_provider(bucket).delete_prefix(f"{tenant_id}/")  # bucket None = the assets bucket
+    if total_deleted:
+        logger.info("Deleted %d storage objects/versions for tenant %s", total_deleted, tenant_id)
 
 
 def _delete_cognito_users(tenant_id: str) -> None:

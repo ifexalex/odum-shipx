@@ -19,7 +19,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from shared.exceptions import AuthenticationRequiredError, ExternalServiceError
 
@@ -161,11 +161,15 @@ def refresh_id_token(refresh_token: str) -> RefreshResult:
     if not id_token:
         # No id_token back means the grant didn't yield a usable session.
         raise AuthenticationRequiredError()
-    return {
+    result: dict[str, Any] = {
         "id_token": id_token,
         "access_token": data.get("access_token", id_token),
         "expires_in": int(data.get("expires_in", 3600)),
     }
+    # Preserve rotated refresh tokens returned by Entra so _refresh updates shipx_rt.
+    if data.get("refresh_token"):
+        result["refresh_token"] = str(data["refresh_token"])
+    return result  # type: ignore[return-value]
 
 
 def revoke_refresh_token(refresh_token: str) -> None:

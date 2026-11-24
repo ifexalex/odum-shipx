@@ -19,6 +19,7 @@ Implement the Billing Lambda service: auto-billing on customs clearance, CBM-bas
 | GET | `/v1/billing/{billing-id}/detail` | tenant_admin, nigeria_office_staff, customer (own only) — one record by its **own** id; response is byte-identical to the matching `GET /v1/billing` row. The `/detail` suffix is required because the bare `/v1/billing/{id}` shape above takes a *customer* id and both ids are UUIDs |
 | POST | `/v1/billing/{id}/dispute` | customer |
 | GET | `/v1/billing/{id}/disputes` | nigeria_office_staff, tenant_admin, customer (own) |
+| GET | `/v1/billing/disputes/{id}` | nigeria_office_staff, tenant_admin, china_office_staff — **measurement data only** (audit UX-01) |
 | PATCH | `/v1/billing/disputes/{id}/acknowledge` | nigeria_office_staff |
 | PATCH | `/v1/billing/disputes/{id}/resolve` | nigeria_office_staff, china_office_staff, tenant_admin |
 | POST | `/v1/billing/disputes` | nigeria_office_staff, tenant_admin (staff-created disputes) |
@@ -26,9 +27,37 @@ Implement the Billing Lambda service: auto-billing on customs clearance, CBM-bas
 | PATCH | `/v1/billing/{id}/cancel` | tenant_admin, nigeria_office_staff |
 | PATCH | `/v1/billing/{id}/apply-carryover` | tenant_admin, nigeria_office_staff |
 | GET | `/v1/billing/payments` | tenant_admin, nigeria_office_staff — recent payments across all billings (`?limit=`, default 8, max 50); feeds the §6.1 dashboard "Recent payments" table (P2-5) |
+| POST | `/v1/billing` | tenant_admin, nigeria_office_staff — generate invoices for a cleared container (see below) |
 | POST | `/v1/billing/{id}/charges` | tenant_admin, nigeria_office_staff |
 | GET | `/v1/billing/{id}/charges` | tenant_admin, nigeria_office_staff, customer (own) |
 | DELETE | `/v1/billing/{id}/charges/{charge-id}` | tenant_admin, nigeria_office_staff |
+
+**Generate invoices** — `POST /v1/billing` body `{ "container_id": "<uuid>", "customer_id": "<uuid, optional>" }` (2026-11-14):
+
+- `container_id` must be a UUID of a container in this tenant that has reached `cleared` (or later), else `422 CONTAINER_NOT_CLEARED`.
+- **With `customer_id`** it invoices that one customer → `201` with `{ container_id, results: [<row>] }`. Otherwise `422` with the rule id:
+  `CUSTOMER_NOT_ON_CONTAINER`, `ALREADY_BILLED` (message carries the invoice number), `NO_CBM`, `RATE_CONFIG_MISSING`, `GENERATION_ERROR`.
+- **Without `customer_id`** it invoices every customer on the container who has no invoice yet → `200` with `{ container_id, results: [<row>, …] }`. Safe to run again: customers already invoiced come back as `existing`.
+- Each result row: `{ customer_id, customer_name, status: created | existing | skipped | failed, billing_id, invoice_number, reason, detail }`.
+- Idempotent per (customer, container): a partial unique index (migration 062) allows one live invoice; an existing one is returned untouched and nothing is notified, published or audited again.
+- Invoice number, the invoice row and the carryovers/credits it absorbed are written in one transaction; a carryover applied by a concurrent request raises and rolls the whole invoice back (that customer comes back `failed` and is picked up on the next run).
+- When any customer comes back `skipped` or `failed`, tenant admins and Nigeria staff get an in-app `invoice_not_generated` notification with the reasons.
+
+**Unbilled customers** — `GET /v1/billing/unbilled` (tenant_admin, nigeria_office_staff, 2026-11-14): customers on a cleared
+container who have CBM to bill and no live invoice, `[ { container_id, container_number, container_status, customer_id,
+customer_name, total_cbm } ]`, newest container first, max 200. Customers whose approved packing lists carry no CBM are
+omitted (nothing to bill). Feeds the dashboard queue; complete it with `POST /v1/billing { container_id }`.
+
+**Every change to what an invoice owes is one transaction, and keeps the status honest (2026-11-14).** Adding or removing a
+misc charge, applying a carryover, re-pricing after a CBM dispute, accruing or waiving a storage fee, and approving an
+immediate refund each commit as a unit (`shared/billing_money.py`, `shared.db.tenant_transaction`), change the total
+*relatively* (`total_ngn + delta`, so a payment that lands meanwhile is kept), recompute `status` for the four money
+statuses (`unpaid`/`partially_paid`/`paid`/`overpaid`; `waived`, `cancelled`, `released_with_outstanding` are left alone), and
+open a `pending_review` refund request for any *new* overpayment (an invoice already overpaid is not refunded twice).
+Consequences you can rely on: a `paid` invoice that gains a charge or carryover becomes `partially_paid`; deleting a charge
+re-checks the invoice is still `unpaid` under its row lock (`BILLING_NOT_UNPAID`), so a payment between the check and the
+delete cannot slip past; deleting the same charge twice reduces the total once; applying one carryover twice applies it once
+(`BR-CARRYOVER-002`); resolving a dispute twice re-prices once (`409` illegal transition on the second).
 
 **Add misc charge** — `POST /v1/billing/{id}/charges` body:
 ```json
@@ -157,16 +186,18 @@ Triggered when container status → `cleared`. For **each customer** in the cont
    `billing.cbm_rate_usd` (the pre-existing single-scalar column, still read by CBM dispute resolution, exports, and staff/customer UI) is set **exactly** to the tenant's one effective rate (in USD terms) whenever `carton_rate == bag_rate == bale_rate` — no rounding drift introduced for the common case — and only falls back to the blended average (`subtotal_usd / total_cbm`) when the three rates genuinely differ, since no single "the rate" exists to report exactly in that case.
    `billing` gains three new columns (migration 050) recording *how* the invoice was actually priced: `cbm_rate_currency` ('USD'/'NGN'), `cbm_rate_mode` ('flat'/'per_package_type', purely descriptive), and `cbm_breakdown` (JSONB, always populated — `{"carton": {"cbm", "rate", "subtotal"}, "bag": {...}, "bale": {...}}`, in the tenant's configured currency). `cbm_breakdown` becomes historical record only, not reconciled, if a later CBM dispute adjusts `total_cbm` — disputes are whole-invoice corrections with no notion of *which* package type's count was wrong (see CBM Dispute section below).
 5. Check `carryover_ledger` for outstanding entries for this customer → sum as `carryover_ngn`
-6. Check `refund_request` with status='approved', customer_choice='credit_next_shipment' → sum as credit
-7. Calculate totals:
+6. Read the customer's unspent credits: `refund_request` with status `applied_as_credit` and customer_choice `credit_next_shipment`, oldest first. A credit is worth its **approved** amount minus `credit_applied_ngn` (what earlier invoices used).
+7. Calculate totals (changed 2026-11-17, audit BE-07; see "Implementation notes — an invoice never goes below zero" below):
    ```
-   total_due_usd = subtotal_usd + misc_fees_usd + carryover_usd - credits_usd
-   total_due_ngn = subtotal_ngn + misc_fees_ngn + carryover_ngn - credits_ngn + storage_fees_ngn
-   outstanding_ngn = total_due_ngn
+   due_ngn       = subtotal_ngn + carryover_ngn
+   credits_ngn   = credits taken oldest first, never more than due_ngn
+   total_ngn     = due_ngn - credits_ngn            (never negative)
+   status        = 'paid' if total_ngn == 0 else 'unpaid'
    ```
-8. Insert `billing` record (payment_status = 'unpaid')
+   Misc charges and storage fees are added to the total later, through `shared.billing_money.adjust_billing`.
+8. Insert `billing` record with `credits_applied_ngn = credits_ngn`
 9. Mark applied carryovers as 'applied' with `target_billing_id`
-10. Mark applied credits as 'applied_as_credit' with `applied_to_billing_id`
+10. Add what was taken to each credit's `credit_applied_ngn`; a credit becomes `processed` only when it is used up, otherwise it stays `applied_as_credit` with the rest
 11. Publish `PaymentDue` event per customer
 
 ## CBM Dispute State Machine
@@ -218,11 +249,16 @@ Guards (all must pass; any violation → 422 `BUSINESS_RULE_VIOLATION`):
 1. Billing status must be `unpaid` — billing with any payment cannot be cancelled.
 2. No confirmed `payment_record` rows linked to this billing.
 3. No active (non-terminal) `release_note` rows linked to this billing.
+4. (2026-11-19) If the invoice used customer credit (`credits_applied_ngn > 0`) but that use is not fully recorded in `billing_credit_application` (an invoice issued before migration 070) → 422 `rule_id: CREDIT_NOT_TRACEABLE`. Restore the credit by hand first (runbook).
 
-On success:
+On success, in one transaction (2026-11-19):
 - Sets `billing.status = 'cancelled'`; records `cancel_reason`, `cancelled_by`, `cancelled_at`.
-- Writes an audit log entry.
-- Returns the updated billing row.
+- Gives back every credit the invoice used: `refund_request.credit_applied_ngn` falls by what this invoice took, a used-up (`processed`) credit is `applied_as_credit` again, and each `billing_credit_application` row is stamped `reversed_at`.
+- Reopens the earlier balances it carried over: `carryover_ledger` rows `applied` to it become `outstanding` (target and `applied_at` cleared), so the customer's next invoice picks them up.
+- Writes an audit log entry; `after_state` lists `credits_restored` (`refund_request_id`, `amount_ngn`) and `carryovers_reopened`.
+- Returns the updated billing row plus `credits_restored_ngn` and `carryovers_reopened` (a count).
+
+~~Before 2026-11-19 the credit an invoice used stayed spent when it was cancelled, and its carried-over balance was lost.~~ An invoice paid in full by credit is issued `paid` and cannot be cancelled (guard 1).
 
 Billing status values (migration 017 adds `cancelled` to existing CHECK constraint):
 `unpaid | partially_paid | paid | overpaid | waived | released_with_outstanding | cancelled`
@@ -246,3 +282,81 @@ Billing status values (migration 017 adds `cancelled` to existing CHECK constrai
 **Correction (2026-09-09) to the "it's what the SMS/WhatsApp routing rules key off for" claim above:** that was wrong — the routed EventBridge envelope never actually reaches `shared/notifications.py`'s SQS pipeline at all (confirmed while investigating a separate reported bug: a rejected payment claim sent no notification to anyone). `handle_payment_due` never called `enqueue_notifications`, so a fresh invoice generated **zero customer notification**, same silent gap as everywhere else the EventBridge-only pattern was used. Fixed by calling `enqueue_notifications(event_type="payment_due", ...)` directly at the end of `handle_payment_due` — best-effort, wrapped in try/except so a notification failure can never fail billing generation. Full account, including the other 5 events found in the same state, in `15_api_notifications.md`. Tests: `TestHandlePaymentDueNotification` in `tests/unit/test_billing.py`.
 
 **Customer bell (2026-09-12):** `handle_payment_due` now also writes an in-app customer notification when the invoiced customer has a portal account, reusing the same `staff_notification` table as the staff bell (see this doc's earlier "Correction" entry). Full account in `15_api_notifications.md`.
+
+## Implementation notes — dispute detail for China staff (audit UX-01, 2026-11-16)
+
+`GET /v1/billing/disputes/{id}` returns one dispute with the measurement facts around it: the dispute fields of the list endpoint plus `customer_name`, `container_number`, `reason`,
+`customer_measured_cbm`, `billed_cbm`, `resolution_notes` and `lines[]` (the approved packing-list lines the customer's CBM on that container is summed from: `reference`, `carton_tag`,
+`description`, `quantity`, `package_unit`, `cbm`, `length_cm`, `width_cm`, `height_cm`, `weight_kg`). **It carries no amount, rate or payment**, which is the point: `china_office_staff` may resolve
+disputes (`_RESOLVE_ROLES`) but is denied the invoice routes, so until this existed they were handed disputes they had no screen to open. `404` for an unknown dispute or another tenant's. Two queries,
+`repo.get_dispute_measurements` and `repo.list_measurement_lines`, both tenant-scoped; the second uses the same set as invoice generation (`pl.status = 'approved'`, same customer and container).
+Nigeria staff and admins keep the inline view on the invoice page (a deliberate choice recorded in `AUDIT_GAPS.md`). Tests: `TestDisputeDetailForChinaStaff` (`tests/unit/test_billing.py`),
+`tests/db/test_dispute_detail.py`. API Gateway route added (`GET /v1/billing/disputes/{id}`); Postman has "Get Dispute (measurements only)".
+
+## Implementation notes — invoice list export (2026-11-16)
+
+`GET /v1/billing/report?created_after=&created_before=` (billing service; tenant admin and Nigeria staff) returns the reports page's aggregates: `overview`, `claims`, `container_pipeline` (8 fixed weeks), `top_customers` (top 20) and `container_billing` (top 200 containers by amount billed, from `get_container_billing`, shared with the export). Its export, `GET /v1/billing/report/export` (excel service, tenant admin only, 2026-11-20), has every container in the period; see `19_excel_import_export.md` "Report export". Ground-truth gap closed 2026-11-20: the reports page showed two Export buttons with no handler.
+
+`GET /v1/billing/export` (excel service; **tenant admin only** since 2026-11-17) exports the invoice list's filters and sort as xlsx or csv; see `19_excel_import_export.md`. The invoice list's WHERE clause moved to `shared/list_filters.py::billing_filter`, shared by the list and the export; the generated SQL is unchanged (checked for 7 filter combinations). Not changed: the list's `q` search treats `%` and `_` as LIKE wildcards (bound, so not an injection, but `50%` matches more than it says); global search (`21_missing_endpoints.md` Part 12) escapes them.
+
+## Implementation notes — dispute list names its customer, invoice and container (2026-11-16, audit UX-06)
+
+`GET /v1/billing/disputes` rows gain **`customer_name`**, **`invoice_number`** and **`container_number`** (joined from `customer`, `billing` and `container`, every join tenant-scoped; each is null if the record is gone). Names and references only, no amounts: China staff read this list and may not read invoice money. Before, the list showed eight characters of the billing UUID and staff could not tell disputes apart without opening each one. The detail endpoint (`GET /v1/billing/disputes/{id}`) already carried customer and container. The frontend `CBMDispute` type has the three fields as optional.
+
+**Wire note (2026-11-17):** `GET /v1/billing/disputes` now returns `meta.pagination.total_count`, counted with the same filters as the page (`status`, `customer_id`; `repository.count_all_disputes` and `list_all_disputes` share `_dispute_predicates`). It returned only `has_more` before.
+
+**Ground-truth gap found while adding the joins: page 2 of every aliased, joined list failed.** `build_paginated_query` put a bare `id` in the cursor condition and in `ORDER BY`. The condition sits in WHERE, where an output column name cannot stand in, so as soon as a list joins another table (they all have an `id`) Postgres answers "column reference "id" is ambiguous". The first page worked, which is why nothing caught it; every later page failed. Affected: invoices, damage claims, release notes, staff notifications and the carryover ledger, and the dispute list would have been the sixth. The tracking container list had been wrapped in a subquery to dodge exactly this. Fixed in `shared/pagination.py`: the id tiebreaker is qualified with the sort field's alias (`b.id`).
+
+**Second defect, same helper: the cursor was always built from `created_at`.** `extract_page` defaults to it, so a list sorted by another column (invoices by invoice number or billed date, claims, containers) built its page-2 cursor from `created_at` and compared that against the sort column. `extract_page` now takes the sort column, and the three lists a user can sort (`list_billing_all`, the claims list, `list_containers`) pass it. **Still open:** a sort column that can be NULL (`billed_at` on an unbilled invoice) gives a cursor with no sort value, which the helper treats as "first page".
+
+Verified by running the generated SQL page by page in SQLite (`tests/unit/test_pagination_walk.py`, 17 tests; both defects reproduced by mutation), and by `tests/db/test_paginated_lists.py` (7 tests) for Postgres, **which has not been run** (no Docker): run `make test-db`.
+
+## Implementation notes — an invoice never goes below zero (audit BE-07, 2026-11-17)
+
+**What was wrong.** Invoice generation subtracted every credit the customer held, whole: `total = subtotal + carryover − credits`. A customer holding ₦50,000 of credit on a ₦20,000 charge got an invoice of **−₦30,000**, and all ₦50,000 was marked used, so the ₦30,000 was owed to nobody and kept for nobody. Confirming the sign conventions first (the brief asked for that) found a second defect: the credit was valued at the **requested** amount (`refund_request.amount_ngn`), not the approved one, so a credit approved for less than was asked reduced the invoice by too much.
+
+**Sign conventions (confirmed in code).** Carryovers are always positive (debt carried from a release with outstanding balance) and add to what is due. Credits are positive amounts that reduce it. `total_ngn`, `amount_paid_ngn` and the generated `balance_ngn = total_ngn − amount_paid_ngn` are what the customer owes, paid, and still owes.
+
+**What it does now.**
+- Credits are taken oldest first and only up to what is due (`services/billing/service.py::_credits_to_apply`). The rest of a credit stays the customer's: `refund_request.credit_applied_ngn` records how much invoices have used, the row stays `applied_as_credit` until that reaches the approved amount, then becomes `processed`.
+- A credit is worth its approved amount.
+- An invoice with nothing left to pay is issued as `paid` (it was `unpaid` with a zero or negative total).
+- The invoice records the credit it absorbed in `billing.credits_applied_ngn`, returned as **`adjustments_ngn`** (negative) on the invoice responses. Both invoice pages already had an "Adjustments" row that this field was never filled for, so the parts of an invoice now add up to its total on screen and in the exports (single invoice csv/pdf: `credits_applied_ngn`; xlsx: "Adjustments (NGN)"; invoice list export: "Credits Applied (NGN)").
+- The write is guarded: a credit is updated only if `credit_applied_ngn` is still what the sum was based on and the new value does not exceed the approved amount; otherwise `LedgerConflictError` rolls the invoice back and the generate-missing-invoices action retries it with fresh numbers. Two invoices cannot spend the same credit.
+- `shared.billing_money.adjust_billing` floors the total at zero (`GREATEST(total + delta, 0)`) and returns `total_before_ngn`. A reduction that would go past zero can now happen legitimately (a credit paid for part of an invoice and a CBM dispute or waiver then reduces the charge); `new_overpayment` counts the part below zero as owed to the customer, so `adjust_billing_and_refund_overpayment` opens a `pending_review` refund for it, the same way it does for cash paid above the total.
+- Migration 066 adds `CHECK (total_ngn >= 0)` on `billing` (see `05b_database_schema_extended.md`).
+- Audit: the invoice `CREATE` entry now carries `status`, and `credits_applied` (each refund id and the amount taken).
+
+**Wire format.** `adjustments_ngn` on invoice responses is now the negative of the credit applied (was always `0`). `GET /v1/refunds/{id}` and the refund list gain `credit_applied_ngn`.
+
+**Known gaps (not changed).**
+- **Cancelling an invoice does not give back the carryovers or credit it absorbed.** `PATCH /billing/{id}/cancel` only flips the status; an `unpaid` invoice that took ₦5,000 of credit and is then cancelled leaves that ₦5,000 spent, and its carryovers `applied` to a cancelled invoice. This predates this change. A fully credit-covered invoice is `paid` and cannot be cancelled, which limits it to part-covered ones. Fixing it properly needs a per-invoice record of which credit gave what (today only the audit entry has it).
+- **A zero-total invoice still sends the fixed "payment due" message** with amount 0.00, because that is the only approved template that tells the customer the shipment has arrived. The in-app notification says "nothing to pay. Your credit covered this invoice." A separate "covered by credit" template is an owner call.
+- Invoices issued before migration 066 have `credits_applied_ngn = 0`: the old rule did not record it.
+
+**Tests.** `tests/unit/test_invoice_credits.py` (31; nine protections mutation-checked, each caught). `tests/db/test_invoice_credits.py` (10) runs the statements against a real database: run 2026-11-17, all pass. **It found a bug the unit tests could not:** a used-up credit was set to `completed`, a status `refund_request` does not allow, so any invoice that used a credit failed and rolled back (the customer was not invoiced). That predates BE-07. A used-up credit now becomes `processed`.
+
+## Implementation notes — the invoice records where its exchange rate came from (audit BE-11, 2026-11-17)
+
+- `shared/fx_rate.get_base_market_rate()` / `get_effective_dollar_rate()` now return `rate_source`: `live` (fetched within the 10-minute cache), `last_known` (Bybit unreachable; the last fetched rate, however old) or `hardcoded` (no rate ever fetched; the built-in 1600). **Ground-truth gap fixed:** the hard-coded value was stamped `fetched_at = now`, so it looked freshly fetched; its `fetched_at` is now `null`.
+- `handle_payment_due` (every invoice, automatic on clearance and manual `POST /v1/billing/generate`) stores `exchange_rate_source` and `exchange_rate_fetched_at` on the invoice (migration 068).
+- **It refuses the hard-coded rate:** no invoice is written; the outcome is `skipped` with reason `RATE_UNAVAILABLE` ("No market dollar rate could be fetched. Generate the invoice again once the rate is available."), which the container run reports and sends to tenant admins and Nigeria staff in-app (`invoice_not_generated`), like `RATE_CONFIG_MISSING`. A manual single-customer generate fails 422 with `rule_id: RATE_UNAVAILABLE`. Applies to manual invoicing too (the brief said automatic; both share the one path, and a manual invoice at a made-up rate is no better).
+- **An old rate tells tenant admins:** when the invoice used `last_known` older than `FX_RATE_MAX_AGE_MINUTES` (env, default 120; invalid or < 1 falls back to 120 / 1) — or of unknown age — a staff notification `invoice_old_exchange_rate` goes to `tenant_admin` on that invoice. Never fails the invoice.
+- **Staff see it:** `GET /v1/billing/{id}/detail` adds `exchange_rate_source` and `exchange_rate_fetched_at` (ISO) for staff roles only; a customer's read omits both. `BillingDetail` shows "Last known market rate, fetched …" under the exchange-rate line when the source is `last_known`.
+- Verified against the dev database (`tests/db/test_invoice_rate_source.py`): with the feed cut and the cache empty, a real invoice is written with `last_known` and the true fetch time, the tenant-admin notice row exists, and the staff detail read shows both; with no stored rate, no invoice is written; the CHECK refuses an unknown source.
+
+## No "payment due" message for an invoice the credit covered (2026-11-19)
+
+**Ground-truth gap closed:** an invoice whose total the customer's credit brought to ₦0 (issued `paid`) still sent the `payment_due` SMS, WhatsApp and email, reading "NGN 0.00 due". `_notify_customer_payment_due` now sends them only when `total_ngn > 0`; the in-app bell still goes out ("nothing to pay. Your credit covered this invoice."). The `PaymentDue` event and tenant webhook are unchanged. A dedicated "covered by credit" message would need its own WhatsApp template approved by Meta; not built.
+
+## Invoice list sorted by billed date pages correctly (2026-11-19)
+
+Unbilled invoices (no `billed_at`) now sort last in both directions, and paging through them no longer restarts at page one. See `02_shared_utilities.md`, "Paging past empty sort values".
+
+## Overdue filter on the invoice list (2026-11-20, audit FD-18)
+
+`GET /v1/billing?overdue=true` (also `1`) returns only overdue invoices: status not paid, waived or cancelled, a balance still owed, billed more than 30 days ago. It is the definition the list's "Overdue (30+ days)" stat counts with (`GET /v1/billing/stats` `overdue`), shared as `shared/list_filters.py::overdue_condition` so the stat and the list it opens cannot disagree. `GET /v1/billing/export` accepts the same parameter. Tests: `tests/db/test_overdue_filter.py` (real Postgres: the list is exactly what the stat counts), `tests/unit/test_list_exports.py`, `tests/unit/test_billing.py`.
+
+### Invoice PDF (FD-39, 2026-11-21)
+
+`GET /v1/billing/{id}/pdf` (excel service; nigeria_office_staff, tenant_admin, customer own only → 404 otherwise) returns `{filename, download_url, expires_in_seconds: 300, ...}`: the branded invoice (line items, totals, how to pay). It replaces `GET /v1/billing/{id}/export?format=pdf`, a landscape table of column names; `?format=pdf` on the export is now 422. See `19_excel_import_export.md` "PDF documents".

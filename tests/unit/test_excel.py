@@ -63,7 +63,7 @@ class TestExportBilling:
             patch.object(service.repo, "get_tenant_display_name", return_value="Acme Shipping Ltd"),
             patch.object(service, "_upload_and_presign", return_value={"download_url": "https://example.com/x.pdf"}),
         ):
-            result = service.export_billing(TENANT_ID, self.BILLING_ID, fmt="pdf", customer_user_id="cognito-sub-1")
+            result = service.export_billing(TENANT_ID, self.BILLING_ID, fmt="csv", customer_user_id="cognito-sub-1")
         assert result["download_url"]
 
     def test_invoice_names_each_fee_instead_of_a_bare_total(self):
@@ -84,12 +84,12 @@ class TestExportBilling:
                 ],
             ),
             patch.object(service.repo, "get_tenant_display_name", return_value="Acme Shipping Ltd"),
-            patch.object(service, "_rows_to_pdf") as mock_pdf,
-            patch.object(service, "_upload_and_presign", return_value={"download_url": "https://example.com/x.pdf"}),
+            patch.object(service, "_rows_to_csv", wraps=service._rows_to_csv) as mock_csv,
+            patch.object(service, "_upload_and_presign", return_value={"download_url": "https://example.com/x.csv"}),
         ):
-            service.export_billing(TENANT_ID, self.BILLING_ID, fmt="pdf", customer_user_id="cognito-sub-1")
+            service.export_billing(TENANT_ID, self.BILLING_ID, fmt="csv", customer_user_id="cognito-sub-1")
 
-        exported_row = mock_pdf.call_args.args[1][0]
+        exported_row = mock_csv.call_args.args[0][0]
         assert exported_row["misc_fees_itemized"] == "Customs clearance fee: NGN 5,000.00; Documentation fee: NGN 2,000.00"
         # Full breakdown columns present — not the old 7-column bare total.
         assert "total_cbm" in service._BILLING_COLUMNS
@@ -106,7 +106,7 @@ class TestExportBilling:
             patch.object(service.repo, "get_customer_id_for_user", return_value=self.OWN_CUSTOMER_ID),
         ):
             with pytest.raises(ResourceNotFoundError):
-                service.export_billing(TENANT_ID, self.BILLING_ID, fmt="pdf", customer_user_id="cognito-sub-1")
+                service.export_billing(TENANT_ID, self.BILLING_ID, fmt="csv", customer_user_id="cognito-sub-1")
 
     def test_customer_with_no_customer_row_is_rejected(self):
         """A CUSTOMER-role caller with no linked customer row must 404, not
@@ -116,9 +116,9 @@ class TestExportBilling:
             patch.object(service.repo, "get_customer_id_for_user", return_value=None),
         ):
             with pytest.raises(ResourceNotFoundError):
-                service.export_billing(TENANT_ID, self.BILLING_ID, fmt="pdf", customer_user_id="cognito-sub-orphan")
+                service.export_billing(TENANT_ID, self.BILLING_ID, fmt="csv", customer_user_id="cognito-sub-orphan")
 
     def test_unknown_billing_id_404s_before_ownership_check(self):
         with patch.object(service.repo, "get_billing_for_export", return_value=None):
             with pytest.raises(ResourceNotFoundError):
-                service.export_billing(TENANT_ID, self.BILLING_ID, fmt="pdf", customer_user_id="cognito-sub-1")
+                service.export_billing(TENANT_ID, self.BILLING_ID, fmt="csv", customer_user_id="cognito-sub-1")

@@ -131,6 +131,80 @@ class TestEmailRendering:
         assert "None" not in text
 
 
+class TestRegistrationExistingAccountEmail:
+    """Sent when someone signs up with an address that already has an account (audit SEC-04)."""
+
+    _BRANDING = {"company_name": "Cargo Ltd", "primary_color": "#2C3E50"}
+    _DATA = {"name": "Ngozi", "login_link": "https://app.shipx.test/login"}
+
+    def test_it_has_its_own_subject(self):
+        from services.notification.service import email_subject
+
+        assert (
+            email_subject("registration_existing_account", self._BRANDING, self._DATA)
+            == "Cargo Ltd \u2014 You already have an account"
+        )
+
+    def test_it_explains_what_happened_without_naming_who_tried(self):
+        from services.notification.service import render_email_text
+
+        text = render_email_text(self._BRANDING, "registration_existing_account", "Ngozi", self._DATA)
+        assert "already has one" in text
+        assert "Cargo Ltd" in text
+
+    def test_it_links_to_sign_in_with_a_labelled_button(self):
+        from services.notification.service import render_email_html
+
+        html = render_email_html(self._BRANDING, "registration_existing_account", "Ngozi", self._DATA)
+        assert "https://app.shipx.test/login" in html
+        assert "Sign in" in html
+
+    def test_it_is_not_the_generic_fallback(self):
+        from services.notification.service import render_email_text
+
+        text = render_email_text(self._BRANDING, "registration_existing_account", None, self._DATA)
+        assert "new notification" not in text
+
+
+class TestEnqueueChannels:
+    """Which queues one event reaches."""
+
+    @staticmethod
+    def _sent(recipient: dict) -> list[str]:
+        from unittest.mock import MagicMock, patch
+
+        import shared.notifications as notifications
+
+        sent: list[str] = []
+        provider = MagicMock()
+        provider.send.side_effect = lambda destination, body: sent.append(destination)
+        env = {
+            "ENVIRONMENT": "prod",
+            "SQS_EMAIL_QUEUE_URL": "q-email",
+            "SQS_SMS_QUEUE_URL": "q-sms",
+            "SQS_WHATSAPP_QUEUE_URL": "q-wa",
+        }
+        with (
+            patch.dict("os.environ", env, clear=False),
+            patch.object(notifications, "get_queue_provider", return_value=provider),
+            patch.object(notifications, "_tenant_branding", return_value={}),
+            patch.object(notifications, "should_notify", return_value=True),
+            patch.object(notifications, "_get_custom_template", return_value=None),
+        ):
+            notifications.enqueue_notifications("t1", "account_activation", recipient, {"name": "A"})
+        return sent
+
+    def test_a_recipient_with_no_phone_gets_one_email_not_two(self):
+        """primary_channel is 'email' without a phone, so the email used to be queued twice."""
+        assert self._sent({"email": "a@example.test", "phone": "", "whatsapp": "", "name": "A"}) == ["q-email"]
+
+    def test_a_recipient_with_a_phone_gets_whatsapp_and_email(self):
+        assert self._sent({"email": "a@example.test", "phone": "+2348000000000", "whatsapp": "", "name": "A"}) == [
+            "q-wa",
+            "q-email",
+        ]
+
+
 class TestWhatsAppComponents:
     def test_build_components_company_name_first(self):
         from services.notification.service import build_wa_components

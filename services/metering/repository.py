@@ -45,14 +45,34 @@ def count_active_tenant_users(tenant_id: str) -> int:
     return int(rows[0]["cnt"]) if rows else 0
 
 
-def count_containers_this_month(tenant_id: str) -> int:
-    """Count containers created in the current calendar month."""
+def count_containers_this_month(
+    tenant_id: str,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> int:
+    """Count non-cancelled containers created in the target calendar month (or current month)."""
+    if period_start is not None and period_end is not None:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT COUNT(*) AS cnt
+            FROM container
+            WHERE tenant_id = %s
+              AND status <> 'cancelled'
+              AND created_at >= %s::date
+              AND created_at < (%s::date + INTERVAL '1 day')
+            """,
+            (tenant_id, period_start, period_end),
+        )
+        return int(rows[0]["cnt"]) if rows else 0
+
     rows = execute_with_tenant(
         tenant_id,
         """
         SELECT COUNT(*) AS cnt
         FROM container
         WHERE tenant_id = %s
+          AND status <> 'cancelled'
           AND date_trunc('month', created_at) = date_trunc('month', NOW())
         """,
         (tenant_id,),
@@ -61,18 +81,17 @@ def count_containers_this_month(tenant_id: str) -> int:
 
 
 def get_latest_storage_bytes(tenant_id: str) -> float:
-    """Return the most recent cumulative storage_bytes value, or 0."""
+    """Return the cumulative storage_bytes value across usage_record rows, or 0."""
     rows = execute_with_tenant(
         tenant_id,
         """
-        SELECT value FROM usage_record
+        SELECT COALESCE(SUM(value), 0) AS value
+        FROM usage_record
         WHERE tenant_id = %s AND metric_type = 'storage_bytes'
-        ORDER BY recorded_at DESC
-        LIMIT 1
         """,
         (tenant_id,),
     )
-    return float(rows[0]["value"]) if rows else 0.0
+    return float(rows[0]["value"] or 0.0) if rows else 0.0
 
 
 # ---------------------------------------------------------------------------

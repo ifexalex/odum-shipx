@@ -14,7 +14,7 @@ export interface ShipxWordmarkProps {
 // appears on marketing-adjacent surfaces (login, public tracking, footer).
 export function ShipxWordmark({
   size = 22,
-  color = '#fff',
+  color = 'var(--color-on-dark)',
   xColor = colors.accent,
   showBy = false,
 }: ShipxWordmarkProps): JSX.Element {
@@ -23,9 +23,9 @@ export function ShipxWordmark({
       <span
         style={{
           fontFamily: fonts.display,
-          fontWeight: 800,
+          fontWeight: 700,
           fontSize: size,
-          letterSpacing: '-0.022em',
+          letterSpacing: 'var(--tracking-tight)',
           color,
           lineHeight: 1,
         }}
@@ -38,11 +38,11 @@ export function ShipxWordmark({
             fontFamily: fonts.body,
             fontSize: Math.max(9, size * 0.4),
             fontWeight: 600,
-            letterSpacing: '0.06em',
+            letterSpacing: 'var(--tracking-label)',
             textTransform: 'uppercase',
             color,
             opacity: 0.6,
-            marginTop: 2,
+            marginTop: 'var(--space-0-5)',
           }}
         >
           by Odum

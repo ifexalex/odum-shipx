@@ -177,4 +177,66 @@ describe('Table', () => {
     const { container } = render(<Table columns={columns} rows={rows} />)
     expect(container.querySelector('table')).toBeInTheDocument()
   })
+
+  describe('opening a row (FD-13)', () => {
+    const typed: TableColumn[] = [
+      { title: 'Invoice', type: 'reference' },
+      { title: 'Total (₦)', type: 'money' },
+      { title: '', type: 'action' },
+    ]
+
+    it('makes the first cell a named button that opens the row', async () => {
+      const onOpen = vi.fn()
+      render(<Table columns={typed} rows={[{ onOpen, openLabel: 'Open invoice INV-1', cells: ['INV-1', '₦5,000', null] }]} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Open invoice INV-1' }))
+      expect(onOpen).toHaveBeenCalledTimes(1)
+    })
+
+    it('opens from anywhere on the row, once', async () => {
+      const onOpen = vi.fn()
+      render(<Table columns={typed} rows={[{ onOpen, cells: ['INV-1', '₦5,000', null] }]} />)
+      await userEvent.click(screen.getByText('₦5,000'))
+      await userEvent.click(screen.getByText('INV-1'))
+      expect(onOpen).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not open when the row\'s own action is pressed', async () => {
+      const onOpen = vi.fn()
+      const onPay = vi.fn()
+      render(
+        <Table
+          columns={typed}
+          rows={[{ onOpen, cells: ['INV-1', '₦5,000', <button key="pay" onClick={onPay}>Record payment</button>] }]}
+        />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Record payment' }))
+      expect(onPay).toHaveBeenCalledTimes(1)
+      expect(onOpen).not.toHaveBeenCalled()
+    })
+
+    it('opens a card on a phone', async () => {
+      stubNarrowWidth(375)
+      const onOpen = vi.fn()
+      render(<Table columns={typed} rows={[{ onOpen, openLabel: 'Open invoice INV-1', cells: ['INV-1', '₦5,000', null] }]} />)
+      await userEvent.click(screen.getByText('₦5,000'))
+      expect(onOpen).toHaveBeenCalledTimes(1)
+    })
+
+    it('right-aligns a money column', () => {
+      stubNarrowWidth(1200)
+      const { container } = render(<Table columns={typed} rows={[{ cells: ['INV-1', '₦5,000', <button key="a">Pay</button>] }]} />)
+      const headers = container.querySelectorAll('th')
+      expect(headers[1]!.className).toMatch(/thRight/)
+    })
+
+    it('switches to cards at 600px, not before', () => {
+      stubNarrowWidth(601)
+      const { container, unmount } = render(<Table columns={typed} rows={[{ cells: ['INV-1', '₦5,000', null] }]} />)
+      expect(container.querySelector('table')).toBeInTheDocument()
+      unmount()
+      stubNarrowWidth(600)
+      const narrow = render(<Table columns={typed} rows={[{ cells: ['INV-1', '₦5,000', null] }]} />)
+      expect(narrow.container.querySelector('table')).toBeNull()
+    })
+  })
 })

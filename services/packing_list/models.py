@@ -33,18 +33,16 @@ MAX_ITEM_QUANTITY = 500
 
 class PackingListItemInput(BaseModel):
     description: str = Field(min_length=1)
-    weight_dispatch_kg: Decimal | None = Field(default=None, ge=Decimal("0"))
-    weight_actual_kg: Decimal | None = Field(default=None, ge=Decimal("0"))
-    length_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
-    width_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
-    height_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
+    weight_dispatch_kg: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
+    weight_actual_kg: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
+    length_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
+    width_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
+    height_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
     received_date: date | None = None
     cbm: Decimal | None = None  # auto-computed below
-    declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
-    # Package type: carton | bag | pallet | bale | sack (free-text-tolerant for
-    # manifest imports; the wizard constrains the choices). Drives bale sizing
-    # and CBM-rate bucketing.
-    package_unit: str | None = Field(default=None, max_length=30)
+    declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
+    # Package type: carton | bag | pallet | bale | sack (matches VARCHAR(20) column).
+    package_unit: str | None = Field(default=None, max_length=20)
 
     # ── Bulk entry ──────────────────────────────────────────────────────────
     # How many identical packages this line stands for. The server expands it
@@ -96,15 +94,28 @@ class PackingListItemInput(BaseModel):
 
 class UpdatePackingListItemInput(BaseModel):
     id: str | None = None  # None = new item; present = update existing
-    description: str | None = Field(default=None, min_length=1)
-    weight_dispatch_kg: Decimal | None = Field(default=None, ge=Decimal("0"))
-    weight_actual_kg: Decimal | None = Field(default=None, ge=Decimal("0"))
-    length_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
-    width_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
-    height_cm: Decimal | None = Field(default=None, gt=Decimal("0"))
+    description: str = Field(min_length=1)
+    weight_dispatch_kg: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
+    weight_actual_kg: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
+    length_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
+    width_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
+    height_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
     received_date: date | None = None
-    declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"))
-    package_unit: str | None = Field(default=None, max_length=30)
+    cbm: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
+    declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
+    package_unit: str | None = Field(default=None, max_length=20)
+    quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
+    identical_confirmed: bool = False
+    batch_ref: str | None = None
+
+    @model_validator(mode="after")
+    def require_identical_confirmation(self) -> "UpdatePackingListItemInput":
+        if self.quantity > 1 and not self.identical_confirmed:
+            raise ValueError(
+                f"quantity {self.quantity} requires identical_confirmed=true — confirm that all "
+                f"{self.quantity} packages share these exact dimensions and weight"
+            )
+        return self
 
 
 class ItemRejection(BaseModel):

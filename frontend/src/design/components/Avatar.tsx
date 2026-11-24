@@ -1,6 +1,6 @@
 import type { CSSProperties, JSX } from 'react'
 import styles from './Avatar.module.css'
-import { colors, roleColors, type Role } from '../theme'
+import { roleColors, type Role } from '../theme'
 
 export interface AvatarProps {
   name?: string
@@ -23,7 +23,7 @@ function initialsOf(name: string): string {
 }
 
 export function Avatar({ name = '', src, size = 32, roleColor, color }: AvatarProps): JSX.Element {
-  const tint = (roleColor && roleColors[roleColor]) || color || colors.primary
+  const tint = (roleColor && roleColors[roleColor]) || color || 'var(--color-primary-text)'
   const style: CSSProperties & Record<'--avatar-color', string> = {
     width: size,
     height: size,

@@ -297,8 +297,8 @@ def create_billing(
             tenant_id, customer_id, container_id, packing_list_id,
             invoice_number, total_cartons, total_cbm,
             cbm_rate_usd, subtotal_usd, exchange_rate_ngn,
-            subtotal_ngn, total_ngn, status, due_date, created_by
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            subtotal_ngn, total_ngn, status, due_date, created_by, billed_at
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
         RETURNING *
         """,
         (

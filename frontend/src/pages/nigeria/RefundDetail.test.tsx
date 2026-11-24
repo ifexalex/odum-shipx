@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -60,6 +61,42 @@ function renderPage(refund = REFUND) {
   )
 }
 
+describe('RefundDetail credit use (BE-07)', () => {
+  it('shows how much of a credit has been used against invoices', async () => {
+    renderPage({
+      ...REFUND, status: 'applied_as_credit', customer_choice: 'credit_next_shipment',
+      amount_approved_ngn: '50000', credit_applied_ngn: '20000',
+    })
+    expect(await screen.findByText('Credit used')).toBeInTheDocument()
+    expect(screen.getByText('₦20,000 of ₦50,000')).toBeInTheDocument()
+  })
+
+  it('shows no credit row for a refund paid out', async () => {
+    renderPage({ ...REFUND, status: 'processed', customer_choice: 'immediate_refund', amount_approved_ngn: '25000' })
+    await screen.findByText('Approved')
+    expect(screen.queryByText('Credit used')).toBeNull()
+  })
+})
+
+describe('RefundDetail bank details', () => {
+  it('shows staff the account a bank refund is paid into', async () => {
+    renderPage({
+      ...REFUND,
+      customer_choice: 'immediate_refund',
+      bank_details: { bank_name: 'Zenith Bank', account_number: '0123456789', account_name: 'Ngozi Okonkwo' },
+    })
+    expect(await screen.findByText('0123456789')).toBeInTheDocument()
+    expect(screen.getByText('Zenith Bank')).toBeInTheDocument()
+    expect(screen.getByText('Ngozi Okonkwo')).toBeInTheDocument()
+  })
+
+  it('shows no account rows for a refund without one', async () => {
+    renderPage({ ...REFUND, bank_details: null })
+    await screen.findByText('Customer preference')
+    expect(screen.queryByText('Account number')).not.toBeInTheDocument()
+  })
+})
+
 describe('RefundDetail', () => {
   it('renders refund type in hero', async () => {
     renderPage()
@@ -67,23 +104,25 @@ describe('RefundDetail', () => {
     expect((await screen.findAllByText('Overpayment refund')).length).toBeGreaterThan(0)
   })
 
-  it('shows Accounts review button for pending_review', async () => {
+  it('shows Complete review for pending_review (FD-23)', async () => {
     renderPage()
     // Button role is the specific element to assert
-    expect(await screen.findByRole('button', { name: /accounts review/i })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /complete review/i })).toBeTruthy()
   })
 
   it('shows no action buttons when processed', async () => {
     renderPage({ ...REFUND, status: 'processed', amount_approved_ngn: '25000' })
     await screen.findAllByText('Overpayment refund')
-    expect(screen.queryByRole('button', { name: /accounts review/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /complete review/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /approve/i })).toBeNull()
   })
 
   it('shows Approve and Reject for pending_approval', async () => {
     renderPage({ ...REFUND, status: 'pending_approval' })
     expect(await screen.findByRole('button', { name: /approve/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /reject/i })).toBeTruthy()
+    // Reject is in the overflow menu, not beside Approve (FD-24).
+    await userEvent.click(screen.getByRole('button', { name: 'More refund actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Reject refund' })).toBeTruthy()
   })
 
   // Threshold-aware approval (gap-fix B1: refund approve threshold)

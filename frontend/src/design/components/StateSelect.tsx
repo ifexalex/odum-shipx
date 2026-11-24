@@ -83,7 +83,6 @@ export function StateSelect({
       <label className={styles.label} htmlFor={fieldId}>
         <span>
           {resolvedLabel}
-          {required && <span className={styles.required}>*</span>}
         </span>
         {optional && <span className={styles.optionalTag}>Optional</span>}
       </label>

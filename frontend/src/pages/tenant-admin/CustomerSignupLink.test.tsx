@@ -2,7 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configApi } from '../../api/tenantManagement'
+import { withQuery } from '../../test/queryWrapper'
 import { CustomerSignupLink } from './CustomerSignupLink'
+
+function renderLink() {
+  return render(withQuery(<CustomerSignupLink />))
+}
 
 vi.mock('../../api/tenantManagement', () => ({
   configApi: { getRegistrationLink: vi.fn(), setRegistrationLinkEnabled: vi.fn() },
@@ -23,7 +28,7 @@ describe('CustomerSignupLink', () => {
     // Built from window.location rather than a configured host: this is the
     // address a customer will visit, and a hardcoded one would hand out a link
     // to the wrong environment the moment either moved.
-    render(<CustomerSignupLink />)
+    renderLink()
 
     expect(await screen.findByTestId('signup-url')).toHaveTextContent(
       `${window.location.origin}/register/acme-shipping`,
@@ -31,14 +36,14 @@ describe('CustomerSignupLink', () => {
   })
 
   it('says the link is active, and that invites still work', async () => {
-    render(<CustomerSignupLink />)
+    renderLink()
 
     expect(await screen.findByText('Active')).toBeInTheDocument()
     expect(screen.getByText(/inviting individual customers still works/i)).toBeInTheDocument()
   })
 
   it('shows a QR only when asked, so the card stays compact', async () => {
-    render(<CustomerSignupLink />)
+    renderLink()
     await screen.findByTestId('signup-url')
 
     // Asserted through the download affordance rather than by looking for an
@@ -58,7 +63,7 @@ describe('CustomerSignupLink', () => {
       slug: 'acme-shipping',
       updated_at: null,
     })
-    render(<CustomerSignupLink />)
+    renderLink()
     await screen.findByTestId('signup-url')
 
     await userEvent.click(screen.getByRole('button', { name: /turn off/i }))
@@ -73,7 +78,7 @@ describe('CustomerSignupLink', () => {
       slug: 'acme-shipping',
       updated_at: null,
     })
-    render(<CustomerSignupLink />)
+    renderLink()
 
     expect(await screen.findByText(/not accepting new registrations/i)).toBeInTheDocument()
     expect(screen.getByText(/existing customers and invites are unaffected/i)).toBeInTheDocument()
@@ -85,7 +90,7 @@ describe('CustomerSignupLink', () => {
       slug: null,
       updated_at: null,
     })
-    render(<CustomerSignupLink />)
+    renderLink()
 
     expect(await screen.findByText(/no URL slug yet/i)).toBeInTheDocument()
     expect(screen.queryByTestId('signup-url')).not.toBeInTheDocument()

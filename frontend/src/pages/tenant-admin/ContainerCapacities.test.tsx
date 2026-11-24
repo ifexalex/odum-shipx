@@ -4,7 +4,6 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { withQuery } from '../../test/queryWrapper'
 import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenantManagement'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { ContainerCapacities } from './ContainerCapacities'
 
 vi.mock('../../api/tenantManagement', () => ({
@@ -30,9 +29,9 @@ function renderPage() {
   return render(
     withQuery(
       <MemoryRouter>
-        <TopBarTestWrapper>
+        <>
           <ContainerCapacities />
-        </TopBarTestWrapper>
+        </>
       </MemoryRouter>,
     ),
   )

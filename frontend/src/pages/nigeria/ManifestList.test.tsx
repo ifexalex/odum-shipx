@@ -77,7 +77,7 @@ describe('ManifestList', () => {
     expect(within(row).getByText('50')).toBeInTheDocument()
     expect(within(row).getByText('6')).toBeInTheDocument()
     // Total weight column.
-    expect(within(row).getByText('412 kg')).toBeInTheDocument()
+    expect(within(row).getByText('412.0 kg')).toBeInTheDocument()
   })
 
   it('falls back to the carton count when no package mix is present', async () => {
@@ -86,7 +86,8 @@ describe('ManifestList', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     })
     renderPage()
-    const row = within(await screen.findByRole('table')).getByText('HLBU9384712').closest('tr')!
+    // Wait for the row, not just the table: the table is on screen while the list is still loading.
+    const row = (await screen.findByText('HLBU9384712')).closest('tr')!
     expect(within(row).getByText('64')).toBeInTheDocument()
   })
 
@@ -108,7 +109,7 @@ describe('ManifestList', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
     })
     renderPage()
-    await waitFor(() => expect(screen.getByText('No manifests yet.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('No manifests yet')).toBeInTheDocument())
   })
   it('flags a manifest as overdue when pending and the container has arrived in Nigeria (B11)', async () => {
     vi.mocked(manifestApi.list).mockResolvedValue({

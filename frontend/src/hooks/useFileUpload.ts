@@ -8,18 +8,23 @@
  * the backend's presigned-url response (CLAUDE.md tenant isolation rule).
  *
  * Validated against backend limits (services/claims/service.py):
- *   Max size:      10 MB
+ *   Max size:      5 MB (lib/uploadLimits.ts)
  *   Allowed types: image/jpeg, image/png, application/pdf
  *
+ * After the bytes land, `confirmUpload` (when given) tells the API the upload finished. The API checks the stored size
+ * there, which is the only size check on Azure, and only then lists the file; an upload that is never confirmed is
+ * never shown. The upload is done only once the confirmation succeeds.
+ *
  * Usage:
- *   const { upload, progress, status, reset } = useFileUpload(getPresignedUrl)
+ *   const { upload, progress, status, reset } = useFileUpload({ getPresignedUrl, confirmUpload })
  *   const { key, evidenceId } = await upload(file)
  */
 import { useCallback, useRef, useState } from 'react'
+import { MAX_UPLOAD_BYTES, uploadSizeProblem } from '../lib/uploadLimits'
 
 export type UploadStatus = 'idle' | 'validating' | 'uploading' | 'done' | 'error'
 
-export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024 // 10 MB — mirrors backend _MAX_FILE_SIZE
+export const UPLOAD_MAX_BYTES = MAX_UPLOAD_BYTES // the API's limit (shared/uploads.py)
 export const UPLOAD_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'] as const
 export const UPLOAD_PROGRESS_THRESHOLD = 100 * 1024 // show bar only for files > 100 KB
 
@@ -40,6 +45,8 @@ export interface PresignedResponse {
 
 export interface UseFileUploadOptions {
   getPresignedUrl: (file: File) => Promise<PresignedResponse>
+  /** Tells the API the upload finished, after the PUT; its error message is shown if it refuses the file. */
+  confirmUpload?: (presigned: PresignedResponse) => Promise<unknown>
   onSuccess?: (result: UploadResult) => void
   onError?: (message: string) => void
 }
@@ -54,6 +61,7 @@ export interface UseFileUploadResult {
 
 export function useFileUpload({
   getPresignedUrl,
+  confirmUpload,
   onSuccess,
   onError,
 }: UseFileUploadOptions): UseFileUploadResult {
@@ -72,8 +80,9 @@ export function useFileUpload({
   const upload = useCallback(
     async (file: File): Promise<UploadResult> => {
       // Client-side validation — mirrors backend Pydantic limits
-      if (file.size > UPLOAD_MAX_BYTES) {
-        const msg = `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`
+      const sizeProblem = uploadSizeProblem(file)
+      if (sizeProblem) {
+        const msg = sizeProblem
         setErrorMessage(msg)
         setStatus('error')
         onError?.(msg)
@@ -97,6 +106,32 @@ export function useFileUpload({
         const xhr = new XMLHttpRequest()
         xhrRef.current = xhr
 
+        const fail = (msg: string): void => {
+          setStatus('error')
+          setErrorMessage(msg)
+          onError?.(msg)
+          reject(new Error(msg))
+        }
+
+        const succeed = async (): Promise<void> => {
+          if (confirmUpload) {
+            try {
+              await confirmUpload(presigned)
+            } catch (err) {
+              fail(err instanceof Error && err.message ? err.message : 'The upload could not be confirmed. Please try again.')
+              return
+            }
+          }
+          const result: UploadResult = {
+            key: presigned.file_key,
+            evidenceId: presigned.evidence_id ?? null,
+          }
+          setStatus('done')
+          setProgress(100)
+          onSuccess?.(result)
+          resolve(result)
+        }
+
         // Only show progress bar for files above threshold — small files flash too fast
         if (file.size >= UPLOAD_PROGRESS_THRESHOLD) {
           xhr.upload.onprogress = (evt) => {
@@ -108,29 +143,14 @@ export function useFileUpload({
 
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            const result: UploadResult = {
-              key: presigned.file_key,
-              evidenceId: presigned.evidence_id ?? null,
-            }
-            setStatus('done')
-            setProgress(100)
-            onSuccess?.(result)
-            resolve(result)
+            void succeed()
           } else {
-            const msg = `Upload failed (HTTP ${xhr.status}). Please try again.`
-            setStatus('error')
-            setErrorMessage(msg)
-            onError?.(msg)
-            reject(new Error(msg))
+            fail(`Upload failed (HTTP ${xhr.status}). Please try again.`)
           }
         }
 
         xhr.onerror = () => {
-          const msg = 'Upload failed — network error. Please check your connection.'
-          setStatus('error')
-          setErrorMessage(msg)
-          onError?.(msg)
-          reject(new Error(msg))
+          fail('Upload failed — network error. Please check your connection.')
         }
 
         xhr.onabort = () => {
@@ -146,7 +166,7 @@ export function useFileUpload({
         xhr.send(file)
       })
     },
-    [getPresignedUrl, onSuccess, onError],
+    [getPresignedUrl, confirmUpload, onSuccess, onError],
   )
 
   return { upload, progress, status, errorMessage, reset }

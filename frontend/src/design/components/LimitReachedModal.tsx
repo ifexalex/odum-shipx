@@ -3,6 +3,7 @@ import type { TenantQuota } from '../../api/tenantManagement'
 import { Banner } from './Banner'
 import { Button } from './Button'
 import { Card } from './Card'
+import { DialogGuard } from './Modal'
 
 interface LimitReachedModalProps {
   /** Which resource was blocked — e.g. 'container', 'user'. */
@@ -28,15 +29,16 @@ export function LimitReachedModal({ resource, quota, onClose }: LimitReachedModa
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(11,47,13,0.55)',
+        background: 'var(--scrim-modal)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 300,
-        padding: 16,
+        zIndex: 'var(--layer-modal)',
+        padding: 'var(--space-4)',
       }}
       onClick={onClose}
     >
+      <DialogGuard onClose={onClose} />
       {/* Interactive wrapper (Card is presentational-only, no event props) */}
       <div
         style={{ maxWidth: 440, width: '100%' }}
@@ -44,12 +46,12 @@ export function LimitReachedModal({ resource, quota, onClose }: LimitReachedModa
         role="dialog"
         aria-modal="true"
       >
-        <Card padding={24} radius={14}>
-          <h3 style={{ margin: '0 0 12px', fontSize: '1rem', fontWeight: 700 }}>Plan limit reached</h3>
+        <Card padding="large" radius="xl">
+          <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)', fontWeight: 700 }}>Plan limit reached</h3>
           <Banner variant="error" title={`Cannot create ${resource}`}>
             {dimLabel} — your {quota.subscription_tier} plan limit is reached.
           </Banner>
-          <p style={{ fontSize: '0.875rem', color: 'var(--color-ink-3)', margin: '12px 0' }}>
+          <p style={{ fontSize: 'var(--text-md)', color: 'var(--color-ink-3)', margin: 'var(--space-3) 0' }}>
             Upgrade your subscription or contact your platform administrator to increase the limit.
           </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

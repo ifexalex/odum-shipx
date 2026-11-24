@@ -1,12 +1,19 @@
+import { ContentErrorBoundary, QuietBoundary } from './ErrorBoundary'
 import { useState, type JSX, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
 import { useCustomerBanner, useCustomerNotifUnreadCount } from '../hooks/useCustomerNotifications'
-import { AnnouncementBanner } from './AnnouncementBanner'
+import { ShellNotice } from './ShellNotice'
+import { Breadcrumb } from './Breadcrumb'
+import { BreadcrumbContext, breadcrumbTrail, useBreadcrumbLabelState } from './breadcrumbs'
+import { useDocumentTitle } from './documentTitle'
 import { CustomerNotificationPanel } from './CustomerNotificationPanel'
 import { CustShell } from './CustShell'
 import { CustomerTopNav } from './CustomerTopNav'
+import { GlobalSearch } from './GlobalSearch'
 import { ImpersonationBanner } from './ImpersonationBanner'
 import { navConfig } from './navConfig'
+import { searchPlaceholderFor } from './searchRoutes'
 import { TenantBlockedGate } from './TenantBlockedScreen'
 
 export interface CustomerLayoutProps {
@@ -27,7 +34,11 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
   // it was fixed (see StaffLayout.tsx / 15_api_notifications.md).
   const { data: unreadData } = useCustomerNotifUnreadCount(!!session)
   const { data: banner } = useCustomerBanner(!!session)
+  const breadcrumbLabels = useBreadcrumbLabelState()
+  const { pathname } = useLocation()
+  useDocumentTitle(session?.roles ?? [], breadcrumbLabels.labels)
   if (!session) return null
+  const trail = breadcrumbTrail(pathname, session.roles, breadcrumbLabels.labels)
 
   const links = navConfig.customer.flatMap((group) => group.items)
 
@@ -35,12 +46,12 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
     <TenantBlockedGate>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <ImpersonationBanner />
-        <AnnouncementBanner banner={banner} />
         <CustShell
           topnav={
             <CustomerTopNav
               links={links}
               onLogout={logout}
+              search={<GlobalSearch audience="customer" placeholder={searchPlaceholderFor('customer') ?? 'Search…'} />}
               notifications={unreadData?.unread_count ?? 0}
               onNotificationsClick={() => setNotifPanelOpen((o) => !o)}
               notificationsPanel={
@@ -49,7 +60,13 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
             />
           }
         >
-          {children}
+          <BreadcrumbContext.Provider value={breadcrumbLabels}>
+            <QuietBoundary>
+              <ShellNotice announcement={banner} />
+            </QuietBoundary>
+            <Breadcrumb trail={trail} />
+            <ContentErrorBoundary>{children}</ContentErrorBoundary>
+          </BreadcrumbContext.Provider>
         </CustShell>
       </div>
     </TenantBlockedGate>

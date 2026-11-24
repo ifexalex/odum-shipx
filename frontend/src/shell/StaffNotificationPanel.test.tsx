@@ -65,6 +65,14 @@ describe('StaffNotificationPanel', () => {
     expect(await screen.findByText(/no notifications yet/i)).toBeInTheDocument()
   })
 
+  it('says a failed load failed, not "No notifications yet." (FD-53)', async () => {
+    vi.mocked(staffNotificationsApi.list).mockRejectedValue(new Error('network down'))
+    renderPanel()
+    expect(await screen.findByText("Couldn't load notifications")).toBeInTheDocument()
+    expect(screen.queryByText('No notifications yet.')).toBeNull()
+    expect(screen.getByRole('button', { name: /try again|retry/i })).toBeInTheDocument()
+  })
+
   it('renders notification rows with title, body, and an unread indicator', async () => {
     vi.mocked(staffNotificationsApi.list).mockResolvedValue({
       data: [makeNotif()],

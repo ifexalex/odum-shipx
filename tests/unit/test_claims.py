@@ -1,5 +1,6 @@
 """Unit tests for services.claims.service — lifecycle, approval thresholds."""
 
+import json
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -630,8 +631,274 @@ class TestClaimStateMachine:
             patch.object(service.repo, "get_customer_by_user_id", return_value=customer),
         ):
             ctx = _ctx(UserRole.CUSTOMER, user_id="user-cust-001")
-            with pytest.raises((ResourceNotFoundError, InsufficientPermissionsError)):
+            # A 404, not a 403: another customer's claim must look the same as one that does not exist.
+            with pytest.raises(ResourceNotFoundError):
                 service.get_claim(TENANT_ID, "claim-001", ctx)
+
+
+class TestGetClaimForTheCustomer:
+    """GET /v1/claims/{id}: what a customer sees of their own claim (audit UX-07)."""
+
+    CLAIM_ID = "claim-001"
+    PREFIX = f"{TENANT_ID}/claims/{CLAIM_ID}/"
+
+    @staticmethod
+    def _patches(*, claim=None, customer=None, evidence=(), outcome=None, url="https://files.example/get"):
+        from services.claims import service
+
+        storage = MagicMock()
+        storage.presigned_get_url.return_value = url
+        return (
+            patch.object(service.repo, "get_damage_claim_by_id", return_value=claim if claim is not None else _claim()),
+            patch.object(service.repo, "get_customer_by_user_id", return_value=customer or {"id": "customer-001"}),
+            patch.object(service.repo, "list_claim_evidence", return_value=list(evidence)),
+            patch.object(service.repo, "get_claim_outcome", return_value=outcome),
+            patch.object(service, "get_storage_provider", return_value=storage),
+        ), storage
+
+    def _get(self, role=UserRole.CUSTOMER, **kw):
+        from services.claims import service
+
+        patches, storage = self._patches(**kw)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            return service.get_claim(TENANT_ID, self.CLAIM_ID, _ctx(role, user_id="user-cust-001")), storage
+
+    @staticmethod
+    def _file(name="photo.jpg", key=None, **kw):
+        return {
+            "id": "e1",
+            "file_key": key or f"{TENANT_ID}/claims/claim-001/{name}",
+            "file_name": name,
+            "file_type": "image/jpeg",
+            "file_size_bytes": 1024,
+            "created_at": "2026-11-10T10:00:00Z",
+            **kw,
+        }
+
+    def test_a_customer_reads_their_own_claim(self):
+        result, _ = self._get()
+        assert result["id"] == "claim-001"
+        assert result["evidence"] == [] and result["resolution"] is None and result["refund"] is None
+
+    def test_a_customer_with_no_customer_record_gets_a_404(self):
+        from services.claims import service
+
+        patches, _ = self._patches()
+        with (
+            patches[0],
+            patch.object(service.repo, "get_customer_by_user_id", return_value=None),
+            patches[2],
+            patches[3],
+            patches[4],
+        ):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_claim(TENANT_ID, self.CLAIM_ID, _ctx(UserRole.CUSTOMER))
+
+    def test_another_customers_claim_is_a_404_and_reads_nothing_about_it(self):
+        from services.claims import service
+
+        patches, storage = self._patches(claim=_claim(customer_id="customer-999"))
+        with (
+            patches[0],
+            patches[1],
+            patch.object(service.repo, "list_claim_evidence") as evidence,
+            patch.object(service.repo, "get_claim_outcome") as outcome,
+            patches[4],
+        ):
+            with pytest.raises(ResourceNotFoundError):
+                service.get_claim(TENANT_ID, self.CLAIM_ID, _ctx(UserRole.CUSTOMER))
+        assert not evidence.called and not outcome.called and not storage.presigned_get_url.called
+
+    @pytest.mark.parametrize("role", [UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN])
+    def test_staff_read_any_claim(self, role):
+        result, _ = self._get(role=role, claim=_claim(customer_id="customer-999"))
+        assert result["id"] == "claim-001"
+
+    def test_each_evidence_file_has_a_short_lived_download_link(self):
+        result, storage = self._get(evidence=[self._file("photo.jpg"), self._file("video.mp4", id="e2")])
+        assert [f["file_name"] for f in result["evidence"]] == ["photo.jpg", "video.mp4"]
+        assert all(f["download_url"] == "https://files.example/get" for f in result["evidence"])
+        keys = [call.args[0] for call in storage.presigned_get_url.call_args_list]
+        assert keys == [f"{self.PREFIX}photo.jpg", f"{self.PREFIX}video.mp4"]
+        assert all(call.kwargs["expires_in"] == 300 for call in storage.presigned_get_url.call_args_list)
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/claims/claim-001/photo.jpg",  # another tenant
+            f"{TENANT_ID}/claims/claim-002/photo.jpg",  # another claim of this tenant
+            f"{TENANT_ID}/exports/2026-11-10/secret.xlsx",  # not claim evidence at all
+            f"{TENANT_ID}/claims/claim-001/../../other/x",  # starts with the prefix, then climbs out of it
+            f"{TENANT_ID}/claims/claim-001/sub/photo.jpg",  # an upload is one flat filename
+            f"{TENANT_ID}/claims/claim-001/",  # no filename
+        ],
+    )
+    def test_a_key_outside_the_claims_own_prefix_never_becomes_a_link(self, key):
+        result, storage = self._get(evidence=[self._file(key=key)])
+        assert result["evidence"] == []
+        assert not storage.presigned_get_url.called
+
+    def test_a_file_whose_link_cannot_be_made_is_still_listed(self):
+        from services.claims import service
+
+        patches, storage = self._patches(evidence=[self._file()])
+        storage.presigned_get_url.side_effect = RuntimeError("no storage configured")
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            result = service.get_claim(TENANT_ID, self.CLAIM_ID, _ctx(UserRole.CUSTOMER))
+        assert result["evidence"][0]["file_name"] == "photo.jpg" and result["evidence"][0]["download_url"] is None
+
+    def test_the_outcome_is_the_decision_and_the_refund_status(self):
+        outcome = {
+            "resolution_type": "refund",
+            "resolution_amount_ngn": Decimal("25000.00"),
+            "discount_percentage": None,
+            "resolved_at": "2026-11-12T09:00:00Z",
+            "reason": "Evidence is clear",
+            "refund_id": "r1",
+            "refund_status": "pending_review",
+            "refund_amount_ngn": Decimal("25000.00"),
+        }
+        result, _ = self._get(outcome=outcome)
+        assert result["resolution"] == {
+            "resolution_type": "refund",
+            "amount_ngn": Decimal("25000.00"),
+            "discount_percentage": None,
+            "resolved_at": "2026-11-12T09:00:00Z",
+            "reason": None,
+        }
+        assert result["refund"] == {"id": "r1", "status": "pending_review", "amount_ngn": Decimal("25000.00")}
+
+    def test_a_resolution_with_no_refund_has_none(self):
+        outcome = {
+            "resolution_type": "no_action",
+            "resolution_amount_ngn": None,
+            "discount_percentage": None,
+            "resolved_at": "x",
+            "refund_id": None,
+        }
+        result, _ = self._get(outcome=outcome)
+        assert result["resolution"]["resolution_type"] == "no_action" and result["refund"] is None
+
+    @staticmethod
+    def _decided(resolution_type, reason="The packaging was intact on delivery"):
+        return {
+            "resolution_type": resolution_type,
+            "resolution_amount_ngn": None,
+            "discount_percentage": None,
+            "resolved_at": "x",
+            "refund_id": None,
+            "reason": reason,
+        }
+
+    def test_a_customer_is_told_why_when_the_decision_went_against_them(self):
+        """Owner decision (2026-11-17): if it is not in the customer's favour, they are told why."""
+        result, _ = self._get(outcome=self._decided("no_action"))
+        assert result["resolution"]["reason"] == "The packaging was intact on delivery"
+
+    @pytest.mark.parametrize("in_their_favour", ["refund", "compensation", "discount"])
+    def test_a_customer_is_not_shown_the_reason_when_the_decision_is_in_their_favour(self, in_their_favour):
+        result, _ = self._get(outcome=self._decided(in_their_favour, reason="goodwill, repeat claimant, watch this account"))
+        assert result["resolution"]["reason"] is None
+        assert "repeat claimant" not in str(result)
+
+    @pytest.mark.parametrize("resolution_type", ["refund", "compensation", "discount", "no_action"])
+    def test_staff_always_see_the_reason_they_recorded(self, resolution_type):
+        result, _ = self._get(role=UserRole.NIGERIA_OFFICE_STAFF, outcome=self._decided(resolution_type, reason="internal note"))
+        assert result["resolution"]["reason"] == "internal note"
+
+    def test_a_blank_reason_is_none_not_an_empty_string(self):
+        result, _ = self._get(outcome=self._decided("no_action", reason=""))
+        assert result["resolution"]["reason"] is None
+
+    def test_who_approved_it_is_never_in_the_response_for_anyone(self):
+        outcome = {**self._decided("no_action"), "approval_level": "admin", "approved_by": "staff-uuid"}
+        for role in (UserRole.CUSTOMER, UserRole.TENANT_ADMIN):
+            flat = str(self._get(role=role, outcome=outcome)[0])
+            assert "approved_by" not in flat and "approval_level" not in flat and "staff-uuid" not in flat
+
+    def test_the_response_carries_no_uploader_or_storage_key(self):
+        result, _ = self._get(evidence=[self._file(uploaded_by="staff-uuid")])
+        assert "uploaded_by" not in result["evidence"][0] and "file_key" not in result["evidence"][0]
+
+
+class TestResolvingAgainstTheCustomerNeedsAReason:
+    """Closing a claim without a payout shows the customer the reason, so it cannot be blank."""
+
+    def test_no_action_without_a_reason_is_refused(self):
+        from pydantic import ValidationError as PydanticValidationError
+
+        from services.claims.models import ResolveClaimRequest
+
+        for blank in ("", "   "):
+            with pytest.raises(PydanticValidationError) as caught:
+                ResolveClaimRequest(resolution_type="no_action", reason=blank)
+            assert "the customer is shown it" in str(caught.value)
+
+    def test_no_action_with_a_reason_is_accepted(self):
+        from services.claims.models import ResolveClaimRequest
+
+        assert ResolveClaimRequest(resolution_type="no_action", reason="Packaging was intact").reason == "Packaging was intact"
+
+    @pytest.mark.parametrize("in_their_favour", ["refund", "compensation", "discount"])
+    def test_a_decision_in_the_customers_favour_needs_none(self, in_their_favour):
+        from services.claims.models import ResolveClaimRequest
+
+        assert ResolveClaimRequest(resolution_type=in_their_favour).reason == ""
+
+    def test_the_handler_answers_422_not_500(self):
+        from services.claims import handler
+
+        event = {
+            "requestContext": {
+                "requestId": "r1",
+                "http": {"method": "PATCH", "path": "/v1/claims/claim-001/resolve"},
+                "authorizer": {"claims": {"sub": "user-1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": json.dumps({"resolution_type": "no_action", "reason": ""}),
+            "queryStringParameters": {},
+            "pathParameters": {},
+        }
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch("services.claims.service.resolve_claim") as resolve,
+        ):
+            response = handler.lambda_handler(event, None)
+        assert response["statusCode"] == 422 and not resolve.called
+
+
+class TestClaimReadSql:
+    @staticmethod
+    def _sql(fn, *args):
+        from services.claims import repository
+
+        with patch.object(repository, "execute_with_tenant", return_value=[]) as mock_exec:
+            getattr(repository, fn)(*args)
+        scope, query, params = mock_exec.call_args[0]
+        return scope, " ".join(query.split()), params
+
+    def test_the_claim_read_is_tenant_scoped_through_every_join(self):
+        scope, query, params = self._sql("get_damage_claim_by_id", TENANT_ID, "claim-001")
+        assert scope == TENANT_ID and params == (TENANT_ID, "claim-001")
+        assert "dc.tenant_id = %s" in query
+        assert "cu.tenant_id = dc.tenant_id" in query and "c.tenant_id = dc.tenant_id" in query
+
+    def test_the_outcome_query_is_tenant_scoped_and_selects_no_internal_columns(self):
+        scope, query, params = self._sql("get_claim_outcome", TENANT_ID, "claim-001")
+        assert scope == TENANT_ID and params == (TENANT_ID, "claim-001")
+        assert "cr.tenant_id = %s" in query and "rr.tenant_id = cr.tenant_id" in query
+        select_list = query.split("FROM")[0]
+        assert "cr.notes AS reason" in select_list  # the reason; the service decides who is shown it
+        assert "approved_by" not in select_list and "approval_level" not in select_list
+
+    def test_the_evidence_query_selects_the_claim_by_bound_id_and_no_uploader(self):
+        from shared.tenant_context import PLATFORM_TENANT_ID
+
+        scope, query, params = self._sql("list_claim_evidence", "claim-001")
+        assert scope == PLATFORM_TENANT_ID  # claim_evidence has no RLS; the service checks the claim's tenant first
+        assert params == ("claim-001",) and "damage_claim_id = %s" in query
+        assert "uploaded_by" not in query.split("FROM")[0]
 
 
 # ---------------------------------------------------------------------------
@@ -682,13 +949,13 @@ TENANT_ID_C = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 
 class TestMissingItemCompensation:
-    def test_compensated_with_amount_creates_refund_and_links(self):
+    def test_confirmed_lost_with_amount_creates_refund_and_links(self):
         from decimal import Decimal
 
         from services.claims import service
 
         item = _missing_item()
-        updated = {**item, "status": "compensated"}
+        updated = {**item, "status": "confirmed_lost"}
         refund_row = {"id": "refund-new-001"}
         linked = {**updated, "refund_request_id": "refund-new-001"}
 
@@ -701,7 +968,7 @@ class TestMissingItemCompensation:
             result = service.update_missing_item(
                 TENANT_ID_C,
                 "missing-001",
-                "compensated",
+                "confirmed_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -709,11 +976,11 @@ class TestMissingItemCompensation:
             )
             assert result["refund_request_id"] == "refund-new-001"
 
-    def test_compensated_without_amount_skips_refund(self):
+    def test_confirmed_lost_without_amount_skips_refund(self):
         from services.claims import service
 
         item = _missing_item()
-        updated = {**item, "status": "compensated"}
+        updated = {**item, "status": "confirmed_lost"}
 
         with (
             patch.object(service.repo, "get_missing_item_by_id", return_value=item),
@@ -723,15 +990,15 @@ class TestMissingItemCompensation:
             service.update_missing_item(
                 TENANT_ID_C,
                 "missing-001",
-                "compensated",
+                "confirmed_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
             )
             mock_create.assert_not_called()
 
-    def test_non_compensated_status_with_amount_skips_refund(self):
-        """refund_amount_ngn is ignored for statuses other than 'compensated'."""
+    def test_other_status_with_amount_skips_refund(self):
+        """refund_amount_ngn is ignored for statuses other than 'confirmed_lost'."""
         from decimal import Decimal
 
         from services.claims import service
@@ -762,18 +1029,213 @@ class TestMissingItemCompensation:
         with patch.object(service.repo, "get_missing_item_by_id", return_value=None):
             with pytest.raises(ResourceNotFoundError):
                 service.update_missing_item(
-                    TENANT_ID_C, "nonexistent", "compensated", notes=None, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                    TENANT_ID_C,
+                    "nonexistent",
+                    "confirmed_lost",
+                    notes=None,
+                    actor_id="u",
+                    ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
                 )
 
 
+class TestChinaOfficeAndMissingItems:
+    """The China office records the supply and loading check on a missing item, and nothing financial (audit UX-08)."""
+
+    @staticmethod
+    def _update(role, status, *, amount=None, current="reported"):
+        from services.claims import service
+
+        item = _missing_item(status=current)
+        with (
+            patch.object(service.repo, "get_missing_item_by_id", return_value=item),
+            patch.object(service.repo, "update_missing_item_status", return_value={**item, "status": status}) as update,
+            patch.object(service.refund_repo, "create_refund_request") as refund,
+            patch("services.claims.service.log_audit"),
+        ):
+            result = service.update_missing_item(
+                TENANT_ID_C,
+                "missing-001",
+                status,
+                notes="Loaded 12 cartons; 3 not on the dock",
+                actor_id="u",
+                ctx=_ctx(role),
+                refund_amount_ngn=amount,
+            )
+        return result, update, refund
+
+    @pytest.mark.parametrize("status", ["investigating", "found_and_shipping"])
+    def test_china_can_record_an_investigation_result_with_notes(self, status):
+        result, update, refund = self._update(UserRole.CHINA_OFFICE_STAFF, status)
+        assert result["status"] == status
+        assert update.call_args.kwargs["notes"] == "Loaded 12 cartons; 3 not on the dock"
+        assert not refund.called
+
+    def test_china_cannot_set_a_refund_amount(self):
+        from decimal import Decimal
+
+        from services.claims import service
+
+        with pytest.raises(InsufficientPermissionsError):
+            self._update(UserRole.CHINA_OFFICE_STAFF, "investigating", amount=Decimal("5000"))
+        with pytest.raises(InsufficientPermissionsError):
+            self._update(UserRole.CHINA_OFFICE_STAFF, "confirmed_lost", amount=Decimal("5000"))
+        assert service  # imported for the patch targets above
+
+    @pytest.mark.parametrize("status", ["confirmed_lost", "resolved", "reported"])
+    def test_china_cannot_decide_a_missing_item(self, status):
+        with pytest.raises(InsufficientPermissionsError):
+            self._update(UserRole.CHINA_OFFICE_STAFF, status)
+
+    @pytest.mark.parametrize("current", ["confirmed_lost", "resolved"])
+    def test_china_cannot_reopen_an_item_that_has_been_decided(self, current):
+        from shared.exceptions import BusinessRuleViolationError
+
+        with pytest.raises(BusinessRuleViolationError) as caught:
+            self._update(UserRole.CHINA_OFFICE_STAFF, "investigating", current=current)
+        assert caught.value.rule_id == "MISSING_ITEM_ALREADY_DECIDED"
+
+    def test_a_refused_china_update_changes_nothing(self):
+        from services.claims import service
+
+        with (
+            patch.object(service.repo, "get_missing_item_by_id", return_value=_missing_item()),
+            patch.object(service.repo, "update_missing_item_status") as update,
+            patch.object(service.refund_repo, "create_refund_request") as refund,
+            patch("services.claims.service.log_audit") as audit,
+        ):
+            with pytest.raises(InsufficientPermissionsError):
+                service.update_missing_item(
+                    TENANT_ID_C, "missing-001", "confirmed_lost", None, actor_id="u", ctx=_ctx(UserRole.CHINA_OFFICE_STAFF)
+                )
+        assert not update.called and not refund.called and not audit.called
+
+    def test_nigeria_staff_keep_every_status_and_compensation(self):
+        from decimal import Decimal
+
+        from services.claims import service
+
+        item = _missing_item()
+        with (
+            patch.object(service.repo, "get_missing_item_by_id", return_value=item),
+            patch.object(service.repo, "update_missing_item_status", return_value={**item, "status": "confirmed_lost"}),
+            patch.object(service.refund_repo, "create_refund_request", return_value={"id": "r1"}),
+            patch.object(
+                service.repo,
+                "link_refund_to_missing_item",
+                return_value={**item, "status": "confirmed_lost", "refund_request_id": "r1"},
+            ),
+            patch("services.claims.service.log_audit"),
+        ):
+            result = service.update_missing_item(
+                TENANT_ID_C,
+                "missing-001",
+                "confirmed_lost",
+                None,
+                actor_id="u",
+                ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
+                refund_amount_ngn=Decimal("10000"),
+            )
+        assert result["refund_request_id"] == "r1"
+
+    def test_logging_a_missing_item_tells_the_china_office_in_app(self):
+        from services.claims import service
+
+        req = MagicMock(
+            manifest_id="manifest-1", customer_id="customer-001", carton_tags=["T1", "T2"], description="Never arrived"
+        )
+        with (
+            patch.object(service.repo, "create_missing_item", return_value=_missing_item()),
+            patch("services.claims.service.log_audit"),
+            patch("services.claims.service.notify_staff") as notify,
+        ):
+            service.log_missing_item(TENANT_ID_C, req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+        notify.assert_called_once()
+        kwargs = notify.call_args.kwargs
+        assert kwargs["target_role"] == "china_office_staff"
+        assert (kwargs["event_type"], kwargs["entity_type"]) == ("missing_item_logged", "missing_item")
+        assert "2 carton(s)" in kwargs["body"]
+        assert "Never arrived" not in str(kwargs) and "customer-001" not in str(kwargs)  # no customer detail in the bell
+
+
+class TestChinaOfficeMissingItemRoutes:
+    """Who may call which missing-item route."""
+
+    @staticmethod
+    def _call(role, method, path, body=None):
+        from services.claims import handler, service
+
+        event = {
+            "requestContext": {
+                "requestId": "r1",
+                "http": {"method": method, "path": path},
+                "authorizer": {"claims": {"sub": "user-1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": json.dumps(body) if body is not None else None,
+            "queryStringParameters": {},
+            "pathParameters": {},
+        }
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(role)),
+            patch.object(service, "list_missing_items", return_value=([], None, False)),
+            patch.object(service, "get_missing_item", return_value={"id": "i1"}),
+            patch.object(service, "update_missing_item", return_value={"id": "i1"}) as update,
+            patch.object(service, "log_missing_item", return_value={"id": "i1"}) as log,
+            patch.object(service, "list_seized_items", return_value=([], None, False)),
+        ):
+            return handler.lambda_handler(event, None), update, log
+
+    def test_china_can_list_and_open_missing_items(self):
+        assert self._call(UserRole.CHINA_OFFICE_STAFF, "GET", "/v1/claims/missing-items")[0]["statusCode"] == 200
+        assert self._call(UserRole.CHINA_OFFICE_STAFF, "GET", "/v1/claims/missing-items/i1")[0]["statusCode"] == 200
+
+    def test_china_can_update_one(self):
+        response, update, _ = self._call(
+            UserRole.CHINA_OFFICE_STAFF, "PATCH", "/v1/claims/missing-items/i1", {"status": "investigating"}
+        )
+        assert response["statusCode"] == 200 and update.called
+
+    def test_a_refund_amount_from_china_reaches_the_service_to_be_refused(self):
+        _, update, _ = self._call(
+            UserRole.CHINA_OFFICE_STAFF,
+            "PATCH",
+            "/v1/claims/missing-items/i1",
+            {"status": "investigating", "refund_amount_ngn": "100"},
+        )
+        assert update.call_args.kwargs["refund_amount_ngn"] is not None  # the service, not the route, enforces the limit
+
+    def test_china_cannot_log_a_missing_item(self):
+        response, _, log = self._call(
+            UserRole.CHINA_OFFICE_STAFF,
+            "POST",
+            "/v1/claims/missing-items",
+            {
+                "manifest_id": "11111111-1111-1111-1111-111111111111",
+                "customer_id": "22222222-2222-2222-2222-222222222222",
+                "carton_tags": ["T1"],
+                "description": "x",
+            },
+        )
+        assert response["statusCode"] == 403 and not log.called
+
+    def test_china_still_cannot_read_seized_items(self):
+        assert self._call(UserRole.CHINA_OFFICE_STAFF, "GET", "/v1/claims/seized-items")[0]["statusCode"] == 403
+
+    @pytest.mark.parametrize("role", [UserRole.WAREHOUSE_ATTENDANT, UserRole.CUSTOMER])
+    def test_others_are_still_refused(self, role):
+        assert self._call(role, "GET", "/v1/claims/missing-items")[0]["statusCode"] == 403
+        assert self._call(role, "PATCH", "/v1/claims/missing-items/i1", {"status": "investigating"})[0]["statusCode"] == 403
+
+
 class TestSeizedItemCompensation:
-    def test_recovered_with_amount_creates_refund_and_links(self):
+    def test_permanently_lost_with_amount_creates_refund_and_links(self):
         from decimal import Decimal
 
         from services.claims import service
 
         item = _seized_item()
-        updated = {**item, "recovery_status": "recovered"}
+        updated = {**item, "recovery_status": "permanently_lost"}
         refund_row = {"id": "refund-sz-001"}
         linked = {**updated, "refund_request_id": "refund-sz-001"}
 
@@ -786,7 +1248,7 @@ class TestSeizedItemCompensation:
             result = service.update_seized_item(
                 TENANT_ID_C,
                 "seized-001",
-                "recovered",
+                "permanently_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -794,32 +1256,29 @@ class TestSeizedItemCompensation:
             )
             assert result["refund_request_id"] == "refund-sz-001"
 
-    def test_forfeited_with_amount_creates_refund(self):
+    @pytest.mark.parametrize("status", ["recovered", "recovery_in_progress"])
+    def test_other_statuses_with_an_amount_open_no_refund(self, status):
+        """Compensation is owed when goods are permanently lost, not when they are recovered."""
         from decimal import Decimal
 
         from services.claims import service
 
         item = _seized_item()
-        updated = {**item, "recovery_status": "forfeited"}
-        refund_row = {"id": "refund-sz-002"}
-        linked = {**updated, "refund_request_id": "refund-sz-002"}
-
         with (
             patch.object(service.repo, "get_seized_item_by_id", return_value=item),
-            patch.object(service.repo, "update_seized_item_status", return_value=updated),
-            patch.object(service.refund_repo, "create_refund_request", return_value=refund_row),
-            patch.object(service.repo, "link_refund_to_seized_item", return_value=linked),
+            patch.object(service.repo, "update_seized_item_status", return_value={**item, "recovery_status": status}),
+            patch.object(service.refund_repo, "create_refund_request") as mock_create,
         ):
-            result = service.update_seized_item(
+            service.update_seized_item(
                 TENANT_ID_C,
                 "seized-001",
-                "forfeited",
+                status,
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
                 refund_amount_ngn=Decimal("20000"),
             )
-            assert result["refund_request_id"] == "refund-sz-002"
+        mock_create.assert_not_called()
 
     def test_seized_status_with_amount_skips_refund(self):
         """Status 'seized' (no resolution yet) must not trigger a refund."""
@@ -876,6 +1335,7 @@ class TestMissingSeizedItemAuditLogging:
         with (
             patch.object(service.repo, "create_missing_item", return_value=_missing_item()),
             patch("services.claims.service.log_audit") as mock_audit,
+            patch("services.claims.service.notify_staff"),
         ):
             service.log_missing_item(TENANT_ID_C, req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
 
@@ -910,7 +1370,7 @@ class TestMissingSeizedItemAuditLogging:
         from services.claims import service
 
         item = _missing_item()
-        updated = {**item, "status": "compensated"}
+        updated = {**item, "status": "confirmed_lost"}
         with (
             patch.object(service.repo, "get_missing_item_by_id", return_value=item),
             patch.object(service.repo, "update_missing_item_status", return_value=updated),
@@ -921,7 +1381,7 @@ class TestMissingSeizedItemAuditLogging:
             service.update_missing_item(
                 TENANT_ID_C,
                 "missing-001",
-                "compensated",
+                "confirmed_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -956,7 +1416,7 @@ class TestMissingSeizedItemAuditLogging:
         from services.claims import service
 
         item = _seized_item()
-        updated = {**item, "recovery_status": "recovered"}
+        updated = {**item, "recovery_status": "permanently_lost"}
         with (
             patch.object(service.repo, "get_seized_item_by_id", return_value=item),
             patch.object(service.repo, "update_seized_item_status", return_value=updated),
@@ -967,7 +1427,7 @@ class TestMissingSeizedItemAuditLogging:
             service.update_seized_item(
                 TENANT_ID_C,
                 "seized-001",
-                "recovered",
+                "permanently_lost",
                 notes=None,
                 actor_id="u",
                 ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
@@ -1325,9 +1785,21 @@ class TestClaimStatusChangeNotifications:
 
         with (
             patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
+            patch.object(service.repo, "get_tenant_config_value", return_value={"staff_limit": 50}),
             patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1550")}),
             patch.object(service.repo, "get_billing_by_id", return_value=None),
             patch.object(service.repo, "update_claim_status", return_value=updated),
+            patch.object(
+                service.repo,
+                "create_claim_resolution",
+                return_value={
+                    "id": "res-002",
+                    "resolution_type": "goodwill_credit",
+                    "resolution_amount_ngn": Decimal("31000"),
+                    "approval_level": "nigeria_staff",
+                    "refund_request_id": None,
+                },
+            ),
             patch.object(service.repo, "get_customer_contact", return_value=self._CONTACT) as mock_contact,
             patch("services.claims.service.publish_event"),
             patch("services.claims.service.log_audit"),
@@ -1363,3 +1835,157 @@ class TestClaimStats:
             result = service.get_claim_stats(TENANT_ID)
         assert m.call_args[0][0] == TENANT_ID
         assert result["total"] == 5
+
+
+class TestClaimsWritesAreGuarded:
+    """The guards that stop a second request opening a second refund.
+
+    That they hold under real concurrency is proved in tests/db/test_atomic_writes.py;
+    these pin the service-level contract with the repository mocked.
+    """
+
+    def test_an_item_that_already_carries_a_refund_does_not_get_another(self):
+        from decimal import Decimal
+
+        from services.claims import service
+
+        item = _seized_item()
+        already = {**item, "recovery_status": "permanently_lost", "refund_request_id": "refund-existing"}
+
+        with (
+            patch.object(service.repo, "get_seized_item_by_id", return_value=item),
+            patch.object(service.repo, "update_seized_item_status", return_value=already),
+            patch.object(service.refund_repo, "create_refund_request") as mock_create,
+            patch.object(service.repo, "link_refund_to_seized_item") as mock_link,
+        ):
+            result = service.update_seized_item(
+                TENANT_ID_C,
+                "seized-001",
+                "permanently_lost",
+                notes=None,
+                actor_id="u",
+                ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF),
+                refund_amount_ngn=Decimal("20000"),
+            )
+
+        mock_create.assert_not_called()
+        mock_link.assert_not_called()
+        assert "refund_request_id" not in result or result["refund_request_id"] == "refund-existing"
+
+    def test_resolving_a_claim_that_was_resolved_by_someone_else_is_refused_with_no_side_effects(self):
+        from decimal import Decimal
+        from types import SimpleNamespace
+
+        from services.claims import service
+        from shared.exceptions import IllegalTransitionError
+
+        claim = {"id": "claim-001", "status": "pending_resolution", "customer_id": "cust-1", "tenant_id": TENANT_ID_C}
+        req = SimpleNamespace(
+            resolution_type=SimpleNamespace(value="refund"),
+            settlement_amount_usd=None,
+            amount_ngn=Decimal("1000"),
+            reason="wet",
+            discount_percentage=None,
+        )
+
+        with (
+            patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
+            patch.object(service.repo, "get_tenant_config_value", return_value={}),
+            patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1500")}),
+            patch.object(service.repo, "update_claim_status", return_value=None) as mock_status,
+            patch.object(service.repo, "create_refund_request_for_claim") as mock_refund,
+            patch.object(service.repo, "create_claim_resolution") as mock_resolution,
+            patch.object(service, "publish_event") as mock_publish,
+        ):
+            with pytest.raises(IllegalTransitionError):
+                service.resolve_claim(TENANT_ID_C, "claim-001", req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        assert mock_status.call_args.kwargs["allowed_from"]  # the guard is passed to the repo
+        mock_refund.assert_not_called()
+        mock_resolution.assert_not_called()
+        mock_publish.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# PATCH /v1/claims/missing-items/{id} and /seized-items/{id} — input validation
+#
+# The compensation amount and the status are the two inputs that turn into a refund, so a
+# bad value must be a 422 here, not a 500 from a CHECK constraint after the status saved.
+# ---------------------------------------------------------------------------
+
+
+class TestItemUpdateValidation:
+    @staticmethod
+    def _event(kind: str, body: dict) -> dict:
+        return {
+            "requestContext": {
+                "requestId": "req-item-001",
+                "http": {"method": "PATCH", "path": f"/v1/claims/{kind}/item-001"},
+                "authorizer": {"claims": {"sub": "user-1", "custom:tenant_id": TENANT_ID}},
+                "identity": {"sourceIp": "127.0.0.1"},
+            },
+            "headers": {},
+            "body": json.dumps(body),
+            "queryStringParameters": {},
+            "pathParameters": {},
+        }
+
+    def _patch_missing(self, body: dict, update_result: dict | None = None) -> tuple[dict, MagicMock]:
+        from services.claims import handler, service
+
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "update_missing_item", return_value=update_result or {"id": "item-001"}) as mock_update,
+        ):
+            resp = handler.lambda_handler(self._event("missing-items", body), None)
+        return resp, mock_update
+
+    def test_confirmed_lost_with_amount_reaches_the_service_as_a_decimal(self):
+        resp, mock_update = self._patch_missing({"status": "confirmed_lost", "refund_amount_ngn": "7500.50"})
+
+        assert resp["statusCode"] == 200
+        assert mock_update.call_args.kwargs["refund_amount_ngn"] == Decimal("7500.50")
+
+    def test_no_amount_is_passed_as_none(self):
+        resp, mock_update = self._patch_missing({"status": "confirmed_lost"})
+
+        assert resp["statusCode"] == 200
+        assert mock_update.call_args.kwargs["refund_amount_ngn"] is None
+
+    @pytest.mark.parametrize("bad_amount", ["abc", "0", "-5", "NaN", "Infinity"])
+    def test_an_unusable_amount_is_a_422_and_nothing_is_updated(self, bad_amount):
+        resp, mock_update = self._patch_missing({"status": "confirmed_lost", "refund_amount_ngn": bad_amount})
+
+        assert resp["statusCode"] == 422
+        mock_update.assert_not_called()
+
+    def test_a_status_the_database_does_not_allow_is_a_422(self):
+        resp, mock_update = self._patch_missing({"status": "compensated"})
+
+        assert resp["statusCode"] == 422
+        mock_update.assert_not_called()
+
+    def test_a_seized_status_the_database_does_not_allow_is_a_422(self):
+        from services.claims import handler, service
+
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "update_seized_item") as mock_update,
+        ):
+            resp = handler.lambda_handler(self._event("seized-items", {"recovery_status": "forfeited"}), None)
+        assert resp["statusCode"] == 422
+        mock_update.assert_not_called()
+
+    def test_seized_item_amount_is_validated_the_same_way(self):
+        from services.claims import handler, service
+
+        with (
+            patch("services.claims.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "update_seized_item") as mock_update,
+        ):
+            resp = handler.lambda_handler(
+                self._event("seized-items", {"recovery_status": "recovered", "refund_amount_ngn": "-1"}), None
+            )
+
+        assert resp["statusCode"] == 422
+        mock_update.assert_not_called()

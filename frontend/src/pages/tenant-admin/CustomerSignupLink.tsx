@@ -1,9 +1,13 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { useRef, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type RegistrationLinkSettings } from '../../api/tenantManagement'
 import { Badge, Banner, Button, Card, Icon } from '../../design/components'
+import { STALE_30S } from '../../lib/queryClient'
 import styles from './CustomerSignupLink.module.css'
+
+const REGISTRATION_LINK_KEY = ['config', 'registration-link'] as const
 
 /**
  * The company's own customer signup link, with a QR code and an on/off switch.
@@ -20,22 +24,21 @@ import styles from './CustomerSignupLink.module.css'
  * or turn it off — which is what this is.
  */
 export function CustomerSignupLink(): JSX.Element {
-  const [settings, setSettings] = useState<RegistrationLinkSettings | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const qc = useQueryClient()
+  const { data: settings = null, error: loadError } = useQuery({
+    queryKey: REGISTRATION_LINK_KEY,
+    queryFn: () => configApi.getRegistrationLink(),
+    staleTime: STALE_30S,
+  })
+  const [actionError, setActionError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showQr, setShowQr] = useState(false)
   const qrRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setSettings(await configApi.getRegistrationLink())
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load the signup link.')
-      }
-    })()
-  }, [])
+  const error =
+    actionError ??
+    (loadError ? (loadError instanceof ApiError ? loadError.message : 'Could not load the signup link.') : null)
 
   // Built from the browser's own origin rather than a configured base URL:
   // this is the address a customer will visit, and the app is served from it.
@@ -52,17 +55,18 @@ export function CustomerSignupLink(): JSX.Element {
       // about the clipboard's contents minutes later.
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      setError('Could not copy — select the link and copy it manually.')
+      setActionError('Could not copy — select the link and copy it manually.')
     }
   }
 
   async function toggle(enabled: boolean): Promise<void> {
     setSaving(true)
-    setError(null)
+    setActionError(null)
     try {
-      setSettings(await configApi.setRegistrationLinkEnabled(enabled))
+      const updated = await configApi.setRegistrationLinkEnabled(enabled)
+      qc.setQueryData<RegistrationLinkSettings>(REGISTRATION_LINK_KEY, updated)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update the signup link.')
+      setActionError(err instanceof ApiError ? err.message : 'Could not update the signup link.')
     } finally {
       setSaving(false)
     }

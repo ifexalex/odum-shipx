@@ -2,38 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session, UserRole } from '../../auth/types'
+import { ApiError } from '../../api/client'
 import { containersApi, type Container } from '../../api/tracking'
-import { TopBarContext } from '../../shell/TopBarContext'
 import { ContainerList } from './ContainerList'
 
-// Provides TopBarContext and renders any injected TopBar actions into a visible div
-// so tests can query them the same way as the real StaffLayout would.
-function TopBarWrapper({ children }: { children: ReactNode }) {
-  const [suffix, setSuffix] = useState<string | null>(null)
-  const [subtitle, setSubtitle] = useState<string | null>(null)
-  const [actions, setActions] = useState<ReactNode | null>(null)
-  const [onSearch, setOnSearch] = useState<((query: string) => void) | null>(null)
-  return (
-    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions, onSearch, setOnSearch }}>
-      {children}
-      {actions && <div data-testid="topbar-actions">{actions}</div>}
-      {onSearch && (
-        <input
-          aria-label="Header search"
-          data-testid="topbar-search"
-          onChange={(event) => onSearch(event.target.value)}
-        />
-      )}
-    </TopBarContext.Provider>
-  )
-}
-
 vi.mock('../../api/tracking', () => ({
-  containersApi: { list: vi.fn(), stats: vi.fn() },
+  containersApi: { list: vi.fn(), stats: vi.fn(), exportList: vi.fn() },
 }))
 
 function makeSession(role: UserRole): Session {
@@ -70,9 +47,9 @@ function renderPage(role: UserRole) {
     <QueryClientProvider client={queryClient}>
       <SessionContext.Provider value={makeContextValue(role)}>
         <MemoryRouter>
-          <TopBarWrapper>
+          <>
             <ContainerList />
-          </TopBarWrapper>
+          </>
         </MemoryRouter>
       </SessionContext.Provider>
     </QueryClientProvider>,
@@ -132,7 +109,7 @@ describe('ContainerList', () => {
     } as never)
     renderPage('china_office_staff')
     const row = (await screen.findByText('MSCU1234567')).closest('tr')!
-    expect(within(row).getByText('68.4')).toBeInTheDocument()
+    expect(within(row).getByText('68.400')).toBeInTheDocument()
     expect(within(row).getByText('90%')).toBeInTheDocument() // 68.4 / 76 ≈ 90%
   })
 
@@ -154,7 +131,7 @@ describe('ContainerList', () => {
     } as never)
     renderPage('china_office_staff')
     const row = (await screen.findByText('MSCU1234567')).closest('tr')!
-    expect(within(row).getByText('42.0')).toBeInTheDocument()
+    expect(within(row).getByText('42.000')).toBeInTheDocument()
     expect(within(row).queryByText(/%$/)).toBeNull()
   })
 
@@ -200,7 +177,7 @@ describe('ContainerList', () => {
     renderPage('china_office_staff')
     // One call on mount: the paginated table (stats loads via containersApi.stats)
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
-    await userEvent.click(screen.getByRole('button', { name: /in transit/i }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter containers' })).getByRole('button', { name: /in transit/i }))
     // Third call: paginated list re-fetch with the status filter
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
     expect(vi.mocked(containersApi.list).mock.calls[1]?.[0]).toMatchObject({ status: 'in_transit' })
@@ -222,22 +199,6 @@ describe('ContainerList', () => {
     // After the debounce window, exactly one extra call fires with the full query.
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
     expect(vi.mocked(containersApi.list).mock.calls[1]?.[0]).toMatchObject({ q: 'MSCU' })
-  })
-
-  it('syncs the shared TopBar header search box with the table search state', async () => {
-    vi.mocked(containersApi.list).mockResolvedValue({
-      data: [],
-      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
-    })
-    renderPage('china_office_staff')
-    await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
-
-    await userEvent.type(screen.getByTestId('topbar-search'), 'MSCU7654321')
-
-    await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
-    expect(vi.mocked(containersApi.list).mock.calls[1]?.[0]).toMatchObject({ q: 'MSCU7654321' })
-    // The table's own search input reflects the same state (single source of truth).
-    expect(screen.getByPlaceholderText(/container number, vessel name, voyage/i)).toHaveValue('MSCU7654321')
   })
 
   it('filters by created date when a "Last 30 days" preset is selected, and clears when set back to All time', async () => {
@@ -284,6 +245,8 @@ describe('ContainerList', () => {
     await userEvent.click(screen.getByRole('option', { name: /last 30 days/i }))
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
 
+    await userEvent.click(screen.getByRole('button', { name: /^Created:/ }))
+
     await userEvent.type(screen.getByLabelText('From'), '2026-01-01')
     await waitFor(() => {
       const call = vi.mocked(containersApi.list).mock.calls.at(-1)?.[0] as {
@@ -291,8 +254,8 @@ describe('ContainerList', () => {
       }
       expect(call.created_after).toBe('2026-01-01')
     })
-    // The preset reverts to unselected once a custom date wins.
-    expect(screen.getByRole('button', { name: /all time/i })).toBeInTheDocument()
+    // The button says the custom range is what applies.
+    expect(screen.getByRole('button', { name: /since/i })).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText('To'), '2026-01-31')
     await waitFor(() => {
@@ -316,11 +279,11 @@ describe('ContainerList', () => {
     // Set a status filter first (panel closed — clicking a chip while the
     // Filters popover is open would hit its click-away overlay instead, same
     // as the existing ExportButton dropdown pattern).
-    await userEvent.click(screen.getByRole('button', { name: /in transit/i }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter containers' })).getByRole('button', { name: /in transit/i }))
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
-    expect(screen.getByRole('dialog', { name: /filters/i })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+    expect(screen.getByRole('dialog', { name: /more filters/i })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /clear all filters/i }))
 
@@ -373,8 +336,8 @@ describe('ContainerList', () => {
     renderPage('china_office_staff')
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
-    const dialog = screen.getByRole('dialog', { name: /filters/i })
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+    const dialog = screen.getByRole('dialog', { name: /more filters/i })
 
     // All 9 individual statuses are selectable here — distinct from the
     // grouped quick-access chips above the table.
@@ -397,8 +360,8 @@ describe('ContainerList', () => {
     renderPage('china_office_staff')
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
-    const dialog = screen.getByRole('dialog', { name: /filters/i })
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+    const dialog = screen.getByRole('dialog', { name: /more filters/i })
     await userEvent.click(within(dialog).getByRole('checkbox', { name: /^sealed$/i }))
 
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
@@ -412,7 +375,7 @@ describe('ContainerList', () => {
     expect(vi.mocked(containersApi.list).mock.calls[2]?.[0]).toMatchObject({ status: 'sealed,cancelled' })
   })
 
-  it('"Clear all filters" resets the status multi-select and ETA range, but leaves the standalone date-created button untouched', async () => {
+  it('"Clear all filters" clears every filter, the date range too (it is all of them, FD-18)', async () => {
     vi.mocked(containersApi.list).mockResolvedValue({
       data: [],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
@@ -426,8 +389,8 @@ describe('ContainerList', () => {
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(2))
 
     // Set an ETA preset inside the Filters panel, then clear.
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
-    const dialog = screen.getByRole('dialog', { name: /filters/i })
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
+    const dialog = screen.getByRole('dialog', { name: /more filters/i })
     await userEvent.click(within(dialog).getByRole('option', { name: /arriving in 30 days/i }))
     await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(3))
 
@@ -439,8 +402,77 @@ describe('ContainerList', () => {
     }
     expect(clearedCall.eta_after).toBeUndefined()
     expect(clearedCall.eta_before).toBeUndefined()
-    // The standalone date button's own filter survives the panel's "Clear all filters".
-    expect(clearedCall.created_after).toBeDefined()
-    expect(screen.getByRole('button', { name: /last 30 days/i })).toBeInTheDocument()
+    // "Clear all filters" means all of them: the date range goes too.
+    expect(clearedCall.created_after).toBeUndefined()
+    expect(screen.getByRole('button', { name: /all time/i })).toBeInTheDocument()
+  })
+
+  describe('Export', () => {
+    const emptyPage = { data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } } }
+
+    beforeEach(() => {
+      vi.mocked(containersApi.list).mockResolvedValue(emptyPage)
+      vi.mocked(containersApi.exportList).mockReset()
+      vi.mocked(containersApi.exportList).mockResolvedValue(undefined)
+    })
+
+    it.each(['china_office_staff', 'nigeria_office_staff', 'tenant_admin'] as const)(
+      '%s, who can see the list, can export it',
+      async (role) => {
+        renderPage(role)
+        await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+        await waitFor(() => expect(containersApi.exportList).toHaveBeenCalledTimes(1))
+        expect(vi.mocked(containersApi.exportList).mock.calls[0]![1]).toBe('xlsx')
+      },
+    )
+
+    it('only China staff are offered Create container', async () => {
+      renderPage('nigeria_office_staff')
+      await screen.findByRole('button', { name: 'Export' })
+      expect(screen.queryByRole('button', { name: 'Create container' })).not.toBeInTheDocument()
+    })
+
+    it('exports the filters on screen at the moment of the click, not the ones it opened with', async () => {
+      renderPage('china_office_staff')
+      await waitFor(() => expect(containersApi.list).toHaveBeenCalledTimes(1))
+      // The button is placed in the top bar once, on mount; it must still see filters chosen afterwards.
+      await userEvent.click(within(screen.getByRole('search', { name: 'Filter containers' })).getByRole('button', { name: /in transit/i }))
+      await userEvent.type(screen.getByPlaceholderText(/container number, vessel name, voyage/i), 'MSCU')
+      await waitFor(() => expect(containersApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'in_transit', q: 'MSCU' })))
+
+      await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+      await waitFor(() => expect(containersApi.exportList).toHaveBeenCalled())
+      expect(vi.mocked(containersApi.exportList).mock.calls[0]![0]).toMatchObject({ status: 'in_transit', q: 'MSCU' })
+    })
+
+    it('does not send paging parameters: the export is the whole list', async () => {
+      renderPage('china_office_staff')
+      await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+      await waitFor(() => expect(containersApi.exportList).toHaveBeenCalled())
+      const params = vi.mocked(containersApi.exportList).mock.calls[0]![0] as Record<string, unknown>
+      expect(params).not.toHaveProperty('cursor')
+      expect(params).not.toHaveProperty('limit')
+    })
+
+    it('says why a refused export was refused', async () => {
+      vi.mocked(containersApi.exportList).mockRejectedValue(
+        new ApiError(
+          {
+            type: 'about:blank',
+            title: 'Unprocessable Entity',
+            status: 422,
+            detail: 'More than 10,000 containers match. Narrow the filters (status, dates or search) and export again.',
+            error_code: 'BUSINESS_RULE_VIOLATION',
+            rule_id: 'EXPORT_TOO_LARGE',
+          },
+          null,
+        ),
+      )
+      renderPage('china_office_staff')
+      await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+      expect(await screen.findByText(/Couldn't export containers/)).toBeInTheDocument()
+      expect(screen.getByText(/More than 10,000 containers match/)).toBeInTheDocument()
+    })
   })
 })

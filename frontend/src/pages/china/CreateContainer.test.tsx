@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { containersApi, type Container } from '../../api/tracking'
 import { CreateContainer } from './CreateContainer'
@@ -76,5 +76,43 @@ describe('CreateContainer', () => {
     await userEvent.type(screen.getByLabelText('Container number', { exact: false, selector: 'input' }), 'MSCU1234567')
     await userEvent.click(screen.getByRole('button', { name: 'Create container' }))
     await waitFor(() => expect(screen.getByText(/couldn't create container/i)).toBeInTheDocument())
+  })
+})
+
+describe('CreateContainer sent from another form (FD-25)', () => {
+  it('goes back to the form that needed the container', async () => {
+    vi.mocked(containersApi.create).mockResolvedValue({ id: 'c9', container_number: 'MSCU7654321' } as Container)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/containers/new?return=%2Fpacking-lists%2Fnew']}>
+          <Routes>
+            <Route path="/containers/new" element={<CreateContainer />} />
+            <Route path="/packing-lists/new" element={<p>Packing list wizard</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await userEvent.type(screen.getByLabelText('Container number', { exact: false, selector: 'input' }), 'MSCU7654321')
+    await userEvent.click(screen.getByRole('button', { name: 'Create container' }))
+    expect(await screen.findByText('Packing list wizard')).toBeInTheDocument()
+  })
+
+  it('ignores a return path that leaves the app', async () => {
+    vi.mocked(containersApi.create).mockResolvedValue({ id: 'c9', container_number: 'MSCU7654321' } as Container)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/containers/new?return=%2F%2Fevil.example']}>
+          <Routes>
+            <Route path="/containers/new" element={<CreateContainer />} />
+            <Route path="/containers/:id" element={<p>Container page</p>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await userEvent.type(screen.getByLabelText('Container number', { exact: false, selector: 'input' }), 'MSCU7654321')
+    await userEvent.click(screen.getByRole('button', { name: 'Create container' }))
+    expect(await screen.findByText('Container page')).toBeInTheDocument()
   })
 })
