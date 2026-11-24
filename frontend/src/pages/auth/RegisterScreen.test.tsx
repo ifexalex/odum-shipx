@@ -1,7 +1,7 @@
 /**
- * Bare `/register` (no company slug) must NOT dead-end — it routes the two
- * audiences apart: customers use their company link/invite; shipping companies
- * go to `/get-started`. A slugged `/register/:slug` is the real customer form.
+ * The customer sign-up form. Bare `/register` (no company slug) says to use the company's link; shipping companies
+ * are no longer sent here at all (FD-30), and a footer line points them to `/get-started`. A slugged
+ * `/register/:slug` is the real customer form.
  */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -29,18 +29,30 @@ function renderAt(path: string) {
 }
 
 describe('RegisterScreen', () => {
-  it('shows the which-are-you chooser on bare /register and routes companies to /get-started', async () => {
+  it('says to use the company link on bare /register, with no "Which are you?" chooser (FD-30)', () => {
     renderAt('/register')
-    expect(screen.getByText('Which are you?')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /get started here/i }))
+    expect(screen.getByText("Use your shipping company's link")).toBeInTheDocument()
+    expect(screen.queryByText('Which are you?')).toBeNull()
+  })
+
+  it('points a shipping company to the access request from its footer', async () => {
+    renderAt('/register/acme')
+    await userEvent.click(screen.getByRole('link', { name: 'Request access' }))
     expect(await screen.findByText('Get started page')).toBeInTheDocument()
   })
 
-  it('renders the customer account form (no chooser) on /register/:slug', () => {
+  it('renders the customer account form on /register/:slug', () => {
     renderAt('/register/acme')
     expect(screen.getByText('Create your customer account')).toBeInTheDocument()
-    expect(screen.queryByText('Which are you?')).toBeNull()
+    expect(screen.queryByText("Use your shipping company's link")).toBeNull()
     expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument()
+  })
+
+  it('leaves every optional channel unticked until the person ticks it (FD-30, SEC-01)', () => {
+    renderAt('/register/acme')
+    for (const name of ['SMS', 'WhatsApp', 'Email']) {
+      expect(screen.getByRole('checkbox', { name })).not.toBeChecked()
+    }
   })
 
   describe('submitting the form', () => {
@@ -80,6 +92,17 @@ describe('RegisterScreen', () => {
 
       await waitFor(() => expect(registerApi.selfRegister).toHaveBeenCalled())
       expect(vi.mocked(registerApi.selfRegister).mock.calls.at(-1)?.[0]).toBe('acme')
+      // Nothing was ticked, so nothing is consented to.
+      expect(vi.mocked(registerApi.selfRegister).mock.calls.at(-1)?.[1].notification_consent).toEqual([])
+    })
+
+    it('consents to exactly the channels the person ticked', async () => {
+      vi.mocked(registerApi.selfRegister).mockResolvedValue({ status: 'received' })
+      renderAt('/register/acme')
+      await userEvent.click(screen.getByRole('checkbox', { name: 'WhatsApp' }))
+      await fillAndSubmit()
+      await waitFor(() => expect(registerApi.selfRegister).toHaveBeenCalled())
+      expect(vi.mocked(registerApi.selfRegister).mock.calls.at(-1)?.[1].notification_consent).toEqual(['whatsapp'])
     })
 
     it('reports a real failure, but has no special case for a taken email', async () => {

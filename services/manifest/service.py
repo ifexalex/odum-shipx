@@ -9,6 +9,7 @@ from typing import Any
 
 from shared import uploads
 from shared.audit import log_audit
+from shared.db import tenant_transaction
 from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError
 from shared.providers import get_storage_provider
 
@@ -134,6 +135,12 @@ def verify_manifest(
     if not manifest:
         raise ResourceNotFoundError("manifest", manifest_id)
 
+    if manifest.get("container_status") == "cancelled":
+        raise BusinessRuleViolationError(
+            "Cannot verify a manifest belonging to a cancelled container.",
+            rule_id="CONTAINER_CANCELLED",
+        )
+
     current_status = manifest["verification_status"]
     if current_status != "pending":
         raise BusinessRuleViolationError(
@@ -141,38 +148,72 @@ def verify_manifest(
             rule_id="MANIFEST_ALREADY_VERIFIED",
         )
 
-    if req.verification_status == VerificationStatus.verified:
-        updated = repo.set_manifest_verified(
-            tenant_id,
-            manifest_id,
-            actor_id,
-            notes=None,
+    if req.verification_status not in (VerificationStatus.verified, VerificationStatus.discrepancies_found):
+        raise BusinessRuleViolationError(
+            f"Invalid verification status '{req.verification_status}' — expected 'verified' or 'discrepancies_found'",
+            rule_id="INVALID_VERIFICATION_STATUS",
         )
 
-    else:  # discrepancies_found
-        updated = repo.set_manifest_discrepancies_found(tenant_id, manifest_id, actor_id)
+    if req.verification_status == VerificationStatus.discrepancies_found:
+        if not req.discrepancies:
+            raise BusinessRuleViolationError(
+                "At least one discrepancy is required when reporting discrepancies_found.",
+                rule_id="DISCREPANCIES_REQUIRED",
+            )
+        manifest_customers = repo.get_customer_summaries(tenant_id, manifest_id)
+        if manifest_customers:
+            valid_customer_ids = {str(c["customer_id"]) for c in manifest_customers if c.get("customer_id")}
+            for discrepancy in req.discrepancies:
+                if valid_customer_ids and str(discrepancy.customer_id) not in valid_customer_ids:
+                    raise BusinessRuleViolationError(
+                        f"Customer {discrepancy.customer_id} has no approved cargo on this manifest.",
+                        rule_id="CUSTOMER_NOT_IN_MANIFEST",
+                    )
 
-        for discrepancy in req.discrepancies or []:
-            if discrepancy.type != "missing":
-                # 'damaged' discrepancies are recorded in the request payload but
-                # do not create missing_item rows — damage claims filed separately.
-                continue
-            for carton_tag in discrepancy.carton_tags:
-                item = repo.get_item_by_carton_tag(tenant_id, carton_tag)
-                repo.create_missing_item(
-                    tenant_id,
-                    {
-                        "tenant_id": tenant_id,
-                        "manifest_id": manifest_id,
-                        "customer_id": discrepancy.customer_id,
-                        "packing_list_id": item["packing_list_id"] if item else None,
-                        "carton_tag": carton_tag,
-                        "tracking_code": item["tracking_code"] if item else None,
-                        "description": discrepancy.notes or f"Missing item \u2014 carton tag {carton_tag}",
-                        "notes": discrepancy.notes,
-                        "reported_by": actor_id,
-                    },
-                )
+    with tenant_transaction(tenant_id):
+        if req.verification_status == VerificationStatus.verified:
+            updated = repo.set_manifest_verified(
+                tenant_id,
+                manifest_id,
+                actor_id,
+                notes=None,
+            )
+        else:  # discrepancies_found
+            updated = repo.set_manifest_discrepancies_found(tenant_id, manifest_id, actor_id)
+            if updated is not None:
+                for discrepancy in req.discrepancies or []:
+                    if discrepancy.type != "missing":
+                        # 'damaged' discrepancies are recorded in the request payload but
+                        # do not create missing_item rows — damage claims filed separately.
+                        continue
+                    for carton_tag in list(dict.fromkeys(discrepancy.carton_tags)):
+                        item = repo.get_item_by_carton_tag(
+                            tenant_id,
+                            carton_tag,
+                            manifest_id=manifest_id,
+                            customer_id=discrepancy.customer_id,
+                        )
+                        repo.create_missing_item(
+                            tenant_id,
+                            {
+                                "tenant_id": tenant_id,
+                                "manifest_id": manifest_id,
+                                "customer_id": discrepancy.customer_id,
+                                "packing_list_id": item["packing_list_id"] if item else None,
+                                "carton_tag": carton_tag,
+                                "carton_tags": [carton_tag],
+                                "tracking_code": item["tracking_code"] if item else None,
+                                "description": discrepancy.notes or f"Missing item \u2014 carton tag {carton_tag}",
+                                "notes": discrepancy.notes,
+                                "reported_by": actor_id,
+                            },
+                        )
+
+        if updated is None:
+            raise BusinessRuleViolationError(
+                "Manifest is no longer in 'pending' status — verification aborted.",
+                rule_id="MANIFEST_ALREADY_VERIFIED",
+            )
 
     log_audit(
         tenant_id=tenant_id,
@@ -186,8 +227,6 @@ def verify_manifest(
         ip_address=ip_address,
     )
 
-    if updated is None:
-        raise RuntimeError("manifest verification returned None unexpectedly")
     customers = repo.get_customer_summaries(tenant_id, manifest_id)
     items = repo.get_items_with_weights_for_manifest(tenant_id, manifest_id)
     return {**updated, "customers": customers, "weight_discrepancies": _compute_weight_discrepancies(items)}
@@ -205,10 +244,11 @@ def generate_evidence_upload(
     """Presign an S3 POST for a manifest-verification photo/doc (§6.3).
 
     Mirrors the claims evidence flow: validates the content type, confirms the
-    manifest belongs to the tenant, records a `manifest_evidence` row, and
-    returns the presigned POST plus the resulting file_key. The browser uploads
-    directly to S3; tenant isolation comes from the `{tenant_id}/manifests/...`
-    key prefix and the tenant-scoped manifest lookup.
+    manifest belongs to the tenant, records an unconfirmed `manifest_evidence` row,
+    and returns the presigned upload plus the resulting file_key. The browser uploads
+    directly to storage, then calls `confirm_evidence`; until then the row is not
+    listed. Tenant isolation comes from the `{tenant_id}/manifests/...` key prefix
+    and the tenant-scoped manifest lookup.
     """
     uploads.EVIDENCE.check(content_type, size_bytes)
 
@@ -218,7 +258,7 @@ def generate_evidence_upload(
 
     upload = uploads.presign_upload(uploads.EVIDENCE, tenant_id, ("manifests", manifest_id), filename, content_type, size_bytes)
     file_key = upload.key
-    filename = file_key.rsplit("/", 1)[-1]
+    filename = upload.filename
 
     evidence = repo.create_manifest_evidence(
         tenant_id,
@@ -238,6 +278,50 @@ def generate_evidence_upload(
         "evidence_id": str(evidence["id"]) if evidence else None,
         "file_key": file_key,
     }
+
+
+def confirm_evidence(
+    tenant_id: str,
+    manifest_id: str,
+    evidence_id: str,
+    actor_id: str,
+    ctx: Any,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Confirm a verification photo/doc landed: check its stored size, then list it on the manifest.
+
+    A file over the limit (possible on Azure, where the upload URL cannot bind the length) is deleted with its row.
+    Confirming an already confirmed file returns it unchanged.
+
+    Raises:
+        ResourceNotFoundError: The manifest or the evidence row is not the tenant's.
+        BusinessRuleViolationError: ``UPLOAD_NOT_FOUND`` or ``FILE_TOO_LARGE``.
+    """
+    if not repo.get_manifest_by_id(tenant_id, manifest_id):
+        raise ResourceNotFoundError("manifest", manifest_id)
+    evidence = repo.get_manifest_evidence(tenant_id, manifest_id, evidence_id)
+    if not evidence:
+        raise ResourceNotFoundError("manifest_evidence", evidence_id)
+    if evidence.get("confirmed_at") is None:
+        try:
+            size = uploads.confirm_stored_upload(uploads.EVIDENCE, str(evidence["file_key"]))
+        except BusinessRuleViolationError as exc:
+            if exc.rule_id == "FILE_TOO_LARGE":
+                logger.warning("Manifest evidence over the size limit deleted at confirmation (manifest_id=%s)", manifest_id)
+                repo.delete_unconfirmed_manifest_evidence(tenant_id, manifest_id, evidence_id)
+            raise
+        evidence = repo.confirm_manifest_evidence(tenant_id, manifest_id, evidence_id, size) or evidence
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="manifest_evidence",
+            entity_id=evidence_id,
+            action="CREATE",
+            actor_id=actor_id,
+            actor_role=str(ctx.role),
+            after_state={"manifest_id": manifest_id, "file_type": evidence["file_type"], "file_size_bytes": size},
+            ip_address=ip_address,
+        )
+    return _serialize_evidence(evidence)
 
 
 def revoke_verification(
@@ -276,7 +360,10 @@ def revoke_verification(
 
     updated = repo.revoke_manifest_verification(tenant_id, manifest_id)
     if updated is None:
-        raise RuntimeError("revoke_manifest_verification returned None unexpectedly")
+        raise BusinessRuleViolationError(
+            "Manifest is no longer in 'verified' status.",
+            rule_id="MANIFEST_NOT_VERIFIED",
+        )
 
     log_audit(
         tenant_id=tenant_id,
@@ -327,7 +414,10 @@ def resolve_discrepancy(
         final_counts=req.final_counts,
     )
     if updated is None:
-        raise RuntimeError("resolve_manifest_discrepancy returned None unexpectedly")
+        raise BusinessRuleViolationError(
+            "Manifest is no longer in 'discrepancies_found' status.",
+            rule_id="MANIFEST_NOT_DISCREPANCIES_FOUND",
+        )
 
     log_audit(
         tenant_id=tenant_id,

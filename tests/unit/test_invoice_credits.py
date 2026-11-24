@@ -216,14 +216,24 @@ class TestCreateInvoiceSpendsCredit:
     def test_the_invoice_records_the_credit_it_absorbed(self):
         cursor = _Cursor()
         _create_invoice(cursor, [self.APPLICATION, repo.CreditApplication("r2", Decimal("0"), Decimal("500.50"))])
-        [(sql, params)] = [s for s in cursor.statements if s[0].startswith("INSERT INTO billing")]
+        [(sql, params)] = [s for s in cursor.statements if s[0].startswith("INSERT INTO billing (")]
         assert "credits_applied_ngn" in sql and params["credits_applied_ngn"] == Decimal("20500.50")
+
+    def test_each_credit_used_is_recorded_against_the_invoice(self):
+        """What cancelling the invoice gives back (migration 070)."""
+        cursor = _Cursor()
+        _create_invoice(cursor, [self.APPLICATION, repo.CreditApplication("r2", Decimal("0"), Decimal("500.50"))])
+        recorded = [p for sql, p in cursor.statements if sql.startswith("INSERT INTO billing_credit_application")]
+        assert recorded == [
+            {"tenant_id": TENANT, "billing_id": "billing-001", "refund_id": "r1", "amount": Decimal("20000")},
+            {"tenant_id": TENANT, "billing_id": "billing-001", "refund_id": "r2", "amount": Decimal("500.50")},
+        ]
 
     def test_no_credits_means_no_credit_statement_and_zero_recorded(self):
         cursor = _Cursor()
         _create_invoice(cursor, [])
         assert not [s for s in cursor.statements if s[0].startswith("UPDATE refund_request")]
-        [(_, params)] = [s for s in cursor.statements if s[0].startswith("INSERT INTO billing")]
+        [(_, params)] = [s for s in cursor.statements if s[0].startswith("INSERT INTO billing (")]
         assert params["credits_applied_ngn"] == Decimal("0")
 
 
@@ -303,3 +313,82 @@ class TestInvoiceShowsTheCredit:
         assert enriched["adjustments_ngn"] == Decimal("-15000.00")
         # subtotal + adjustments = total: the parts add up.
         assert enriched["subtotal_ngn"] + enriched["adjustments_ngn"] == enriched["total_due_ngn"]
+
+
+class _CancelCursor:
+    """Answers `cancel_billing`'s statements: the invoice, the applications it reverses, the reopened carryovers."""
+
+    def __init__(self, *, invoice: dict | None, applications: list[dict], carryovers: list[dict], credit_ok: bool = True):
+        self.statements: list[tuple[str, object]] = []
+        self._invoice, self._applications, self._carryovers, self._credit_ok = invoice, applications, carryovers, credit_ok
+        self._last = ""
+
+    def execute(self, sql: str, params: object = None) -> None:
+        self.statements.append((" ".join(sql.split()), params))
+        self._last = " ".join(sql.split())
+
+    def fetchone(self) -> dict | None:
+        if self._last.startswith("UPDATE billing SET"):
+            return self._invoice
+        if self._last.startswith("UPDATE refund_request"):
+            return {"id": "r"} if self._credit_ok else None
+        raise AssertionError(f"unexpected fetchone after {self._last[:40]}")
+
+    def fetchall(self) -> list:
+        if self._last.startswith("UPDATE billing_credit_application"):
+            return self._applications
+        if self._last.startswith("UPDATE carryover_ledger"):
+            return self._carryovers
+        raise AssertionError(f"unexpected fetchall after {self._last[:40]}")
+
+
+def _cancel(cursor: _CancelCursor) -> repo.CancelledInvoice | None:
+    @contextmanager
+    def _transaction(_tenant_id):
+        yield cursor
+
+    with patch.object(repo, "tenant_transaction", _transaction):
+        return repo.cancel_billing(TENANT, "billing-001", "u1", "Wrong container")
+
+
+class TestCancelGivesBackWhatTheInvoiceTook:
+    INVOICE = {"id": "billing-001", "status": "cancelled"}
+
+    def test_each_credit_goes_back_and_a_used_up_credit_is_usable_again(self):
+        cursor = _CancelCursor(
+            invoice=self.INVOICE,
+            applications=[{"refund_request_id": "r1", "amount_ngn": Decimal("20000")}],
+            carryovers=[],
+        )
+        result = _cancel(cursor)
+        assert result.credits_restored == [("r1", Decimal("20000"))]
+        [(sql, params)] = [s for s in cursor.statements if s[0].startswith("UPDATE refund_request")]
+        assert "SET credit_applied_ngn = credit_applied_ngn - %(amount)s" in sql
+        assert "WHEN status = 'processed' THEN 'applied_as_credit'" in sql
+        assert "credit_applied_ngn >= %(amount)s" in sql and sql.endswith("RETURNING id")
+        assert params == {"tenant_id": TENANT, "id": "r1", "amount": Decimal("20000")}
+
+    def test_carried_over_balances_are_outstanding_again(self):
+        cursor = _CancelCursor(invoice=self.INVOICE, applications=[], carryovers=[{"id": "c1"}, {"id": "c2"}])
+        result = _cancel(cursor)
+        assert result.carryovers_reopened == ["c1", "c2"]
+        [(sql, params)] = [s for s in cursor.statements if s[0].startswith("UPDATE carryover_ledger")]
+        assert "SET status = 'outstanding', target_billing_id = NULL, applied_at = NULL" in sql
+        assert "status = 'applied'" in sql and params == (TENANT, "billing-001")
+
+    def test_an_invoice_that_is_no_longer_unpaid_changes_nothing(self):
+        cursor = _CancelCursor(
+            invoice=None, applications=[{"refund_request_id": "r1", "amount_ngn": Decimal("1")}], carryovers=[]
+        )
+        assert _cancel(cursor) is None
+        assert [s for s, _ in cursor.statements if not s.startswith("UPDATE billing SET")] == []
+
+    def test_a_credit_that_cannot_be_given_back_rolls_everything_back(self):
+        cursor = _CancelCursor(
+            invoice=self.INVOICE,
+            applications=[{"refund_request_id": "r1", "amount_ngn": Decimal("20000")}],
+            carryovers=[],
+            credit_ok=False,
+        )
+        with pytest.raises(repo.LedgerConflictError):
+            _cancel(cursor)

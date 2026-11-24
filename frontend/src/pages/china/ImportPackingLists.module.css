@@ -12,109 +12,48 @@
 }
 
 .banner {
-  margin-bottom: 16px;
-}
-
-.steps {
-  display: flex;
-  padding: 8px;
-}
-
-.stepWrap {
-  display: flex;
-  align-items: center;
-}
-
-.step {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 10px;
-}
-
-.stepActive {
-  background: var(--color-primary-tint);
-}
-
-.stepCircle {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--color-page);
-  border: 2px solid var(--color-line-soft);
-  color: var(--color-ink-4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.stepDone {
-  background: var(--color-success);
-  border-color: var(--color-success);
-}
-
-.stepCurrent {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: var(--color-on-brand);
-}
-
-.stepLabel {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--color-ink);
-}
-
-.stepSub {
-  font-size: 11px;
-  color: var(--color-ink-4);
-  margin-top: 1px;
+  margin-bottom: var(--space-4);
 }
 
 .selectField {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 .selectLabel {
   font-family: var(--font-body);
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
 }
 
 .required {
   color: var(--color-error);
-  margin-left: 2px;
+  margin-left: var(--space-0-5);
 }
 
 .select {
   height: 48px;
   background: var(--color-surface);
-  border: 1px solid var(--color-line-soft);
-  border-radius: 8px;
-  padding: 0 12px;
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: var(--text-md);
   color: var(--color-ink);
 }
 
 .dropzone {
   position: relative;
   border: 2px dashed var(--color-line-soft);
-  border-radius: 12px;
-  padding: 48px 20px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-12) var(--space-5);
   background: var(--color-page);
   text-align: center;
   cursor: pointer;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .dropzoneActive {
@@ -125,8 +64,8 @@
 .dropzoneIcon {
   width: 56px;
   height: 56px;
-  margin: 0 auto 14px;
-  border-radius: 14px;
+  margin: 0 auto var(--space-4);
+  border-radius: var(--radius-lg);
   background: var(--color-primary);
   display: flex;
   align-items: center;
@@ -136,14 +75,14 @@
 .dropzoneTitle {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 17px;
+  font-size: var(--text-lg);
   color: var(--color-ink);
 }
 
 .dropzoneSub {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .hiddenInput {
@@ -156,17 +95,17 @@
 .selectedFile {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   background: var(--color-surface);
   border: 1px solid var(--color-success);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
 }
 
 .selectedFileIcon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--color-success-soft);
   color: var(--color-success);
   display: flex;
@@ -180,13 +119,13 @@
 }
 
 .selectedFileName {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-ink);
 }
 
 .selectedFileMeta {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
 }
 
@@ -195,7 +134,7 @@
   border: 0;
   color: var(--color-error);
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -204,25 +143,25 @@
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 20px;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
 }
 
 .summaryRow {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px dashed var(--color-line);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .summaryLabel {
   color: var(--color-ink-4);
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
 }
 
 /* Reflows to fewer columns as space shrinks instead of forcing the page
@@ -230,84 +169,59 @@
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .statTile {
-  padding: 14px;
+  padding: var(--space-4);
   background: var(--color-page);
   border: 1px solid var(--color-line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .statLabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-ink-3);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .statValue {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 24px;
+  font-size: var(--text-2xl);
   color: var(--color-ink);
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .errorSection {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 .tableHead {
-  padding: 18px 20px;
-}
-
-.errorTable {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--font-body);
-  font-size: 13px;
-}
-
-.errorTable th {
-  background: var(--color-page);
-  border-bottom: 1px solid var(--color-line);
-  padding: 10px 14px;
-  text-align: left;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--color-ink-3);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.errorTable td {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--color-line);
-  color: var(--color-ink-2);
+  padding: var(--space-5) var(--space-5);
 }
 
 /* Import-type selector (forwarder manifest vs ShipX template) */
 .modeGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
 }
 
 .modeCard {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-start;
-  padding: 16px;
+  padding: var(--space-4);
   text-align: left;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
 }
 
 .modeCard:hover {
@@ -316,7 +230,7 @@
 
 .modeCardActive {
   border-color: var(--color-primary);
-  background: var(--color-primary-tint, rgb(37 99 235 / 6%));
+  background: var(--color-primary-tint);
 }
 
 .modeRadio {
@@ -326,7 +240,7 @@
   justify-content: center;
   width: 18px;
   height: 18px;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
   background: transparent;
   border: 2px solid var(--color-ink-4);
   border-radius: 50%;
@@ -340,41 +254,23 @@
 .modeText {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .modeTitle {
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-ink);
 }
 
 .modeSub {
-  font-size: 12.5px;
-  line-height: 1.45;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-line);
   color: var(--color-ink-3);
 }
 
 .summaryMuted {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-style: italic;
   color: var(--color-ink-3);
-}
-
-/* On a phone every step keeps its number; only the current one keeps its words, so the row fits. */
-@media (max-width: 600px) {
-  .step {
-    padding: 8px;
-    gap: 8px;
-  }
-  .stepWrap {
-    flex: 0 0 auto;
-  }
-  .stepWrap:has(.stepActive) {
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .step:not(.stepActive) > div:last-child {
-    display: none;
-  }
 }

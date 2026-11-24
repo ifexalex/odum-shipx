@@ -62,11 +62,16 @@ def _phone_pattern(text: str) -> str:
 
 
 def search(tenant_id: str, query: str, ctx: Any) -> dict[str, Any]:
-    """Find records matching `query` that `ctx`'s role may see, best matches first."""
-    role = ctx.role
-    kinds = _KINDS.get(role)
-    if kinds is None:  # platform admin, or a role added without deciding what it may find
+    """Find records matching `query` that `ctx`'s role(s) may see, best matches first."""
+    raw_roles = getattr(ctx, "roles", None)
+    roles: frozenset[UserRole] = frozenset(raw_roles) if raw_roles else frozenset({ctx.role})
+    if UserRole.PLATFORM_ADMIN in roles:
         raise InsufficientPermissionsError("Search is not available for this role")
+
+    allowed_kinds = {kind for r in roles for kind in _KINDS.get(r, ())}
+    if not allowed_kinds:
+        raise InsufficientPermissionsError("Search is not available for this role")
+    kinds = tuple(k for k in ("container", "shipment", "invoice", "release_note", "customer") if k in allowed_kinds)
 
     text = " ".join(query.split())
     if len(text) > MAX_QUERY_LENGTH:
@@ -75,10 +80,10 @@ def search(tenant_id: str, query: str, ctx: Any) -> dict[str, Any]:
         return {"query": text, "results": []}
 
     pattern = _like_pattern(text)
-    digits = _phone_pattern(text) if role in _PHONE_LOOKUP_ROLES else ""
+    digits = _phone_pattern(text) if bool(roles & _PHONE_LOOKUP_ROLES) else ""
 
     customer_id: str | None = None
-    if role == UserRole.CUSTOMER:
+    if roles == frozenset({UserRole.CUSTOMER}):
         customer_id = repo.get_customer_id_for_user(tenant_id, ctx.user_id)
         if customer_id is None:
             return {"query": text, "results": []}

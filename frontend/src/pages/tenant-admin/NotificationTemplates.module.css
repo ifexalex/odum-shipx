@@ -1,0 +1,54 @@
+/* The WhatsApp preview: WhatsApp's own chat colours, in both themes, so the preview looks like the message the
+   customer will receive. */
+.waBackdrop {
+  /* scale-exempt: WhatsApp's chat background (FD-03) */
+  background: #e5ddd5;
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.waBubble {
+  /* scale-exempt: WhatsApp's outgoing bubble and text (FD-03) */
+  background: #dcf8c6;
+  border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 0;
+  padding: var(--space-2) var(--space-3);
+  max-width: 340px;
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
+  color: #111111;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.waMeta {
+  /* scale-exempt: WhatsApp's timestamp grey (FD-03) */
+  font-size: var(--text-xs);
+  color: #667781;
+  text-align: right;
+  margin-top: var(--space-1);
+}
+
+.tabsWrap {
+  margin-bottom: var(--space-4);
+}
+
+.varRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.varLabel {
+  font-size: var(--text-xs);
+  color: var(--color-ink-4);
+  margin-right: var(--space-1);
+}
+
+.cardActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

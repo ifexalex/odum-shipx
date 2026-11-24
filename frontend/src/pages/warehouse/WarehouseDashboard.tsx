@@ -10,15 +10,17 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type JSX } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, type ListResponse } from '../../api/client'
 import { releaseNotesApi, type DelegateIdType, type PickupResult, type ReleaseNote, type RecordPickupInput } from '../../api/releaseNotes'
 import { releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Banner, Button, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard } from '../../design/components'
+import { Banner, Button, EmptyState, Field, Icon, Mono, PhoneField, StatCard, ToggleSwitch, DialogGuard, Badge, Select, LinesSkeleton } from '../../design/components'
 import styles from './WarehouseDashboard.module.css'
-import { todayIso } from '../../lib/format'
+import { plural, todayIso } from '../../lib/format'
+import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 // ---------------------------------------------------------------------------
 // Urgency helpers (P2-2) — prototype §9.3 sorts the queue by age and flags
@@ -69,7 +71,10 @@ const ID_TYPES: { value: DelegateIdType; label: string }[] = [
 ]
 
 function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Element {
-  const [cartons, setCartons] = useState(String(note.carton_count))
+  const maxCartons = note.packages_balance != null && note.packages_balance > 0
+    ? note.packages_balance
+    : note.carton_count
+  const [cartons, setCartons] = useState(String(maxCartons))
   const [isDelegate, setIsDelegate] = useState(false)
   // The backend requires a collector's name when it is not a delegate; this sheet never sent one, so every
   // in-person pickup recorded here was refused with a validation error. Defaults to the customer, who usually collects.
@@ -81,6 +86,16 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   const [delegateIdNumber, setDelegateIdNumber] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const pickupCodeRef = useRef<HTMLInputElement>(null)
+  const cartonsRef = useRef<HTMLInputElement>(null)
+
+  const cartonsNum = Number(cartons)
+  const cartonsValid = cartons.trim().length > 0 && Number.isInteger(cartonsNum) && cartonsNum >= 1 && cartonsNum <= maxCartons
+  const cartonsError = cartons.trim().length === 0 || cartonsValid
+    ? undefined
+    : cartonsNum > maxCartons
+      ? `Cannot exceed ${plural(maxCartons, 'remaining carton')}.`
+      : 'Enter a whole number of at least 1.'
 
   const delegateFilled = !isDelegate || (
     delegateName.trim() && delegatePhone.trim() && delegateIdNumber.trim()
@@ -89,13 +104,26 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   const codeRequired = note.pickup_code_required === true
   const codeLocked = note.pickup_code_locked === true
   const codeGiven = !codeRequired || pickupCode.trim().length > 0
-  const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
+  const canSubmit = cartonsValid && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
 
-  async function handleSubmit(): Promise<void> {
+  // Focus the primary input after DialogGuard mounts (and after React StrictMode effect replays),
+  // so pressing Enter submits the pickup form rather than activating the header "View full note" link.
+  useEffect(() => {
+    if (codeRequired && !codeLocked) {
+      pickupCodeRef.current?.focus()
+    } else {
+      cartonsRef.current?.focus()
+    }
+  }, [codeRequired, codeLocked])
+
+  async function handleSubmit(event?: FormEvent<HTMLFormElement>): Promise<void> {
+    event?.preventDefault()
+    // Enter submits the form (FD-26: a keyboard-only pickup), so the same checks as the button apply.
+    if (!canSubmit) return
     setSubmitting(true)
     setError(null)
     try {
-      const body: RecordPickupInput = { cartons_released: Number(cartons) }
+      const body: RecordPickupInput = { cartons_released: cartonsNum }
       if (isDelegate) {
         body.is_delegate = true
         body.delegate_name = delegateName
@@ -107,6 +135,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
       }
       if (codeRequired) body.pickup_code = pickupCode.trim()
       const result = await releaseNotesApi.recordPickup(note.id, body)
+      toast.success('Pickup recorded', note.reference_number)
       onSuccess(result)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not record pickup.')
@@ -118,11 +147,44 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   return (
     <div className={styles.modalOverlay} onClick={onCancel}>
       <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div>
-          <h3 className={styles.modalTitle}>{note.customer_name ?? 'Pickup'}</h3>
-          <span className={styles.modalRef}>{note.reference_number}</span>
+      <form
+        className={styles.modalPanel}
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => void handleSubmit(e)}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className={styles.modalHeaderRow}>
+          <div>
+            <h3 className={styles.modalTitle}>{note.customer_name ?? 'Pickup'}</h3>
+            <div className={styles.modalMeta}>
+              <span className={styles.modalRef}>{note.reference_number}</span>
+              {note.container_number && (
+                <>
+                  <span>·</span>
+                  <Mono>{note.container_number}</Mono>
+                </>
+              )}
+            </div>
+          </div>
+          <Link to={`/release-notes/${note.id}`} className={styles.modalDetailLink} onClick={onCancel}>
+            View full note
+          </Link>
         </div>
+
+        {note.carton_tags.length > 0 && (
+          <div className={styles.modalTagsBox}>
+            <div className={styles.modalTagsLabel}>Carton tags to verify ({note.carton_tags.length})</div>
+            <div className={styles.cardTags}>
+              {note.carton_tags.slice(0, 12).map((tag) => (
+                <span key={tag} className={styles.tag}>{tag}</span>
+              ))}
+              {note.carton_tags.length > 12 && (
+                <span className={styles.tag}>+{note.carton_tags.length - 12} more</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {error && <div className={styles.modalBanner}><Banner variant="error">{error}</Banner></div>}
         {codeLocked && (
@@ -135,6 +197,9 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
 
         {codeRequired && !codeLocked && (
           <Field
+            // The first thing to ask the collector, so the sheet opens on it.
+            ref={pickupCodeRef}
+            autoFocus
             label="Pickup code"
             name="pickup_code"
             required
@@ -147,17 +212,46 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
           />
         )}
 
-        <Field
-          label="Cartons collected"
-          name="cartons_released"
-          required
-          type="number"
-          value={cartons}
-          onChange={(e) => setCartons(e.target.value)}
-        />
+        <div>
+          <Field
+            ref={cartonsRef}
+            autoFocus={!codeRequired || codeLocked}
+            label="Cartons collected"
+            name="cartons_released"
+            required
+            type="number"
+            min="1"
+            max={String(maxCartons)}
+            step="1"
+            value={cartons}
+            onChange={(e) => setCartons(e.target.value)}
+            error={cartonsError}
+            helper={maxCartons > 1 ? `Up to ${plural(maxCartons, 'carton')} remaining on this note.` : undefined}
+          />
+          {maxCartons > 1 && (
+            <div className={styles.quickSetRow}>
+              <Button
+                type="button"
+                variant={cartonsNum === maxCartons ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setCartons(String(maxCartons))}
+              >
+                Full release ({maxCartons})
+              </Button>
+              <Button
+                type="button"
+                variant={cartonsValid && cartonsNum < maxCartons ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setCartons(String(Math.max(1, maxCartons - 1)))}
+              >
+                Partial
+              </Button>
+            </div>
+          )}
+        </div>
 
         <label className={styles.delegateToggle}>
-          <ToggleSwitch checked={isDelegate} onChange={setIsDelegate} />
+          <ToggleSwitch label="Delegate pickup" checked={isDelegate} onChange={setIsDelegate} />
           <span>Delegate pickup</span>
         </label>
 
@@ -177,16 +271,12 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
             <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
-              <label style={{ fontSize: '1rem', fontWeight: 600, display: 'block', marginBottom: 8 }}>
-                ID type <span style={{ color: 'var(--color-error)' }}>*</span>
-              </label>
-              <select
-                style={{ width: '100%', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: '1rem' }}
+              <Select label="ID type"
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
                 {ID_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+              </Select>
             </div>
             <Field label="ID number" name="delegate_id_number" required value={delegateIdNumber} onChange={(e) => setDelegateIdNumber(e.target.value)} />
           </>
@@ -194,11 +284,11 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
 
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="success" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+          <Button type="submit" variant="primary" loading={submitting} disabled={!canSubmit}>
             Confirm pickup
           </Button>
         </div>
-      </div>
+      </form>
     </div>
   )
 }
@@ -213,33 +303,27 @@ interface NoteCardProps {
   lastPickup: PickupResult | null
 }
 
-const URGENCY_STYLE: Record<Urgency, { label: string; bg: string; fg: string }> = {
-  urgent: { label: 'Urgent', bg: 'var(--color-error-soft)', fg: 'var(--color-error)' },
-  normal: { label: 'Normal', bg: 'var(--color-warning-soft)', fg: 'var(--color-warning)' },
-  new: { label: 'New', bg: 'var(--color-success-soft)', fg: 'var(--color-success)' },
-}
+// A chip only on a note waiting more than a day (FD-08, FD-26): a chip on every card, "Normal" or "New", is noise
+// and hides the ones that matter.
 
 function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
   const justDone = lastPickup?.release_note_id === note.id && lastPickup.release_note_status === 'picked_up'
-  const urgency = URGENCY_STYLE[urgencyOf(note)]
+  const urgent = urgencyOf(note) === 'urgent'
   return (
     <div className={styles.card} style={justDone ? { opacity: 0.5 } : undefined}>
       <div className={styles.cardLeft}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span
-            style={{
-              fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
-              padding: '2px 8px', borderRadius: 999, background: urgency.bg, color: urgency.fg,
-            }}
-          >
-            {urgency.label}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          {urgent && (
+            <Badge variant="error" size="sm">
+              Waiting 24h+
+            </Badge>
+          )}
           <div className={styles.cardRef}>{note.reference_number}</div>
         </div>
         <div className={styles.cardCustomer}>{note.customer_name ?? '—'}</div>
         <div className={styles.cardMeta}>
           {note.container_number && <Mono>{note.container_number}</Mono>}
-          <span>{note.carton_count} carton(s)</span>
+          <span>{plural(note.carton_count, 'carton')}</span>
           {note.is_partial_release && <span>· Partial</span>}
           <span style={{ fontStyle: 'italic', color: 'var(--color-ink-4)' }}>{ageLabel(note)}</span>
         </div>
@@ -258,11 +342,8 @@ function NoteCard({ note, onPickup, lastPickup }: NoteCardProps): JSX.Element {
         {justDone ? (
           <span style={{ color: 'var(--color-success)', fontWeight: 700 }}>✓ Done</span>
         ) : (
-          <Button
-            variant="success"
-            className={styles.pickupBtn}
-            onClick={() => onPickup(note)}
-          >
+          // Secondary: the page's one primary is the lookup, which a scanner drives (FD-26).
+          <Button variant="secondary" size="lg" className={styles.pickupBtn} onClick={() => onPickup(note)}>
             Record pickup
           </Button>
         )}
@@ -281,8 +362,16 @@ export function WarehouseDashboard(): JSX.Element {
   const [pickingNote, setPickingNote] = useState<ReleaseNote | null>(null)
   const [lastPickup, setLastPickup] = useState<PickupResult | null>(null)
   const [lookupRef, setLookupRef] = useState('')
+  const [urgentOnly, setUrgentOnly] = useState(false)
   const [lookupError, setLookupError] = useState<string | null>(null)
   const [lookupBusy, setLookupBusy] = useState(false)
+  // The counter works from a scanner (FD-26): the reference field has focus on arrival and after every pickup, so
+  // the next customer's note is scanned with no click.
+  const lookupField = useRef<HTMLInputElement>(null)
+  const [refocusLookup, setRefocusLookup] = useState(0)
+  useEffect(() => {
+    lookupField.current?.focus()
+  }, [refocusLookup])
 
   // Queue + real completed-today count + expired backlog, still in parallel
   // (P2-2) but as three cached queries rather than one Promise.all in an
@@ -308,7 +397,8 @@ export function WarehouseDashboard(): JSX.Element {
     staleTime: STALE_30S,
   })
 
-  const loading = activeQ.isLoading || pickedUpQ.isLoading || expiredQ.isLoading
+  // The queue waits only on its own list; the counts fill in as theirs arrive.
+  const loading = activeQ.isLoading
   const firstError = activeQ.error ?? pickedUpQ.error ?? expiredQ.error
   const error = firstError
     ? firstError instanceof ApiError
@@ -321,6 +411,21 @@ export function WarehouseDashboard(): JSX.Element {
     () => [...(activeQ.data?.data ?? [])].sort((a, b) => a.authorized_at.localeCompare(b.authorized_at)),
     [activeQ.data],
   )
+  const trimmedQuery = lookupRef.trim().toLowerCase()
+  const visibleNotes = useMemo(
+    () =>
+      activeNotes.filter((n) => {
+        if (urgentOnly && urgencyOf(n) !== 'urgent') return false
+        if (!trimmedQuery) return true
+        return (
+          n.reference_number.toLowerCase().includes(trimmedQuery) ||
+          (n.customer_name?.toLowerCase().includes(trimmedQuery) ?? false) ||
+          (n.container_number?.toLowerCase().includes(trimmedQuery) ?? false)
+        )
+      }),
+    [activeNotes, urgentOnly, trimmedQuery],
+  )
+  const isFiltered = urgentOnly || trimmedQuery.length > 0
   const doneToday = pickedUpQ.data ? pickedUpQ.data.data.filter((n) => isToday(n.picked_up_at)).length : null
   const expiredCount = expiredQ.data
     ? expiredQ.data.meta.pagination.has_more
@@ -331,14 +436,15 @@ export function WarehouseDashboard(): JSX.Element {
   function handlePickupSuccess(result: PickupResult): void {
     setPickingNote(null)
     setLastPickup(result)
+    // After the sheet has closed and handed focus back, take it to the field for the next customer.
+    setRefocusLookup((n) => n + 1)
+    void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
     if (result.release_note_status === 'picked_up') {
       // Drop the fully-collected note from the queue after a short delay so
-      // staff sees the ✓ first. Written into the cache rather than local state;
-      // the pickup POST has already triggered an invalidation of
-      // releaseNoteKeys.all, so the server's own view lands shortly after and
-      // reconciles either way.
+      // staff sees the ✓ first. Written into the lookup cache slot used by
+      // activeQ while the invalidation above reconciles with the server.
       setTimeout(() => {
-        qc.setQueryData<ListResponse<ReleaseNote>>(releaseNoteKeys.list(ACTIVE_PARAMS), (prev) =>
+        qc.setQueryData<ListResponse<ReleaseNote>>(releaseNoteKeys.lookup(ACTIVE_PARAMS), (prev) =>
           prev
             ? { ...prev, data: prev.data.filter((n) => n.id !== result.release_note_id) }
             : prev,
@@ -353,7 +459,12 @@ export function WarehouseDashboard(): JSX.Element {
   // else (picked_up / expired) opens the detail page for context.
   async function handleLookup(): Promise<void> {
     const ref = lookupRef.trim().toUpperCase()
-    if (!ref) return
+    if (!ref) {
+      // Never a disabled button (it was unreadable on the panel): an empty lookup says what is needed instead.
+      setLookupError('Scan or type a release note reference first.')
+      lookupField.current?.focus()
+      return
+    }
     setLookupError(null)
     const local = activeNotes.find((n) => n.reference_number.toUpperCase() === ref)
     if (local) {
@@ -381,10 +492,8 @@ export function WarehouseDashboard(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>Warehouse</h1>
-        <p className={styles.subtitle}>Active release notes to process today</p>
-      </div>
+      {/* Not "Warehouse" again: the role badge and the nav item already say where this is (FD-26). */}
+      <PageHeader title="Pickups" meta="Scan a customer's release note to record what they collect." />
 
       {error && (
         <div className={styles.banner}>
@@ -398,65 +507,112 @@ export function WarehouseDashboard(): JSX.Element {
           <Icon name="qr" size={40} stroke={2} />
         </div>
         <div className={styles.scanBody}>
-          <h3 className={styles.scanTitle}>Scan or type a release note reference</h3>
-          <p className={styles.scanSub}>
-            Use the handheld scanner or type the RN-XXXX reference on the customer&apos;s release note.
-          </p>
           <div className={styles.scanRow}>
-            <input
-              className={styles.scanInput}
-              placeholder="RN-20260716-ABC123"
-              aria-label="Release note reference"
+            <Field
+              ref={lookupField}
+              label="Release note reference"
+              name="release_note_reference"
+              className={styles.scanField}
+              placeholder="RN-20260716-ABC123 or customer name"
               value={lookupRef}
               onChange={(e) => { setLookupRef(e.target.value); setLookupError(null) }}
               onKeyDown={(e) => { if (e.key === 'Enter') void handleLookup() }}
             />
-            <Button variant="primary" icon="arrowright" loading={lookupBusy} disabled={!lookupRef.trim()} onClick={() => void handleLookup()}>
+            <Button variant="primary" size="lg" trailingIcon="arrowright" loading={lookupBusy} onClick={() => void handleLookup()}>
               Look up
             </Button>
           </div>
-          {lookupError && <div className={styles.scanError}>{lookupError}</div>}
+          <p className={styles.scanSub}>Scan a release note or type a reference, customer name, or container to filter; press Enter to look up.</p>
+          {lookupError && (
+            <div className={styles.scanError} role="alert">
+              {lookupError}
+            </div>
+          )}
         </div>
       </div>
 
       <div className={styles.statsRow}>
         <StatCard
           label="Awaiting pickup"
-          value={activeNotes.length}
-          sublabel={urgentCount > 0 ? `${urgentCount} urgent · 24h+ old` : 'none urgent'}
+          value={activeQ.data ? activeNotes.length : '—'}
+          sublabel={activeQ.data ? (urgentCount > 0 ? `${urgentCount} urgent · 24h+ old` : 'none urgent') : undefined}
+          selected={urgentOnly}
+          onSelect={urgentCount > 0 || urgentOnly ? () => setUrgentOnly((v) => !v) : undefined}
         />
-        <StatCard label="Completed today" value={doneToday ?? '—'} />
+        <StatCard
+          label="Completed today"
+          value={doneToday ?? '—'}
+          sublabel={doneToday !== null ? 'picked up today' : undefined}
+          onSelect={() => navigate('/release-notes?status=picked_up')}
+        />
         <StatCard
           label="Expired · not collected"
           value={expiredCount ?? '—'}
-          sublabel={expiredCount && expiredCount !== '0' ? 'contact the customer' : 'all clear'}
+          sublabel={expiredCount === null ? undefined : expiredCount !== '0' ? 'contact the customer' : 'all clear'}
+          onSelect={() => navigate('/release-notes?status=expired')}
         />
       </div>
 
       {lastPickup && lastPickup.release_note_status !== 'picked_up' && (
         <div className={styles.banner}>
           <Banner variant="info">
-            {lastPickup.remaining_cartons} carton(s) still pending on this note.
+            {plural(lastPickup.remaining_cartons, 'carton')} still to collect on this note.
           </Banner>
         </div>
       )}
 
       <div className={styles.queueHead}>
-        <span className={styles.queueLabel}>Queue</span>
-        <span className={styles.queueCount}>{activeNotes.length} note(s)</span>
+        <span className={styles.queueLabel}>{urgentOnly ? 'Urgent queue (24h+)' : 'Queue'}</span>
+        <div className={styles.queueMeta}>
+          <span className={styles.queueCount}>
+            {activeQ.data && (
+              isFiltered
+                ? `${visibleNotes.length} of ${plural(activeNotes.length, 'note')}`
+                : plural(activeNotes.length, 'note')
+            )}
+          </span>
+          {isFiltered && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setUrgentOnly(false)
+                setLookupRef('')
+                setLookupError(null)
+              }}
+            >
+              Clear filter
+            </Button>
+          )}
+        </div>
       </div>
 
-      {loading && <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading…</div>}
+      {loading && <LinesSkeleton label="Loading" />}
 
       {!loading && activeNotes.length === 0 && (
-        <div className={styles.empty}>
-          <div className={styles.emptyIcon}>✓</div>
-          <p className={styles.emptyTitle}>All clear!</p>
-          <p>No active release notes to process.</p>
-        </div>
+        <EmptyState
+          title="All clear!"
+          body="No active release notes to process."
+        />
       )}
 
-      {activeNotes.map((note) => (
+      {!loading && activeNotes.length > 0 && visibleNotes.length === 0 && (
+        <EmptyState
+          compact
+          title="No matching release notes"
+          body="No active notes match the current filter."
+          action={{
+            label: 'Clear filter',
+            onClick: () => {
+              setUrgentOnly(false)
+              setLookupRef('')
+              setLookupError(null)
+            },
+          }}
+        />
+      )}
+
+      {visibleNotes.map((note) => (
         <NoteCard
           key={note.id}
           note={note}

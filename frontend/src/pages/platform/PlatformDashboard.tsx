@@ -10,20 +10,15 @@
  * chips (no historical-aggregates source — fictional in the prototype).
  */
 import { useMemo, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import type { Tenant } from '../../api/tenantManagement'
 import { usePlatformDashboardStats, usePlatformTenantList, useRecentPlatformActivity } from '../../hooks/usePlatformTenants'
-import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, ViewLink, type BadgeVariant, type IconName } from '../../design/components'
+import { useOnboardingRequests } from '../../hooks/useOnboardingRequests'
+import { Badge, Banner, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, type BadgeVariant, type IconName, UserCell, Icon, PageSkeleton, EmptyState } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
-
-const TENANT_STATUS_VARIANT: Record<Tenant['status'], BadgeVariant> = {
-  active: 'success',
-  suspended: 'error',
-  offboarded: 'neutral',
-}
+import { plural } from '../../lib/format'
 
 function actionVariant(action: string): BadgeVariant {
   if (action.includes('SUSPEND') || action.includes('OFFBOARD') || action.includes('DELETE')) return 'error'
@@ -61,11 +56,26 @@ export function PlatformDashboard(): JSX.Element {
   const navigate = useNavigate()
   const dashboard = usePlatformDashboardStats()
   const tenantList = usePlatformTenantList()
-  // Activity feed is non-fatal — the dashboard renders without it.
+  // Activity feed & onboarding leads are non-fatal — the dashboard renders without them.
   const recent = useRecentPlatformActivity(8)
+  const onboarding = useOnboardingRequests()
 
   const stats = dashboard.data ?? null
   const tenants = useMemo(() => tenantList.data?.data ?? [], [tenantList.data])
+  const pendingLeads = useMemo(
+    () => (onboarding.data ?? []).filter((r) => r.status === 'new' || r.status === 'contacted' || r.status === 'approved').length,
+    [onboarding.data],
+  )
+  // Sort tenant health so tenants needing attention (suspended, then over-quota) surface at the top.
+  const prioritizedTenants = useMemo(() => {
+    const score = (t: (typeof tenants)[number]): number => {
+      if (t.status === 'suspended') return 0
+      if (t.user_count != null && t.users_limit != null && t.user_count >= t.users_limit) return 1
+      if (t.status === 'active') return 2
+      return 3
+    }
+    return [...tenants].sort((a, b) => score(a) - score(b))
+  }, [tenants])
   const activity = recent.data?.data ?? []
   const loading = dashboard.isLoading || tenantList.isLoading
   const failure = dashboard.error ?? tenantList.error
@@ -80,63 +90,57 @@ export function PlatformDashboard(): JSX.Element {
     return (id: string | null) => (id ? (map.get(id) ?? `${id.slice(0, 8)}…`) : 'Platform')
   }, [tenants])
 
-  if (loading) return <div style={{ padding: 48, textAlign: 'center', color: 'var(--color-ink-3)' }}>Loading platform dashboard…</div>
+  if (loading) return <PageSkeleton kind="list" label="Loading platform dashboard" />
 
   return (
     <div>
       <PageHeader
-        eyebrow="Platform"
         title="Platform dashboard"
-        subtitle="Health and growth across every tenant on ShipX."
+        meta="Health and growth across every tenant on ShipX."
         actions={
-          <Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants')}>
+          <Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants/new')}>
             Onboard tenant
           </Button>
         }
       />
 
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
+      {error && <div style={{ marginBottom: 'var(--space-4)' }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
 
       {stats && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 20 }}>
-            <StatCard label="Active tenants" value={stats.tenants.active_tenants} />
-            <StatCard label="Suspended" value={stats.tenants.suspended_tenants} />
-            <StatCard label="Total staff users" value={stats.total_users} />
-            <StatCard label="Total containers" value={stats.total_containers} />
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <Card padding={20}>
-              <SectionHead title="Subscription mix" sub="Tenants by plan tier" />
-              <div style={{ display: 'flex', gap: 24, marginTop: 12, flexWrap: 'wrap' }}>
-                {(
-                  [
-                    ['Starter', stats.tenants.starter_tenants],
-                    ['Business', stats.tenants.business_tenants],
-                    ['Enterprise', stats.tenants.enterprise_tenants],
-                  ] as const
-                ).map(([label, count]) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 24 }}>{count}</span>
-                    <span style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>{label}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+            <StatCard
+              label="Active tenants"
+              value={stats.tenants.active_tenants}
+              sublabel={`${stats.tenants.starter_tenants} Starter · ${stats.tenants.business_tenants} Business · ${stats.tenants.enterprise_tenants} Ent.`}
+              onSelect={() => navigate('/platform/tenants')}
+            />
+            <StatCard
+              label="Suspended"
+              value={stats.tenants.suspended_tenants}
+              sublabel={stats.tenants.suspended_tenants > 0 ? 'review status' : 'none suspended'}
+              onSelect={() => navigate('/platform/tenants')}
+            />
+            <StatCard
+              label="Pending onboarding"
+              value={onboarding.data ? pendingLeads : '—'}
+              sublabel={pendingLeads > 0 ? 'leads awaiting action' : 'queue clear'}
+              onSelect={() => navigate('/platform/onboarding-requests')}
+            />
+            <StatCard label="Total staff users" value={stats.total_users} sublabel={`${stats.total_containers} containers`} />
           </div>
         </>
       )}
 
       <div className={styles.dashCols}>
-        <Card padding={0}>
-          <div style={{ padding: '18px 20px' }}>
+        <Card padding="none">
+          <div className={styles.cardHeader}>
             <SectionHead
               title="Tenant health"
-              sub={`${tenants.length} tenant(s) on the platform`}
+              sub={`${plural(tenants.length, 'tenant')} · suspended and over-quota listed first`}
               action={
-                <Button variant="secondary" size="sm" onClick={() => navigate('/platform/tenants')}>
-                  Manage tenants →
+                <Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/platform/tenants')}>
+                  Manage tenants
                 </Button>
               }
             />
@@ -145,64 +149,65 @@ export function PlatformDashboard(): JSX.Element {
             columns={[
               { title: 'Tenant' },
               { title: 'Tier' },
-              { title: 'Status' },
-              { title: 'Users', align: 'right' },
-              { title: '', width: '70px' },
+              { title: 'Status', type: 'status' },
+              { title: 'Users', type: 'number' },
             ]}
-            rows={tenants.slice(0, 8).map((t) => ({
-              suspended: t.status === 'suspended',
-              cells: [
-                <UserCell key="name" name={t.company_name} email={t.primary_contact_email ?? ''} />,
-                <Badge key="tier" variant="info">{t.subscription_tier}</Badge>,
-                <Badge key="status" variant={TENANT_STATUS_VARIANT[t.status]}>{t.status}</Badge>,
-                <Mono key="users">
-                  {t.user_count != null ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit}` : ''}` : '—'}
-                </Mono>,
-                <ViewLink key="view" onClick={() => navigate(`/platform/tenants/${t.id}`)} />,
-              ],
-            }))}
-            emptyState={<span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>No tenants yet.</span>}
+            rows={prioritizedTenants.slice(0, 8).map((t) => {
+              const overQuota = t.user_count != null && t.users_limit != null && t.user_count > t.users_limit
+              return {
+                suspended: t.status === 'suspended',
+                onOpen: () => navigate(`/platform/tenants/${t.id}`),
+                cells: [
+                  <UserCell key="name" name={t.company_name} email={t.primary_contact_email ?? ''} />,
+                  <Badge key="tier" variant="info">{t.subscription_tier}</Badge>,
+                  <StatusBadge key="status" kind="tenant" status={t.status} />,
+                  <span key="users" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                    <Mono color={overQuota ? 'var(--color-warning)' : undefined}>
+                      {t.user_count != null ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit}` : ''}` : '—'}
+                    </Mono>
+                    {overQuota && <Badge variant="warning" size="sm" dot={false}>Over quota</Badge>}
+                  </span>,
+                ],
+              }
+            })}
+            emptyState={<EmptyState compact title="No tenants yet" />}
           />
         </Card>
 
-        <Card padding={0}>
-          <div style={{ padding: '18px 20px 12px' }}>
+        <Card padding="none">
+          <div className={styles.cardHeader}>
             <SectionHead title="Recent activity" sub="Platform-level events" />
           </div>
           <div>
             {activity.length === 0 && (
-              <div style={{ padding: '0 20px 18px', fontSize: 13, color: 'var(--color-ink-4)' }}>No recent activity.</div>
+              <div style={{ padding: 'var(--space-5)', fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)' }}>No recent activity.</div>
             )}
             {activity.map((e, i) => (
               <div
                 key={e.id}
-                style={{ display: 'flex', gap: 12, padding: '12px 20px', borderTop: i > 0 ? '1px solid var(--color-line-soft)' : 'none' }}
+                style={{ display: 'flex', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-5)', borderTop: i > 0 ? '1px solid var(--color-line-soft)' : 'none' }}
               >
-                <div style={{ paddingTop: 2 }}>
-                  <Badge variant={actionVariant(e.action)} size="sm">{e.action.replace(/_/g, ' ')}</Badge>
-                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: 'var(--color-ink-2)', fontWeight: 500 }}>{tenantName(e.target_tenant_id)}</div>
-                  <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 2 }}>{relativeTime(e.created_at)}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-1) var(--space-2)' }}>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink)', fontWeight: 600 }}>{tenantName(e.target_tenant_id)}</div>
+                    <Badge variant={actionVariant(e.action)} size="sm" dot={false}>{e.action.replace(/_/g, ' ')}</Badge>
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-0-5)' }}>{relativeTime(e.created_at)}</div>
                 </div>
               </div>
             ))}
-            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--color-line-soft)', textAlign: 'center' }}>
-              <button
-                type="button"
-                onClick={() => navigate('/platform/audit-log')}
-                style={{ color: 'var(--color-primary)', fontWeight: 600, fontSize: 13, background: 'none', border: 0, cursor: 'pointer', fontFamily: 'var(--font-body)' }}
-              >
-                View full audit log →
-              </button>
+            <div className={styles.cardFooter}>
+              <Link to="/platform/audit-log" style={{ color: 'var(--color-primary-text)', fontWeight: 600, fontSize: 'var(--text-xs)', textDecoration: 'none' }}>
+                View full audit log <Icon name="arrowright" size={12} />
+              </Link>
             </div>
           </div>
         </Card>
       </div>
 
-      <div style={{ marginTop: 24 }}>
+      <div style={{ marginTop: 'var(--space-6)' }}>
         <SectionHead title="Quick actions" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
           {QUICK_ACTIONS.map((a) => (
             <QuickActionCard
               key={a.title}

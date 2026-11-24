@@ -1,6 +1,5 @@
 import { utilizationLevel } from '../../../api/containerRules'
-import { type PackingList } from '../../../api/packingList'
-import { type BadgeVariant, type IconName } from '../../../design/components'
+import {  type IconName } from '../../../design/components'
 import styles from '../ContainerDetail.module.css'
 
 // Maps a status transition to a human-readable event label for the event log.
@@ -18,12 +17,6 @@ export function eventLabel(from: string, to: string): string {
   return labels[to] ?? `${from} → ${to}`
 }
 
-export function eventBadgeVariant(toStatus: string): BadgeVariant {
-  if (['cleared', 'fully_released'].includes(toStatus)) return 'success'
-  if (['arrived', 'customs_clearance', 'at_warehouse'].includes(toStatus)) return 'warning'
-  return 'info'
-}
-
 // Converts backend role keys to display labels for the Updated by column.
 export function humanRole(role: string | null): string {
   const map: Record<string, string> = {
@@ -35,13 +28,6 @@ export function humanRole(role: string | null): string {
     customer: 'Customer',
   }
   return role ? (map[role] ?? role) : '—'
-}
-
-export const PL_STATUS_VARIANT: Record<PackingList['status'], BadgeVariant> = {
-  draft: 'neutral',
-  pending_approval: 'warning',
-  approved: 'success',
-  rejected: 'error',
 }
 
 // Utilization colour by *absolute* packed CBM (business rule, not % of

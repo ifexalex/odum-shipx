@@ -190,7 +190,7 @@ describe('AdminCustomerDetail — tabbed profile (A2)', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Shipments' }))
     expect(await screen.findByText('PL-20260410-008')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByText('View'))
+    await userEvent.click(screen.getByText('PL-20260410-008'))
     expect(await screen.findByText('PL detail page')).toBeInTheDocument()
   })
 
@@ -202,7 +202,7 @@ describe('AdminCustomerDetail — tabbed profile (A2)', () => {
     expect(await screen.findByText('BL-20260415-001')).toBeInTheDocument()
     // Appears in both the "Total paid" stat card and the table row
     expect(screen.getAllByText('₦49,352').length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByText('partially paid')).toBeInTheDocument()
+    expect(screen.getByText('Partly paid')).toBeInTheDocument()
   })
 
   it('Claims tab lists the customer claims', async () => {

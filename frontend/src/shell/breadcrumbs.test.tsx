@@ -31,14 +31,14 @@ const EXPECTED: Record<string, (string | [string, string])[]> = {
   '/platform/settings/plans': [['Settings', '/platform/settings'], 'Plans'],
   '/admin/users/:id': [['Staff', '/admin/users'], 'Staff member'],
   '/admin/customers/:id': [['Customers', '/admin/customers'], 'Customer'],
-  '/admin/config/dollar-rate': [['Configuration', '/admin/config'], 'Dollar rate'],
-  '/admin/config/cbm-rate': [['Configuration', '/admin/config'], 'CBM rate'],
-  '/admin/config/charge-types': [['Configuration', '/admin/config'], 'Charge types'],
-  '/admin/config/container-capacities': [['Configuration', '/admin/config'], 'Container capacities'],
-  '/admin/config/warehouses': [['Configuration', '/admin/config'], 'Warehouses'],
-  '/admin/config/notifications': [['Configuration', '/admin/config'], 'Notification templates'],
-  '/admin/config/webhooks': [['Configuration', '/admin/config'], 'Webhooks'],
-  '/admin/config/payments': [['Configuration', '/admin/config'], 'Payments'],
+  '/admin/config/dollar-rate': [['Settings', '/admin/config'], 'Dollar rate'],
+  '/admin/config/cbm-rate': [['Settings', '/admin/config'], 'CBM rate'],
+  '/admin/config/charge-types': [['Settings', '/admin/config'], 'Charge types'],
+  '/admin/config/container-capacities': [['Settings', '/admin/config'], 'Container capacities'],
+  '/admin/config/warehouses': [['Settings', '/admin/config'], 'Warehouses'],
+  '/admin/config/notifications': [['Settings', '/admin/config'], 'Notification templates'],
+  '/admin/config/webhooks': [['Settings', '/admin/config'], 'Webhooks'],
+  '/admin/config/payments': [['Settings', '/admin/config'], 'Payments'],
   '/containers/new': [['Containers', '/containers'], 'New container'],
   '/containers/:id': [['Containers', '/containers'], 'Container'],
   '/packing-lists/new': [['Packing lists', '/packing-lists'], 'New packing list'],
@@ -106,10 +106,6 @@ describe('the trail (FD-45)', () => {
       { label: 'PL-0007', to: '/packing-lists/p1' },
       { label: 'Edit' },
     ])
-  })
-
-  it('falls back to the top-bar suffix when the page set no label', () => {
-    expect(breadcrumbTrail('/containers/c1', ALL_ROLES, {}, 'MSCU1234567').at(-1)).toEqual({ label: 'MSCU1234567' })
   })
 
   it('is the same for every role that may open the page and the pages above it', () => {

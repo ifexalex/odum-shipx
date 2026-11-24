@@ -12,33 +12,14 @@ import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
-import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Chip,
-  Field,
-  Mono,
-  Table,
-  ViewLink,
-  type BadgeVariant,
-} from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
+import { Badge, Banner, Button, Chip, Mono, StatusBadge, Table, SearchField, EmptyState } from '../../design/components'
+import { formatDate, plural } from '../../lib/format'
+import { statusLabel, statusesOf } from '../../design/status'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
+import { PageHeader } from '../../shell/PageHeader'
+import { initialsFor } from '../../lib/initials'
 import styles from './admin.module.css'
-import { formatDate } from '../../lib/format'
-
-const STATUS_VARIANT: Record<TenantStatus, BadgeVariant> = {
-  active: 'success',
-  suspended: 'error',
-  offboarded: 'neutral',
-}
-
-const STATUS_LABELS: Record<TenantStatus, string> = {
-  active: 'Active',
-  suspended: 'Suspended',
-  offboarded: 'Offboarded',
-}
 
 const TIER_COLOR: Record<string, string> = {
   starter: 'var(--color-ink-3)',
@@ -46,20 +27,11 @@ const TIER_COLOR: Record<string, string> = {
   enterprise: 'var(--color-accent)',
 }
 
-function initialsFor(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  return (
-    words
-      .slice(0, 2)
-      .map((w) => w[0]!.toUpperCase())
-      .join('') || '?'
-  )
-}
 
 // Stable per-tenant avatar hue from the id, prototype-style variety.
 const AVATAR_COLORS = [
   'var(--color-accent)',
-  'var(--color-primary)',
+  'var(--color-primary-text)',
   'var(--color-info)',
   'var(--color-warning)',
   'var(--color-role-platform)',
@@ -74,29 +46,33 @@ function avatarColor(id: string): string {
 
 function TenantCell({ tenant }: { tenant: Tenant }): JSX.Element {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', minWidth: 0 }}>
       <div
         style={{
           width: 28,
           height: 28,
-          borderRadius: 6,
+          borderRadius: 'var(--radius-md)',
           flexShrink: 0,
           background: `color-mix(in srgb, ${avatarColor(tenant.id)} 15%, transparent)`,
           color: avatarColor(tenant.id),
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontWeight: 800,
-          fontSize: 12,
+          fontWeight: 700,
+          fontSize: 'var(--text-xs)',
           fontFamily: 'var(--font-display)',
         }}
       >
         {initialsFor(tenant.company_name)}
       </div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.2 }}>{tenant.company_name}</div>
-        <div style={{ fontSize: 11, color: 'var(--color-ink-4)', lineHeight: 1.3 }}>
-          {tenant.slug}
+        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-tight)' }}>{tenant.company_name}</div>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', lineHeight: 'var(--leading-tight)', display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span>{tenant.slug}</span>
+          <span>·</span>
+          <Mono color="var(--color-ink-4)">
+            <span title={tenant.id}>{tenant.id.slice(0, 8)}…</span>
+          </Mono>
         </div>
       </div>
     </div>
@@ -131,124 +107,126 @@ export function PlatformTenantList(): JSX.Element {
     })
   }, [tenants, statusFilter, query])
 
-  useTopBarSlot({
-    subtitle: 'All onboarded tenants and their subscription status.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants/new')}>
-        Onboard tenant
-      </Button>
-    ),
-  })
-
   return (
-    <div>
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error">{error.message}</Banner>
-        </div>
-      )}
-
-      <Card padding={16}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
-              All {tenants.length > 0 && <span style={{ opacity: 0.6 }}>{tenants.length}</span>}
-            </Chip>
-            {(Object.keys(STATUS_LABELS) as TenantStatus[]).map((status) => (
-              <Chip
-                key={status}
-                active={statusFilter === status}
-                onClick={() => setStatusFilter(statusFilter === status ? null : status)}
-              >
-                {STATUS_LABELS[status]} <span style={{ opacity: 0.6 }}>{counts[status]}</span>
+    <ListPage
+      header={
+        <PageHeader
+          title="Tenants"
+          meta={'All onboarded tenants and their subscription status.'}
+          primary={
+            <Button variant="primary" icon="plus" onClick={() => navigate('/platform/tenants/new')}>
+              Onboard tenant
+            </Button>
+          }
+        />
+      }
+      notices={<>{error && <Banner variant="error">{error.message}</Banner>}</>}
+      filters={
+        <FilterBar
+          label="Filter tenants"
+          status={
+            <>
+              <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                All {tenants.length > 0 && <span style={{ opacity: 0.6 }}>{tenants.length}</span>}
               </Chip>
-            ))}
-          </div>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <Field
-              label=""
-              name="tenantSearch"
-              icon="search"
-              placeholder="Search by name, email, slug, or ID…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding={0}>
-          <Table
-            columns={[
-              { title: 'Tenant' },
-              { title: 'ID' },
-              { title: 'Status' },
-              { title: 'Plan' },
-              { title: 'Primary contact' },
-              { title: 'Users', align: 'right' },
-              { title: 'Created' },
-              { title: '', width: '60px' },
-            ]}
-            rows={visible.map((t) => ({
-              cells: [
-                <TenantCell key="tenant" tenant={t} />,
-                <Mono key="id" color="var(--color-ink-4)">
-                  <span title={t.id}>{t.id.slice(0, 8)}…</span>
-                </Mono>,
-                <Badge key="status" variant={STATUS_VARIANT[t.status]}>
-                  {STATUS_LABELS[t.status]}
-                </Badge>,
-                <span
-                  key="tier"
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: TIER_COLOR[t.subscription_tier] ?? 'var(--color-ink-2)',
-                    textTransform: 'capitalize',
-                  }}
+              {statusesOf('tenant').map((status) => (
+                <Chip
+                  key={status}
+                  active={statusFilter === status}
+                  onClick={() => setStatusFilter(statusFilter === status ? null : status)}
                 >
-                  {t.subscription_tier}
-                </span>,
-                <span key="contact" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                  {t.primary_contact_email}
-                </span>,
-                <Mono key="users">
-                  {t.user_count != null
-                    ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit}` : ''}`
-                    : '—'}
-                </Mono>,
-                <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                  {formatDate(t.created_at)}
-                </span>,
-                <ViewLink
-                  key="view"
-                  onClick={() =>
-                    navigate(`/platform/tenants/${t.id}`, {
-                      state: { tenant: t },
-                    })
-                  }
-                />,
-              ],
-            }))}
-            loading={loading}
-            emptyState={
-              !loading && visible.length === 0 ? (
-                <span>
-                  {tenants.length === 0
-                    ? 'No tenants onboarded yet.'
-                    : 'No tenants match the current filter.'}
-                </span>
-              ) : undefined
-            }
-          />
-        </Card>
-        {!loading && tenants.length > 0 && (
-          <p style={{ fontSize: 12, color: 'var(--color-ink-4)', marginTop: 10 }}>
-            Showing {visible.length} of {tenants.length} tenant(s)
+                  {statusLabel('tenant', status)}{' '}
+                  <span style={{ opacity: 0.6 }}>{counts[status]}</span>
+                </Chip>
+              ))}
+            </>
+          }
+          search={
+            <>
+              <SearchField
+                label="Search tenants"
+                placeholder="Search by name, email, slug, or ID…"
+                value={query}
+                onChange={setQuery}
+              />
+            </>
+          }
+        />
+      }
+      footer={
+        !loading &&
+        tenants.length > 0 && (
+          <p className={styles.showing}>
+            Showing {visible.length} of {plural(tenants.length, 'tenant')}
           </p>
-        )}
-      </div>
-    </div>
+        )
+      }
+    >
+      <Table
+        columns={[
+          { title: 'Tenant' },
+          { title: 'Status', type: 'status' },
+          { title: 'Plan' },
+          { title: 'Primary contact' },
+          { title: 'Users', type: 'number' },
+          { title: 'Created', type: 'date' },
+        ]}
+        rows={visible.map((t) => {
+          const overQuota = t.user_count != null && t.users_limit != null && t.user_count > t.users_limit
+          return {
+            onOpen: () => navigate(`/platform/tenants/${t.id}`, { state: { tenant: t } }),
+            cells: [
+              <TenantCell key="tenant" tenant={t} />,
+              <StatusBadge key="status" kind="tenant" status={t.status} />,
+              <span
+                key="tier"
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  fontWeight: 700,
+                  color: TIER_COLOR[t.subscription_tier] ?? 'var(--color-ink-2)',
+                  textTransform: 'capitalize',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t.subscription_tier}
+              </span>,
+              <span key="contact" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                {t.primary_contact_email}
+              </span>,
+              <span
+                key="users"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', whiteSpace: 'nowrap' }}
+              >
+                <Mono color={overQuota ? 'var(--color-warning)' : undefined}>
+                  {t.user_count != null
+                    ? `${t.user_count}${t.users_limit != null ? ` / ${t.users_limit >= 999999 ? '∞' : t.users_limit}` : ''}`
+                    : '—'}
+                </Mono>
+                {overQuota && <Badge variant="warning" size="sm" dot={false}>Over quota</Badge>}
+              </span>,
+              <span
+                key="date"
+                style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', whiteSpace: 'nowrap' }}
+              >
+                {formatDate(t.created_at)}
+              </span>,
+            ],
+          }
+        })}
+        loading={loading}
+        emptyState={
+          !loading && visible.length === 0 ? (
+            <EmptyState
+              compact
+              title={
+                tenants.length === 0
+                  ? 'No tenants onboarded yet'
+                  : 'No tenants match the current filter'
+              }
+            />
+          ) : undefined
+        }
+      />
+    </ListPage>
   )
 }

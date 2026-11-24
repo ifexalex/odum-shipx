@@ -1785,9 +1785,21 @@ class TestClaimStatusChangeNotifications:
 
         with (
             patch.object(service.repo, "get_damage_claim_by_id", return_value=claim),
+            patch.object(service.repo, "get_tenant_config_value", return_value={"staff_limit": 50}),
             patch.object(service, "get_effective_dollar_rate", return_value={"rate": Decimal("1550")}),
             patch.object(service.repo, "get_billing_by_id", return_value=None),
             patch.object(service.repo, "update_claim_status", return_value=updated),
+            patch.object(
+                service.repo,
+                "create_claim_resolution",
+                return_value={
+                    "id": "res-002",
+                    "resolution_type": "goodwill_credit",
+                    "resolution_amount_ngn": Decimal("31000"),
+                    "approval_level": "nigeria_staff",
+                    "refund_request_id": None,
+                },
+            ),
             patch.object(service.repo, "get_customer_contact", return_value=self._CONTACT) as mock_contact,
             patch("services.claims.service.publish_event"),
             patch("services.claims.service.log_audit"),

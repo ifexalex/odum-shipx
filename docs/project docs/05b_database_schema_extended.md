@@ -595,3 +595,17 @@ One row per tenant data export. Columns: `id`, `tenant_id` (FK `tenant` ON DELET
 - `billing.exchange_rate_source VARCHAR(20)`, `CHECK (IN ('live', 'last_known', 'hardcoded'))`: where `exchange_rate_ngn` came from (`shared.fx_rate.RATE_SOURCE_*`). Invoicing refuses `hardcoded`, so new rows carry `live` or `last_known`.
 - `billing.exchange_rate_fetched_at TIMESTAMPTZ`: when that market rate was fetched.
 - Both NULL for invoices issued before the migration (nothing recorded it). No backfill, no RLS change. Applied to the local dev database on 2026-11-17 (4 existing invoices, all NULL).
+
+## Migration 069 — upload confirmation (2026-11-19)
+
+- `confirmed_at TIMESTAMPTZ` on `claim_evidence`, `manifest_evidence` and `container_document`: when the client confirmed the upload and its stored size was checked. NULL means presigned but not confirmed; such a row is never listed or downloadable. Existing rows backfilled to `created_at`.
+- `container_document.file_size_bytes INTEGER` (the other two already had it), set at confirmation.
+- No RLS change: `container_document` keeps its tenant policy; the two evidence tables stay without RLS, scoped through their parent. Applied to the local dev database on 2026-11-19.
+
+## Migration 070 — `billing_credit_application` (2026-11-19)
+
+One row per credit an invoice used: `id`, `tenant_id`, `billing_id` → billing, `refund_request_id` → refund_request (both `ON DELETE RESTRICT`), `amount_ngn DECIMAL(15,2) CHECK (> 0)`, `created_at`, `reversed_at` (set when the invoice is cancelled and the amount returned). Written in `create_invoice`'s transaction; read by `get_credit_applications`; reversed by `cancel_billing`. Indexes on `(tenant_id, billing_id)` and `(tenant_id, refund_request_id)`. Invoices issued before the migration have no rows. In `shared/tenant_data.py` (export and offboarding cleanup). Applied to the local dev database on 2026-11-19.
+
+## Migration 071 — encrypted columns are TEXT (2026-11-19)
+
+`refund_request.account_number` (was VARCHAR(50)), `refund_request.account_name` (VARCHAR(255)) and `pickup_record.id_number` (VARCHAR(100)) are TEXT. `encrypt_field` output is `base64(wrapped key || Fernet token)`, about 264 characters for 10 digits against an in-memory KMS and more against real KMS / Key Vault, so every encrypted write would have failed with `StringDataRightTruncation` in any environment with encryption on (local dev stores plaintext, which hid it). No rewrite of rows. Applied to the local dev database on 2026-11-19.

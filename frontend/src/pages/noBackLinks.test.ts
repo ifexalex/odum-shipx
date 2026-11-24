@@ -18,7 +18,7 @@ const ALLOWED = new Set([
 
 describe('no hand-written back links (FD-47)', () => {
   const pages = Object.entries(SOURCES).filter(
-    ([path]) => !path.includes('.test.') && !path.startsWith('./auth/') && !path.startsWith('./print/') && !ALLOWED.has(path),
+    ([path]) => !path.includes('.test.') && !path.startsWith('./auth/') && !ALLOWED.has(path),
   )
 
   it('finds the pages', () => expect(pages.length).toBeGreaterThan(80))

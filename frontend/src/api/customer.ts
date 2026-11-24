@@ -29,6 +29,8 @@ export interface PublicTrackingResult {
   tracking_code: string
   current_stage: string
   company_name: string | null
+  /** The shipping company's brand colour (#rrggbb), or null for ShipX's own (FD-28). */
+  brand_color?: string | null
   stage_history: TrackingStageEvent[]
   estimated_stages: null
 }
@@ -62,6 +64,9 @@ const STAGE_LABELS: Record<string, string> = {
   released: 'Released for pickup',
   picked_up: 'Picked up',
 }
+
+/** The public stages in the order a shipment passes through them, for the tracking page's stepper (FD-28). */
+export const PUBLIC_STAGE_ORDER = ['packing', 'in_transit', 'arrived', 'customs', 'warehouse', 'released', 'picked_up'] as const
 
 export function stageLabelFor(stage: string): string {
   return STAGE_LABELS[stage] ?? stage.replace(/_/g, ' ')

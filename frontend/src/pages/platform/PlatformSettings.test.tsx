@@ -46,9 +46,9 @@ describe('PlatformSettings — General', () => {
   })
 
   it('says so when the settings cannot be read', async () => {
-    vi.mocked(platformSettingsApi.get).mockRejectedValue(failure('settings store unavailable'))
+    vi.mocked(platformSettingsApi.get).mockRejectedValue(failure('Something went wrong on our side. Try again; if it keeps happening, contact support.'))
     renderAt('/platform/settings')
-    expect(await screen.findByText('settings store unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
     expect(screen.queryByText('Loading settings…')).toBeNull()
   })
 
@@ -63,7 +63,7 @@ describe('PlatformSettings — General', () => {
     await waitFor(() =>
       expect(platformSettingsApi.update).toHaveBeenCalledWith({ platform_email_from: 'ops@shipx.test', max_tenants: 60, maintenance_mode: false }),
     )
-    expect(await screen.findByText('Platform settings updated.')).toBeInTheDocument()
+    expect(await screen.findByText('Platform settings saved')).toBeInTheDocument()
     expect(screen.getByDisplayValue('60')).toBeInTheDocument()
   })
 
@@ -73,7 +73,7 @@ describe('PlatformSettings — General', () => {
     renderAt('/platform/settings')
     await screen.findByDisplayValue('40')
     await userEvent.click(screen.getByRole('button', { name: 'Save settings' }))
-    expect(await screen.findByText('max_tenants is below the current tenant count')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
     expect(screen.getByDisplayValue('ops@shipx.test')).toBeInTheDocument()
   })
 })
@@ -87,9 +87,9 @@ describe('PlatformSettings — Notification providers', () => {
   })
 
   it('says so when the providers cannot be read', async () => {
-    vi.mocked(platformSettingsApi.getGateways).mockRejectedValue(failure('gateway config unavailable'))
+    vi.mocked(platformSettingsApi.getGateways).mockRejectedValue(failure('Something went wrong on our side. Try again; if it keeps happening, contact support.'))
     renderAt('/platform/settings/notifications')
-    expect(await screen.findByText('gateway config unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
   })
 })
 
@@ -103,9 +103,9 @@ describe('PlatformSettings — Plans & limits', () => {
   })
 
   it('says so when the plans cannot be read', async () => {
-    vi.mocked(platformSettingsApi.getPlans).mockRejectedValue(failure('plans unavailable'))
+    vi.mocked(platformSettingsApi.getPlans).mockRejectedValue(failure('Something went wrong on our side. Try again; if it keeps happening, contact support.'))
     renderAt('/platform/settings/plans')
-    expect(await screen.findByText('plans unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
   })
 
   it('saves a tier and keeps the page showing the plans', async () => {

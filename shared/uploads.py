@@ -7,9 +7,10 @@ Every browser upload follows the same three steps, and this module is the one pl
   3. ``presign_upload(policy, tenant_id, segments, filename, content_type)``: build the key under the tenant's prefix
      and return the presigned upload.
 
-Keys are always ``{tenant_id}/{segment}/.../{safe filename}``: the tenant prefix is what the download paths and the
-import guard check, so it is built here and nowhere else. Segments come from the server (a resource name and an ID),
-never from the client, and are refused if they could change the key's structure.
+Keys are always ``{tenant_id}/{segment}/.../{random hex}-{safe filename}``: the tenant prefix is what the download
+paths and the import guard check, so it is built here and nowhere else. Segments come from the server (a resource name
+and an ID), never from the client, and are refused if they could change the key's structure. The random part keeps two
+uploads of ``photo.jpg`` to one claim from overwriting each other, so deleting one never deletes the other.
 
 The type is declared by the client; nothing inspects the bytes. On AWS it is signed into the URL (SigV4), so S3
 refuses a PUT whose ``Content-Type`` differs. An Azure SAS does not bind the type, and the local Moto S3 does not
@@ -20,11 +21,16 @@ Every upload is limited to ``MAX_UPLOAD_BYTES`` (5 MB). The client declares the 
 and a larger or missing size is refused there. On AWS the declared size is signed into the URL (``ContentLength``), so
 S3 refuses a body of any other length. An Azure SAS cannot bind a length, so where a stored file is used later (a
 payment claim, a spreadsheet import) ``check_stored_size`` reads its real size and refuses it if it is over.
+
+A file that is listed once uploaded (claim evidence, manifest evidence, container documents) has a row written at
+presign time that stays hidden until the client confirms the upload. ``confirm_stored_upload`` is that confirmation:
+it reads the stored size, deletes a file over the limit, and the caller then stamps the row ``confirmed_at``. An upload
+the client never confirms is never listed.
 """
 
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from shared.exceptions import BusinessRuleViolationError, ValidationError
 from shared.providers import get_storage_provider
@@ -98,6 +104,15 @@ EVIDENCE = UploadPolicy(name="evidence", content_types=_IMAGES_AND_PDF, expires_
 #: Container documents (bill of lading, customs certificate, ...). WebP for phone photos of paperwork.
 CONTAINER_DOCUMENT = UploadPolicy(name="container document", content_types=_IMAGES_AND_PDF | {"image/webp"}, expires_in=900)
 
+#: A tenant's logo (FD-29): raster images only. SVG is refused, since an SVG can carry script and the logo is shown to
+#: every user of the tenant and on its public pages. The same 5 MB limit as every other upload (owner decision,
+#: 2026-11-24; it was 1 MB).
+TENANT_LOGO = UploadPolicy(
+    name="logo",
+    content_types=frozenset({"image/png", "image/jpeg", "image/webp"}),
+    expires_in=900,
+    max_bytes=MAX_UPLOAD_BYTES,
+)
 #: A packing-list spreadsheet, read once by the import and never listed.
 SPREADSHEET_IMPORT = UploadPolicy(
     name="spreadsheet import",
@@ -112,11 +127,13 @@ class PresignedUpload:
 
     Attributes:
         key: The storage key, under the tenant's prefix.
+        filename: The client's file name made safe, without the key's random part: the name to show and download as.
         expires_in: Seconds until the URL stops working.
         ticket: The provider's upload ticket (URL, method, headers the browser must send).
     """
 
     key: str
+    filename: str
     expires_in: int
     ticket: Any
 
@@ -127,7 +144,7 @@ class PresignedUpload:
 
 
 def upload_key(tenant_id: str, segments: tuple[str, ...], filename: str) -> str:
-    """The storage key for an upload: ``{tenant_id}/{segments...}/{safe filename}``.
+    """The storage key for an upload: ``{tenant_id}/{segments...}/{random hex}-{safe filename}``.
 
     Args:
         tenant_id: The tenant's UUID; it must be one, so the prefix cannot be anything else.
@@ -141,7 +158,7 @@ def upload_key(tenant_id: str, segments: tuple[str, ...], filename: str) -> str:
     for segment in segments:
         if not segment or "/" in segment or "\\" in segment or ".." in segment:
             raise ValueError(f"unsafe upload key segment: {segment!r}")
-    return "/".join((tenant_id, *segments, safe_filename(filename)))
+    return "/".join((tenant_id, *segments, f"{uuid4().hex}-{safe_filename(filename)}"))
 
 
 def presign_upload(
@@ -172,7 +189,7 @@ def presign_upload(
     ticket = get_storage_provider().presigned_upload(
         key, content_type=content_type, expires_in=policy.expires_in, content_length=size
     )
-    return PresignedUpload(key=key, expires_in=policy.expires_in, ticket=ticket)
+    return PresignedUpload(key=key, filename=safe_filename(filename), expires_in=policy.expires_in, ticket=ticket)
 
 
 def check_stored_size(policy: UploadPolicy, key: str) -> int:
@@ -188,6 +205,27 @@ def check_stored_size(policy: UploadPolicy, key: str) -> int:
     if size is None:
         raise BusinessRuleViolationError("The uploaded file was not found. Upload it again.", rule_id="UPLOAD_NOT_FOUND")
     if size > policy.max_bytes:
+        raise BusinessRuleViolationError(
+            f"The file is larger than {policy.max_bytes // (1024 * 1024)} MB.", rule_id="FILE_TOO_LARGE"
+        )
+    return size
+
+
+def confirm_stored_upload(policy: UploadPolicy, key: str) -> int:
+    """Confirm a browser upload landed: return its size, or delete it and refuse it if it is over the limit.
+
+    The check that holds on Azure, where a SAS cannot bind the upload's length. On AWS the signed length already
+    refused a larger body, so this only confirms the file is there.
+
+    Raises:
+        BusinessRuleViolationError: ``UPLOAD_NOT_FOUND`` (nothing at ``key``: the upload did not finish) or
+            ``FILE_TOO_LARGE`` (the stored file was over the limit and has been deleted).
+    """
+    size = get_storage_provider().object_size(key)
+    if size is None:
+        raise BusinessRuleViolationError("The uploaded file was not found. Upload it again.", rule_id="UPLOAD_NOT_FOUND")
+    if size > policy.max_bytes:
+        get_storage_provider().delete_object(key)
         raise BusinessRuleViolationError(
             f"The file is larger than {policy.max_bytes // (1024 * 1024)} MB.", rule_id="FILE_TOO_LARGE"
         )

@@ -5,6 +5,8 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 """
 
 import logging
+import math
+import re
 from typing import Any
 
 from services.billing.service import generate_container_invoices
@@ -28,23 +30,25 @@ from . import repository as repo
 from .models import TrackingStage
 
 _URL_EXPIRY = 900  # 15 minutes
+# A tenant's brand colour as the public tracking page may use it: a plain #rrggbb value and nothing else, since the
+# page puts it into a style (FD-28).
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 _ALLOWED_DOCUMENT_TYPES = frozenset({"bill_of_lading", "customs_certificate", "insurance", "inspection_report", "other"})
 
 logger = logging.getLogger(__name__)
 
 
 def _positive_or_none(value: Any) -> float | None:
-    """Coerce a capacity/recommended CBM input to a positive float, else None.
-
-    Guards the NUMERIC(>0) CHECK on container.capacity_cbm/recommended_cbm —
-    blank, zero, negative or non-numeric input is stored as NULL (capacity
-    simply unknown) rather than raising.
-    """
+    """Coerce a capacity/recommended CBM input to a finite positive float, else None."""
     try:
         num = float(value)
     except (TypeError, ValueError):
         return None
-    return num if num > 0 else None
+    return num if math.isfinite(num) and num > 0 else None
+
+
+def _is_customer_only(ctx: Any) -> bool:
+    return bool(getattr(ctx, "is_customer_only", ctx.role == UserRole.CUSTOMER))
 
 
 # ---------------------------------------------------------------------------
@@ -163,13 +167,9 @@ def delete_container(
     actor_id: str,
     request_id: str = "",
     ip_address: str | None = None,
+    ctx: Any = None,
 ) -> None:
-    """Hard-delete a container that was created by mistake.
-
-    Rules (enforced here and on the frontend):
-    - Status must be 'loading' (never sealed or beyond).
-    - No packing lists may exist on the container.
-    """
+    """Hard-delete a container that was created by mistake."""
     container = repo.get_container_by_id(tenant_id, container_id)
     if not container:
         raise ResourceNotFoundError("container", container_id)
@@ -191,7 +191,7 @@ def delete_container(
     log_audit(
         tenant_id=tenant_id,
         actor_id=actor_id,
-        actor_role="china_office_staff",
+        actor_role=str(ctx.role) if ctx is not None else "china_office_staff",
         action="DELETE",
         entity_type="container",
         entity_id=container_id,
@@ -208,13 +208,9 @@ def cancel_container(
     notes: str | None = None,
     request_id: str = "",
     ip_address: str | None = None,
+    ctx: Any = None,
 ) -> dict[str, Any]:
-    """Soft-cancel a container — sets status to 'cancelled', a terminal state.
-
-    Rules:
-    - Only 'loading' or 'sealed' containers can be cancelled (China-side only,
-      before the container goes to sea).
-    """
+    """Soft-cancel a container — sets status to 'cancelled', a terminal state."""
     container = repo.get_container_by_id(tenant_id, container_id)
     if not container:
         raise ResourceNotFoundError("container", container_id)
@@ -232,14 +228,50 @@ def cancel_container(
         {"notes": notes} if notes else None,
     )
     if not updated:
-        raise RuntimeError("cancel_container returned None unexpectedly")
+        raise BusinessRuleViolationError(
+            "Container is no longer in a cancellable status.",
+            rule_id="CONTAINER_NOT_CANCELLABLE",
+        )
 
     repo.insert_container_event(tenant_id, container_id, container["status"], "cancelled", actor_id, notes)
+
+    try:
+        customers = repo.get_customers_for_container(tenant_id, container_id)
+        for customer in customers:
+            enqueue_notifications(
+                tenant_id=tenant_id,
+                event_type="shipment_update",
+                recipient={
+                    "phone": customer.get("phone", ""),
+                    "email": customer.get("email", ""),
+                    "whatsapp": customer.get("whatsapp", ""),
+                    "name": customer.get("name", ""),
+                },
+                template_data={
+                    "tracking_code": container.get("container_number", ""),
+                    "status": "cancelled",
+                },
+                locale=customer.get("locale", "en"),
+                request_id=request_id,
+                customer_id=str(customer["id"]),
+            )
+            if customer.get("user_id"):
+                notify_staff(
+                    tenant_id=tenant_id,
+                    event_type="shipment_update",
+                    entity_type="container",
+                    entity_id=container_id,
+                    title="Shipment cancelled",
+                    body=f"Container {container.get('container_number', '')} has been cancelled.",
+                    target_user_id=str(customer["user_id"]),
+                )
+    except Exception:
+        logger.exception("Failed to notify customers on container cancellation")
 
     log_audit(
         tenant_id=tenant_id,
         actor_id=actor_id,
-        actor_role="china_office_staff",
+        actor_role=str(ctx.role) if ctx is not None else "china_office_staff",
         action="CANCEL",
         entity_type="container",
         entity_id=container_id,
@@ -281,6 +313,16 @@ def update_container_status(
         raise ResourceNotFoundError("container", container_id)
 
     current = container["status"]
+
+    # Role-based stage authorization BEFORE transition validation so unauthorized
+    # callers receive 403 InsufficientPermissionsError instead of 409 state details.
+    if current in _CHINA_FROM:
+        ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
+    elif current in _NIGERIA_FROM:
+        ctx.assert_role(UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
+    elif current == "at_warehouse":
+        ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_ATTENDANT)
+
     expected_next = _NEXT_STATE.get(current)
     if new_status != expected_next:
         raise IllegalTransitionError(
@@ -290,15 +332,6 @@ def update_container_status(
             allowed=[expected_next] if expected_next else [],
         )
 
-    # Role-based stage authorization
-    if current in _CHINA_FROM:
-        ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
-    elif current in _NIGERIA_FROM:
-        ctx.assert_role(UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
-    # at_warehouse → fully_released is system/auto — allow TENANT_ADMIN or WAREHOUSE_ATTENDANT
-    elif current == "at_warehouse":
-        ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_ATTENDANT)
-
     # Pre-transition guard for sealed
     if new_status == "sealed":
         approved_count = repo.count_approved_packing_lists(tenant_id, container_id)
@@ -307,13 +340,19 @@ def update_container_status(
                 "Container must have at least 1 approved packing list before sealing",
                 rule_id="NO_APPROVED_PACKING_LISTS",
             )
+        unapproved_count = repo.count_unapproved_packing_lists(tenant_id, container_id)
+        if unapproved_count > 0:
+            raise BusinessRuleViolationError(
+                f"Container has {unapproved_count} unapproved packing list(s) — approve or reject all before sealing",
+                rule_id="UNAPPROVED_PACKING_LISTS_REMAIN",
+            )
         manifest = repo.get_manifest_for_container(tenant_id, container_id)
         if not manifest:
             raise BusinessRuleViolationError(
                 "Container must have a manifest before sealing",
                 rule_id="NO_MANIFEST",
             )
-        if manifest.get("verification_status") != "verified":
+        if manifest.get("verification_status") not in ("verified", "resolved"):
             raise BusinessRuleViolationError(
                 "The manifest must be verified before the container can be sealed",
                 rule_id="MANIFEST_NOT_VERIFIED",
@@ -326,10 +365,22 @@ def update_container_status(
             rule_id="MISSING_SHIP_DATE",
         )
 
+    # at_warehouse → fully_released requires all billed cartons to have been collected
+    if new_status == "fully_released":
+        unreleased_cartons = repo.count_unreleased_cartons_for_container(tenant_id, container_id)
+        if unreleased_cartons > 0:
+            raise BusinessRuleViolationError(
+                f"Container still has {unreleased_cartons} uncollected carton(s) — record pickup before marking fully released",
+                rule_id="UNRELEASED_CARTONS_REMAIN",
+            )
+
     # Update container row
     updated = repo.update_container_status(tenant_id, container_id, new_status, extra)
     if updated is None:
-        raise RuntimeError("update_container_status returned None unexpectedly")
+        raise BusinessRuleViolationError(
+            "Container status changed concurrently — reload and retry.",
+            rule_id="CONCURRENT_STATUS_CHANGE",
+        )
 
     repo.insert_container_event(
         tenant_id=tenant_id,
@@ -340,14 +391,15 @@ def update_container_status(
         notes=extra.get("notes"),
     )
 
-    # Bulk tracking side effects
+    # Bulk tracking side effects — insert tracking_event BEFORE updating shipment_tracking.status
+    # so tracking_event.from_status records the true prior status rather than the new status.
     tracking_status = _CONTAINER_TO_TRACKING_STATUS.get(new_status)
     stage_label = _CONTAINER_TO_STAGE_LABEL.get(new_status)
     notes = extra.get("notes")
 
     if tracking_status:
-        repo.bulk_update_tracking_status(tenant_id, container_id, tracking_status)
         repo.bulk_insert_tracking_events(tenant_id, container_id, stage_label or "", notes, actor_id)
+        repo.bulk_update_tracking_status(tenant_id, container_id, tracking_status)
 
     # Container arrival notification when goods reach the warehouse
     if new_status == "at_warehouse":
@@ -550,10 +602,12 @@ def list_shipments(
     cursor: dict[str, Any] | None,
     ctx: Any,
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    if ctx.role == UserRole.CUSTOMER:
+    if _is_customer_only(ctx):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer:
             return [], None, False
+        if filters:
+            return repo.list_customer_shipments(tenant_id, str(customer["id"]), limit, cursor, filters=filters)
         return repo.list_customer_shipments(tenant_id, str(customer["id"]), limit, cursor)
     return repo.list_shipments(tenant_id, filters, limit, cursor)
 
@@ -561,21 +615,17 @@ def list_shipments(
 def _phone_match_candidates(phone: str) -> list[str]:
     """Every form of `phone` worth matching a stored customer number against.
 
-    The browser now submits E.164, but this endpoint is public: saved links, old
-    clients and direct API callers still send whatever a human typed. Normalising
-    here (rather than only in the UI) is what actually fixes the lookup.
-
-    No tenant is known at this point — the tracking code spans tenants — so the
-    platform default dial code (Nigeria) is used. The raw input is kept as a
-    candidate too, both for rows written before normalisation existed and for a
-    number from a country whose dial code the default would mangle.
+    Normalises local-format numbers across all supported destination dial codes
+    (`shared.phone._DIAL_CODES`) so non-Nigerian tenants (Ghana, Kenya, etc.)
+    match E.164 records on public tracking just like Nigerian tenants.
     """
-    from shared.phone import normalize_phone
+    from shared.phone import _DIAL_CODES, DEFAULT_DIAL_CODE, normalize_phone
 
-    candidates = []
-    normalized = normalize_phone(phone)
-    if normalized:
-        candidates.append(normalized)
+    candidates: list[str] = []
+    for dial in (DEFAULT_DIAL_CODE, *_DIAL_CODES.values()):
+        normalized = normalize_phone(phone, dial_code=dial)
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
     raw = (phone or "").strip()
     if raw and raw not in candidates:
         candidates.append(raw)
@@ -603,14 +653,19 @@ def get_shipment_by_code_and_phone(tracking_code: str, phone: str) -> dict[str, 
 
     # Extract company_name (may be in branding_config or company_name column)
     company_name = row.get("company_name")
+    brand_color: str | None = None
     branding = row.get("branding_config") or {}
     if isinstance(branding, dict):
         company_name = branding.get("display_name") or company_name
+        # Returned only after the code and phone matched, like the name: the code alone says nothing about the tenant.
+        color = branding.get("primary_color")
+        brand_color = color if isinstance(color, str) and _HEX_COLOR.match(color) else None
 
     return {
         "tracking_code": row["tracking_code"],
         "current_stage": current_stage,
         "company_name": company_name,
+        "brand_color": brand_color,
         "stage_history": stage_history,
         "estimated_stages": None,
     }
@@ -634,7 +689,8 @@ def generate_document_presigned_url(
 
     Validates container exists and document_type is allowed.
     S3 key is scoped to {tenant_id}/containers/{container_id}/ to enforce
-    tenant isolation.
+    tenant isolation. The document row is unconfirmed, and not listed, until
+    the browser calls `confirm_document_upload` after the upload.
     """
     uploads.CONTAINER_DOCUMENT.check(content_type, size_bytes)
     if document_type not in _ALLOWED_DOCUMENT_TYPES:
@@ -653,7 +709,7 @@ def generate_document_presigned_url(
         uploads.CONTAINER_DOCUMENT, tenant_id, ("containers", container_id), filename, content_type, size_bytes
     )
     s3_key = upload.key
-    filename = s3_key.rsplit("/", 1)[-1]
+    filename = upload.filename
 
     doc = repo.create_container_document(
         tenant_id,
@@ -674,6 +730,50 @@ def generate_document_presigned_url(
         "s3_key": s3_key,
         "expires_in_seconds": upload.expires_in,
     }
+
+
+def confirm_document_upload(
+    tenant_id: str,
+    container_id: str,
+    doc_id: str,
+    actor_id: str,
+    actor_role: str,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Confirm a container document landed: check its stored size, then list it.
+
+    A file over the limit (possible on Azure, where the upload URL cannot bind the length) is deleted with its row.
+    Confirming an already confirmed document returns it unchanged.
+
+    Raises:
+        ResourceNotFoundError: The container or the document is not the tenant's.
+        BusinessRuleViolationError: ``UPLOAD_NOT_FOUND`` or ``FILE_TOO_LARGE``.
+    """
+    if not repo.get_container_by_id(tenant_id, container_id):
+        raise ResourceNotFoundError("container", container_id)
+    doc = repo.get_container_document_by_id(tenant_id, container_id, doc_id, include_unconfirmed=True)
+    if not doc:
+        raise ResourceNotFoundError("container_document", doc_id)
+    if doc.get("confirmed_at") is None:
+        try:
+            size = uploads.confirm_stored_upload(uploads.CONTAINER_DOCUMENT, str(doc["s3_key"]))
+        except BusinessRuleViolationError as exc:
+            if exc.rule_id == "FILE_TOO_LARGE":
+                logger.warning("Container document over the size limit deleted at confirmation (container_id=%s)", container_id)
+                repo.delete_unconfirmed_container_document(tenant_id, container_id, doc_id)
+            raise
+        doc = repo.confirm_container_document(tenant_id, container_id, doc_id, size) or doc
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="container_document",
+            entity_id=doc_id,
+            action="CREATE",
+            actor_id=actor_id,
+            actor_role=actor_role,
+            after_state={"container_id": container_id, "document_type": doc["document_type"], "file_size_bytes": size},
+            ip_address=ip_address,
+        )
+    return doc
 
 
 def list_container_documents(tenant_id: str, container_id: str) -> list[dict[str, Any]]:

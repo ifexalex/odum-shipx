@@ -1,12 +1,12 @@
 import { type JSX } from 'react'
 import { containerCapacityCbm } from '../../../api/containerRules'
 import { formatPackageMix } from '../../../api/packingListRules'
-import { Avatar, Card, Kvp, Mono } from '../../../design/components'
+import { Avatar, Card, Kvp, Mono, Button, Pressable } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../ContainerDetail.module.css'
-import { formatDate } from '../../../lib/format'
+import { formatCbm, formatDate } from '../../../lib/format'
 import { utilizationColorClass } from './labels'
-import { ContainerStepper, SummaryTile, EventRow } from './Timeline'
+import { SummaryTile, EventRow } from './Timeline'
 import { type Container, type ContainerEvent } from '../../../api/tracking'
 import { type PackingList } from '../../../api/packingList'
 
@@ -16,12 +16,15 @@ export function OverviewTab({
   packingLists,
   events,
   onShowTab,
+  onSelectCustomer,
 }: {
   container: Container
   packingLists: PackingList[]
   events: ContainerEvent[]
   /** The overview's "View all" links open the tracking and packing-list tabs. */
   onShowTab: (tab: 'packing-lists' | 'tracking') => void
+  /** Clicking a top shipper opens Packing lists filtered to that customer. */
+  onSelectCustomer?: (customerName: string) => void
 }): JSX.Element {
   const approvedCount = packingLists.filter((pl) => pl.status === 'approved').length
 
@@ -93,30 +96,13 @@ export function OverviewTab({
 
   return (
     <>
-      <Card>
-        <SectionHead
-          title="Tracking pipeline"
-          sub="China-side stages in blue · Nigeria-side stages in green"
-        />
-        <div className={styles.stepperSpacer} />
-        <ContainerStepper current={container.status} />
-      </Card>
-      <div className={styles.gridSpacer} />
       <div className={styles.grid2}>
         <Card>
           <SectionHead title="Container info" />
-          <Kvp label="Container #" value={<Mono>{container.container_number}</Mono>} />
-          <Kvp label="Container type" value={container.container_type ?? '—'} />
-          <Kvp
-            label="Seal #"
-            value={container.seal_number ? <Mono>{container.seal_number}</Mono> : '—'}
-          />
-          <Kvp label="Vessel" value={container.vessel_name ?? '—'} />
-          <Kvp
-            label="Voyage"
-            value={container.voyage_number ? <Mono>{container.voyage_number}</Mono> : '—'}
-          />
-          <Kvp label="Shipping line" value={container.shipping_line ?? '—'} />
+          {/* Number, type, vessel and voyage are in the page header; each fact is stated once (FD-19). Optional facts are
+              left out when empty (FD-17). */}
+          <Kvp optional label="Seal #" value={container.seal_number && <Mono>{container.seal_number}</Mono>} />
+          <Kvp optional label="Shipping line" value={container.shipping_line} />
           <Kvp
             label="Created by"
             value={
@@ -144,7 +130,7 @@ export function OverviewTab({
             />
             <SummaryTile
               label="Total CBM"
-              value={totalCbm.toFixed(2)}
+              value={formatCbm(totalCbm)}
               sub={capacityCbm ? `of ${capacityCbm} capacity` : 'packed'}
             />
           </div>
@@ -161,8 +147,8 @@ export function OverviewTab({
                 />
               </div>
               <div className={styles.utilSub}>
-                {totalCbm.toFixed(2)} of {capacityCbm} CBM packed · room for{' '}
-                {Math.max(capacityCbm! - totalCbm, 0).toFixed(2)} more
+                {formatCbm(totalCbm)} of {capacityCbm} CBM packed · room for{' '}
+                {formatCbm(Math.max(capacityCbm! - totalCbm, 0))} more
                 {recommendedCbm ? ` · recommended ${recommendedCbm} CBM` : ''}
               </div>
             </div>
@@ -172,17 +158,13 @@ export function OverviewTab({
 
       <div className={styles.gridSpacer} />
       <div className={styles.grid2}>
-        <Card padding={0}>
+        <Card padding="none">
           <div className={styles.tableHead}>
             <SectionHead title="Recent events" sub="Last 5 tracking events" />
             {events.length > 5 && (
-              <button
-                type="button"
-                className={styles.viewAllLink}
-                onClick={() => onShowTab('tracking')}
-              >
-                View all →
-              </button>
+              <Button variant="ghost" size="sm" trailingIcon="arrowright" onClick={() => onShowTab('tracking')}>
+                View all
+              </Button>
             )}
           </div>
           <div className={styles.eventList}>
@@ -203,13 +185,9 @@ export function OverviewTab({
               sub={`${distinctCustomers} customer${distinctCustomers === 1 ? '' : 's'} on this container`}
             />
             {hasMoreCustomers && (
-              <button
-                type="button"
-                className={styles.viewAllLink}
-                onClick={() => onShowTab('packing-lists')}
-              >
-                View all →
-              </button>
+              <Button variant="ghost" size="sm" trailingIcon="arrowright" onClick={() => onShowTab('packing-lists')}>
+                View all
+              </Button>
             )}
           </div>
           {topShippers.length === 0 ? (
@@ -219,25 +197,32 @@ export function OverviewTab({
               {topShippers.map((group) => {
                 const share = totalCbm > 0 ? (group.cbm / totalCbm) * 100 : 0
                 return (
-                  <div key={group.name} className={styles.shipperRow}>
-                    <Avatar size={28} name={group.name} roleColor="nigeria" />
-                    <div className={styles.shipperBody}>
-                      <div className={styles.shipperTop}>
-                        <span className={styles.shipperName} title={group.name}>
-                          {group.name}
-                        </span>
-                        <span className={styles.shipperCbm}>
-                          <Mono>{group.cbm.toFixed(2)}</Mono> CBM
-                        </span>
-                      </div>
-                      <div className={styles.shipperBarRow}>
-                        <div className={styles.shipperBarTrack}>
-                          <div className={styles.shipperBarFill} style={{ width: `${share}%` }} />
+                  <Pressable
+                    key={group.name}
+                    className={styles.shipperBtn}
+                    onClick={() => onSelectCustomer?.(group.name)}
+                    aria-label={`View packing lists for ${group.name}`}
+                  >
+                    <div className={styles.shipperRow}>
+                      <Avatar size={28} name={group.name} roleColor="nigeria" />
+                      <div className={styles.shipperBody}>
+                        <div className={styles.shipperTop}>
+                          <span className={styles.shipperName} title={group.name}>
+                            {group.name}
+                          </span>
+                          <span className={styles.shipperCbm}>
+                            <Mono>{formatCbm(group.cbm)}</Mono> CBM
+                          </span>
                         </div>
-                        <span className={styles.shipperPct}>{share.toFixed(0)}%</span>
+                        <div className={styles.shipperBarRow}>
+                          <div className={styles.shipperBarTrack}>
+                            <div className={styles.shipperBarFill} style={{ width: `${share}%` }} />
+                          </div>
+                          <span className={styles.shipperPct}>{share.toFixed(0)}%</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </Pressable>
                 )
               })}
             </div>

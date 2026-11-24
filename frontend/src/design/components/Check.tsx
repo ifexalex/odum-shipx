@@ -3,6 +3,8 @@ import styles from './Check.module.css'
 import { Icon } from './Icon'
 
 export interface CheckProps {
+  /** What ticking it means ("Select row 3", "China office"). Required: the box has no text of its own (FD-50). */
+  label: string
   checked?: boolean
   partial?: boolean
   disabled?: boolean
@@ -12,7 +14,7 @@ export interface CheckProps {
 // Checkbox primitive supporting a tri-state ("partial") visual for
 // select-all headers. A real native checkbox can't render the partial dot
 // with our Icon set, so this is a role="checkbox" div with full keyboard support.
-export function Check({ checked = false, partial = false, disabled = false, onChange }: CheckProps): JSX.Element {
+export function Check({ label, checked = false, partial = false, disabled = false, onChange }: CheckProps): JSX.Element {
   const toggle = (): void => {
     if (disabled) return
     onChange?.(!checked)
@@ -27,6 +29,7 @@ export function Check({ checked = false, partial = false, disabled = false, onCh
   return (
     <span
       role="checkbox"
+      aria-label={label}
       aria-checked={partial ? 'mixed' : checked}
       aria-disabled={disabled}
       tabIndex={disabled ? -1 : 0}

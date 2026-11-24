@@ -29,6 +29,7 @@ See docs/project docs/frontend/04_auth_and_session.md and
 """
 
 import base64
+import hmac
 import json
 import logging
 import os
@@ -36,7 +37,7 @@ import time
 import uuid
 from typing import Any
 
-from shared import rate_limit
+from shared import providers, rate_limit
 from shared.exceptions import AuthenticationRequiredError, LogisticsBaseError, ResourceNotFoundError
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing
@@ -323,9 +324,10 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
         tx = json.loads(base64.urlsafe_b64decode(raw_tx))
     except (ValueError, json.JSONDecodeError) as exc:
         raise AuthenticationRequiredError() from exc
-    # Constant-time-ish state check — the transaction cookie is httpOnly, so this
-    # guards against a forged/replayed callback, not a cookie-reading attacker.
-    if not tx.get("s") or tx.get("s") != req.state:
+    # Constant-time state check — the transaction cookie is httpOnly, so this
+    # guards against a forged/replayed callback.
+    expected_state = str(tx.get("s") or "")
+    if not expected_state or not hmac.compare_digest(expected_state, req.state):
         raise AuthenticationRequiredError()
 
     tokens = entra_refresh.authorization_code_grant(
@@ -333,6 +335,16 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
         code_verifier=str(tx.get("v", "")),
         redirect_uri=entra_oauth.redirect_uri(),
     )
+    # Verify OIDC nonce matches the transaction cookie to block token substitution.
+    expected_nonce = str(tx.get("n") or "")
+    if expected_nonce:
+        try:
+            id_claims = _decode_claims(tokens["id_token"])
+        except Exception as exc:
+            raise AuthenticationRequiredError() from exc
+        actual_nonce = str(id_claims.get("nonce") or "")
+        if not actual_nonce or not hmac.compare_digest(expected_nonce, actual_nonce):
+            raise AuthenticationRequiredError()
     _log_id_token_shape(tokens["id_token"], request_id)
     body = json.dumps(
         {
@@ -367,15 +379,22 @@ def _login(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     """
     rate_limit.hit_for_client(rate_limit.LOGIN_IP, event)
     req = parse_validated(LoginRequest, _parse_body(event))
-    # Wrong passwords are counted per username, from any address, so a password cannot be worked
-    # through from many; a correct one resets the count, so a user's own typos do not lock them out.
-    rate_limit.peek(rate_limit.LOGIN_FAILURES, req.username)
+    # Wrong passwords are counted per canonical username (normalizing raw email
+    # to UPN on Entra so alternating email vs UPN aliases cannot double attempts).
+    rate_key = req.username.strip().lower()
+    if providers.AUTH_PROVIDER == "azure":
+        from shared.providers.azure.entra import email_to_upn
+
+        domain = os.environ.get("ENTRA_USER_DOMAIN", "")
+        if domain and "@" in rate_key:
+            rate_key = email_to_upn(rate_key, domain).lower()
+    rate_limit.peek(rate_limit.LOGIN_FAILURES, rate_key)
     try:
         tokens = _refresher().password_grant(req.username, req.password)
     except AuthenticationRequiredError:
-        rate_limit.record_failure(rate_limit.LOGIN_FAILURES, req.username)
+        rate_limit.record_failure(rate_limit.LOGIN_FAILURES, rate_key)
         raise
-    rate_limit.clear(rate_limit.LOGIN_FAILURES, req.username)
+    rate_limit.clear(rate_limit.LOGIN_FAILURES, rate_key)
     body = json.dumps(
         {
             "data": {
@@ -419,11 +438,15 @@ def _refresh(event: dict[str, Any], request_id: str) -> dict[str, Any]:
             }
         }
     )
-    return {
+    resp: dict[str, Any] = {
         "statusCode": 200,
         "headers": {**_STANDARD_HEADERS, "X-Request-Id": request_id},
         "body": body,
     }
+    rotated_rt = tokens.get("refresh_token")
+    if rotated_rt:
+        resp["cookies"] = [_cookie_header(str(rotated_rt), _COOKIE_MAX_AGE_SECONDS)]
+    return resp
 
 
 def _logout(event: dict[str, Any], request_id: str) -> dict[str, Any]:

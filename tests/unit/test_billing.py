@@ -436,17 +436,66 @@ class TestCancelBilling:
         from services.billing import service
 
         billing = _billing(status="unpaid")
-        cancelled = {**billing, "status": "cancelled"}
+        cancelled = service.repo.CancelledInvoice(
+            row={**billing, "status": "cancelled"}, credits_restored=[], carryovers_reopened=[]
+        )
 
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_confirmed_payment_count", return_value=0),
             patch.object(service.repo, "get_active_release_note_count", return_value=0),
+            patch.object(service.repo, "get_credit_applications", return_value=[]),
             patch.object(service.repo, "cancel_billing", return_value=cancelled),
             patch("services.billing.service.log_audit"),
         ):
             result = service.cancel_billing(TENANT_ID, "billing-001", "Data entry error", actor_id="u")
             assert result["status"] == "cancelled"
+            assert result["credits_restored_ngn"] == Decimal("0") and result["carryovers_reopened"] == 0
+
+    def test_cancel_reports_and_audits_what_it_gave_back(self):
+        from services.billing import service
+
+        billing = _billing(status="unpaid", credits_applied_ngn=Decimal("7000"))
+        cancelled = service.repo.CancelledInvoice(
+            row={**billing, "status": "cancelled"},
+            credits_restored=[("r1", Decimal("5000")), ("r2", Decimal("2000"))],
+            carryovers_reopened=["c1"],
+        )
+        applications = [{"amount_ngn": Decimal("5000")}, {"amount_ngn": Decimal("2000")}]
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=billing),
+            patch.object(service.repo, "get_confirmed_payment_count", return_value=0),
+            patch.object(service.repo, "get_active_release_note_count", return_value=0),
+            patch.object(service.repo, "get_credit_applications", return_value=applications),
+            patch.object(service.repo, "cancel_billing", return_value=cancelled),
+            patch("services.billing.service.log_audit") as audit,
+        ):
+            result = service.cancel_billing(TENANT_ID, "billing-001", "Wrong container", actor_id="u")
+        assert result["credits_restored_ngn"] == Decimal("7000") and result["carryovers_reopened"] == 1
+        after = audit.call_args.kwargs["after_state"]
+        assert after["credits_restored"] == [
+            {"refund_request_id": "r1", "amount_ngn": "5000"},
+            {"refund_request_id": "r2", "amount_ngn": "2000"},
+        ]
+        assert after["carryovers_reopened"] == ["c1"]
+
+    def test_an_invoice_whose_credit_use_was_never_recorded_is_refused(self):
+        """Issued before migration 070: which credit to give back is unknown."""
+        from services.billing import service
+        from shared.exceptions import BusinessRuleViolationError
+
+        billing = _billing(status="unpaid", credits_applied_ngn=Decimal("3000"))
+        with (
+            patch.object(service.repo, "get_billing_by_id", return_value=billing),
+            patch.object(service.repo, "get_confirmed_payment_count", return_value=0),
+            patch.object(service.repo, "get_active_release_note_count", return_value=0),
+            patch.object(service.repo, "get_credit_applications", return_value=[]),
+            patch.object(service.repo, "cancel_billing") as cancel,
+            pytest.raises(BusinessRuleViolationError) as caught,
+        ):
+            service.cancel_billing(TENANT_ID, "billing-001", "reason", actor_id="u")
+        assert caught.value.rule_id == "CREDIT_NOT_TRACEABLE"
+        cancel.assert_not_called()
 
     def test_billing_not_found_raises(self):
         from services.billing import service
@@ -514,6 +563,7 @@ class TestCancelBilling:
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_confirmed_payment_count", return_value=0),
             patch.object(service.repo, "get_active_release_note_count", return_value=0),
+            patch.object(service.repo, "get_credit_applications", return_value=[]),
             patch.object(service.repo, "cancel_billing", return_value=None),
         ):
             with pytest.raises(ResourceNotFoundError):
@@ -1039,7 +1089,7 @@ class TestDisputeList:
     def test_page_two_does_not_use_a_bare_id(self):
         """The cursor condition sits in WHERE, where `id` would be ambiguous across the joined tables."""
         query, _ = self._sql(cursor={"sort_value": "2026-11-10", "id": "d0"})
-        assert "d.id <" in query and "ORDER BY d.created_at DESC, d.id DESC" in query
+        assert "d.id <" in query and "ORDER BY d.created_at DESC NULLS LAST, d.id DESC" in query
         assert " AND id <" not in query and ", id DESC" not in query
 
 
@@ -1121,6 +1171,20 @@ class TestBillingListHandlerQueryParams:
         filters = mock_list.call_args.args[1]
         assert filters["q"] == "INV-2026"
 
+    @pytest.mark.parametrize(("value", "expected"), [("true", True), ("1", True), ("false", None), ("", None)])
+    def test_overdue_reaches_the_repo_only_when_asked_for(self, value, expected):
+        # What the list's "Overdue" stat opens (FD-18).
+        from services.billing import handler, service
+
+        with (
+            patch("services.billing.handler.get_tenant_context", return_value=_ctx(UserRole.NIGERIA_OFFICE_STAFF)),
+            patch.object(service, "list_billing", return_value=([], None, False)) as mock_list,
+        ):
+            resp = handler.lambda_handler(self._event({"overdue": value}), None)
+
+        assert resp["statusCode"] == 200
+        assert mock_list.call_args.args[1].get("overdue") is expected
+
 
 class TestHandlePaymentDueNotification:
     """Ground-truth gap found live, reported by the user (while investigating
@@ -1201,6 +1265,43 @@ class TestHandlePaymentDueNotification:
         assert mock_notify.call_args.kwargs["template_data"]["container_number"] == "ACME001"
         assert mock_notify.call_args.kwargs["template_data"]["warehouse_address"] == "12 Warehouse Rd, Lagos, Lagos"
         assert mock_notify.call_args.kwargs["customer_id"] == "customer-001"
+
+    def test_an_invoice_the_credit_covered_sends_no_payment_due_message(self):
+        """It used to send "NGN 0.00 due" by SMS, WhatsApp and email. The in-app bell says the credit covered it."""
+        from services.billing import service
+
+        big_credit = {
+            "id": "r1",
+            "amount_ngn": Decimal("99999999"),
+            "amount_approved_ngn": Decimal("99999999"),
+            "credit_applied_ngn": Decimal("0"),
+        }
+        patchers = self._mock_repo(
+            get_pending_credit_refunds=lambda *a: [big_credit],
+            get_customer_contact=lambda tid, cid: {
+                "id": cid,
+                "user_id": "portal-user-001",
+                "name": "Ngozi",
+                "phone": "+2348012345678",
+                "locale": "en",
+            },
+        )
+        try:
+            with (
+                patch("services.billing.service.publish_event"),
+                patch("services.billing.service.log_audit"),
+                patch("services.billing.service.enqueue_notifications") as mock_notify,
+                patch("services.billing.service.notify_staff") as mock_bell,
+            ):
+                outcome = service.handle_payment_due(TENANT_ID, "container-001", "customer-001", "ACME001")
+        finally:
+            for p in patchers:
+                p.stop()
+
+        assert outcome.status == "created"
+        mock_notify.assert_not_called()
+        mock_bell.assert_called_once()
+        assert "nothing to pay" in mock_bell.call_args.kwargs["body"]
 
     def test_a_notification_failure_does_not_fail_billing_creation(self):
         from services.billing import service

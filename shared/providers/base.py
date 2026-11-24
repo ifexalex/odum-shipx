@@ -115,6 +115,10 @@ class StorageProvider(Protocol):
         """Return the byte size of `key`, or None if it does not exist."""
         ...
 
+    def delete_object(self, key: str) -> None:
+        """Delete the one object at `key`; nothing happens if it does not exist."""
+        ...
+
     def delete_prefix(self, prefix: str) -> int:
         """Delete every object under `prefix` (including versions, for GDPR
         erasure) and return the count removed."""

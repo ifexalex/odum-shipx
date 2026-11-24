@@ -3,10 +3,10 @@ import { useState, type JSX } from 'react'
 import { billingApi, type Billing } from '../../../api/billing'
 import { ApiError } from '../../../api/client'
 import { billingKeys } from '../../../api/keys'
-import { Button, Card, Mono, Table } from '../../../design/components'
-import { formatNgn } from '../../../lib/format'
-import { SectionHead } from '../../../shell/SectionHead'
-import styles from '../BillingDetail.module.css'
+import { Button, Mono, Table, ConfirmDialog } from '../../../design/components'
+import { formatNgn, plural } from '../../../lib/format'
+import { toast } from '../../../design/toast'
+import { Section } from '../../../shell/Section'
 
 interface MiscChargesSectionProps {
   billing: Billing
@@ -25,6 +25,8 @@ export function MiscChargesSection({
   onError,
 }: MiscChargesSectionProps): JSX.Element | null {
   const [removingChargeId, setRemovingChargeId] = useState<string | null>(null)
+  // The charge waiting on a confirmation before it is removed (FD-24).
+  const [confirming, setConfirming] = useState<{ id: string; description: string; amount_ngn: string } | null>(null)
   // Full misc-charge rows (with ids) — the embedded misc_fees list has no ids,
   // so add/remove (prototype 7.2 AddChargeModal + removable rows) needs this.
   const { data: miscCharges = [], refetch: refetchCharges } = useQuery({
@@ -37,6 +39,7 @@ export function MiscChargesSection({
     setRemovingChargeId(chargeId)
     try {
       await billingApi.deleteMiscCharge(billing.id, chargeId)
+      toast.success('Charge removed')
       await refetchCharges()
       onChanged()
     } catch (err) {
@@ -48,54 +51,65 @@ export function MiscChargesSection({
 
   if (miscCharges.length === 0 && billing.misc_fees.length === 0) return null
   return (
-    <div className={styles.section}>
-      <SectionHead
-        title="Miscellaneous charges"
-        sub={miscCharges.length > 0 ? `${miscCharges.length} charge(s)` : undefined}
+    <Section title="Miscellaneous charges"
+        sub={miscCharges.length > 0 ? plural(miscCharges.length, 'charge') : undefined} flush>
+      <Table
+        columns={[
+          { title: 'Charge' },
+          { title: 'Type' },
+          { title: 'Amount (₦)', type: 'money' as const },
+          ...(canRemove ? [{ title: '', type: 'action' as const, width: '48px' }] : []),
+        ]}
+        rows={
+          miscCharges.length > 0
+            ? miscCharges.map((c) => ({
+                cells: [
+                  <span key="desc">{c.description}</span>,
+                  <span key="type" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                    {c.charge_type.replace(/_/g, ' ')}
+                  </span>,
+                  <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
+                  ...(canRemove
+                    ? [
+                        <Button
+                          key="rm"
+                          variant="danger-ghost"
+                          size="sm"
+                          icon="x"
+                          aria-label={`Remove charge ${c.description}`}
+                          loading={removingChargeId === c.id}
+                          onClick={() => setConfirming(c)}
+                        />,
+                      ]
+                    : []),
+                ],
+              }))
+            : billing.misc_fees.map((f) => ({
+                cells: [
+                  <span key="desc">{f.description}</span>,
+                  <span key="type" />,
+                  <Mono key="amt">{formatNgn(f.amount_ngn)}</Mono>,
+                  ...(canRemove ? [<span key="rm" />] : []),
+                ],
+              }))
+        }
       />
-      <Card padding={0}>
-        <Table
-          columns={[
-            { title: 'Charge' },
-            { title: 'Type' },
-            { title: 'Amount (₦)', align: 'right' },
-            ...(canRemove ? [{ title: '', width: '48px' }] : []),
-          ]}
-          rows={
-            miscCharges.length > 0
-              ? miscCharges.map((c) => ({
-                  cells: [
-                    <span key="desc">{c.description}</span>,
-                    <span key="type" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                      {c.charge_type.replace(/_/g, ' ')}
-                    </span>,
-                    <Mono key="amt">{formatNgn(c.amount_ngn)}</Mono>,
-                    ...(canRemove
-                      ? [
-                          <Button
-                            key="rm"
-                            variant="ghost"
-                            size="sm"
-                            icon="x"
-                            aria-label="Remove charge"
-                            loading={removingChargeId === c.id}
-                            onClick={() => void handleRemoveCharge(c.id)}
-                          />,
-                        ]
-                      : []),
-                  ],
-                }))
-              : billing.misc_fees.map((f) => ({
-                  cells: [
-                    <span key="desc">{f.description}</span>,
-                    <span key="type" />,
-                    <Mono key="amt">{formatNgn(f.amount_ngn)}</Mono>,
-                    ...(canRemove ? [<span key="rm" />] : []),
-                  ],
-                }))
-          }
-        />
-      </Card>
-    </div>
+
+      <ConfirmDialog
+        open={confirming !== null}
+        title={`Remove ${confirming?.description ?? 'this charge'}?`}
+        confirmLabel="Remove charge"
+        undo="You can add the charge again if it was removed by mistake."
+        busy={removingChargeId !== null}
+        onConfirm={async () => {
+          if (!confirming) return
+          await handleRemoveCharge(confirming.id)
+          setConfirming(null)
+        }}
+        onCancel={() => setConfirming(null)}
+      >
+        {confirming && `${formatNgn(confirming.amount_ngn)} comes off this invoice's total.`}
+      </ConfirmDialog>
+    </Section>
   )
 }

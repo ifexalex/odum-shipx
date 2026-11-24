@@ -44,3 +44,26 @@ CONTAINER_LIST_COLUMNS: list[Column] = [
     Column("seal_number", "Seal Number"),
     Column("created_at", "Created At (UTC)", "datetime"),
 ]
+
+#: A container's tracking events, oldest first: what the "Export" button on the container's tracking tab downloads.
+CONTAINER_EVENT_COLUMNS: list[Column] = [
+    Column("created_at", "Time (UTC)", "datetime"),
+    Column("from_status_label", "From"),
+    Column("to_status_label", "To"),
+    Column("actor_name", "Updated By"),
+    Column("actor_role_label", "Role"),
+    Column("notes", "Notes"),
+]
+
+#: The reports page's "CBM & billing by container" table, every container billed in the period: what its "Export"
+#: button downloads. Rates are the average over the container's invoices, as on the page.
+REPORT_CONTAINER_BILLING_COLUMNS: list[Column] = [
+    Column("container_number", "Container"),
+    Column("customers", "Customers", "integer"),
+    Column("cbm", "Volume (CBM)", "number"),
+    Column("cbm_rate_usd", "Average CBM Rate (USD)", "money"),
+    Column("dollar_rate", "Average Dollar Rate (NGN per USD)", "money"),
+    Column("billed", "Billed (NGN)", "money"),
+    Column("collected", "Collected (NGN)", "money"),
+    Column("outstanding", "Outstanding (NGN)", "money"),
+]

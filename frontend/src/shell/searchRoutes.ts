@@ -41,7 +41,7 @@ const PLACEHOLDERS: Partial<Record<UserRole, string>> = {
   nigeria_office_staff: 'Search containers, invoices, customers…',
   china_office_staff: 'Search containers, shipments…',
   warehouse_attendant: 'Search release notes…',
-  customer: 'Search my shipments, invoices…',
+  customer: 'Search shipments, invoices…',
 }
 
 /** The search box's placeholder for a role, or null if that role has no global search (platform admins span tenants). */

@@ -5,7 +5,7 @@ import { groupUnbilledByContainer } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
 import { billingKeys } from '../../api/keys'
-import { Banner, Button, Modal, Mono } from '../../design/components'
+import { Banner, Button, Modal, Mono, Select, LinesSkeleton } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { InvoiceOutcomeBanner } from '../china/InvoiceOutcomeBanner'
 import styles from './GenerateBillingModal.module.css'
@@ -17,6 +17,8 @@ interface Outcome {
 
 export interface GenerateBillingModalProps {
   onClose: () => void
+  /** Pre-select a specific container when launched from a container or manifest page. */
+  initialContainerId?: string
 }
 
 function plural(count: number, noun: string): string {
@@ -32,8 +34,8 @@ function plural(count: number, noun: string): string {
  * there is nothing to do for the rest. Mount it only while open, so each opening starts
  * from a clean picker.
  */
-export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JSX.Element {
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+export function GenerateBillingModal({ onClose, initialContainerId }: GenerateBillingModalProps): JSX.Element {
+  const [selectedId, setSelectedId] = useState<string | null>(initialContainerId ?? null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
@@ -71,7 +73,7 @@ export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JS
         open
         onClose={onClose}
         title="Generate billing"
-        footer={<Button variant="primary" onClick={onClose}>Done</Button>}
+        footer={<Button variant="primary" mutates={false} onClick={onClose}>Done</Button>}
       >
         {outcome.results.length === 0 ? (
           <Banner variant="info" title="Nothing to invoice">
@@ -108,7 +110,7 @@ export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JS
           {unbilledQ.error instanceof ApiError ? unbilledQ.error.message : 'Try again in a moment.'}
         </Banner>
       ) : unbilledQ.isPending ? (
-        <p className={styles.muted}>Loading containers…</p>
+        <LinesSkeleton label="Loading containers" />
       ) : containers.length === 0 ? (
         <Banner variant="success" title="Nothing to invoice">
           Every customer on a cleared container already has an invoice. Containers are invoiced when they are
@@ -126,13 +128,11 @@ export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JS
             </Banner>
           )}
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="generate_billing_container">Container</label>
             {/* A native select, not the searchable Combobox: the modal body scrolls, which clips
                 the Combobox's dropdown. The list is short by nature — only containers that still
                 have a customer to invoice. */}
-            <select
+            <Select label="Container"
               id="generate_billing_container"
-              className={styles.select}
               value={activeId ?? ''}
               onChange={(e) => setSelectedId(e.target.value || null)}
             >
@@ -142,7 +142,7 @@ export function GenerateBillingModal({ onClose }: GenerateBillingModalProps): JS
                   {c.containerNumber} — {plural(c.customers.length, 'customer')} · {formatCbm(c.totalCbm)} CBM
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           {active && (
             <ul className={styles.customers} aria-label={`Customers on ${active.containerNumber} without an invoice`}>

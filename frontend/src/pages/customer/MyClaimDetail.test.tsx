@@ -65,9 +65,10 @@ describe('MyClaimDetail (UX-07)', () => {
     vi.mocked(claimsApi.get).mockResolvedValue(CLAIM)
     renderPage()
     const steps = within(await screen.findByRole('list', { name: 'Claim progress' }))
-    expect(steps.getByText('✓ Filed')).toBeInTheDocument()
-    expect(steps.getByText('Under inspection')).toHaveAttribute('aria-current', 'step')
-    expect(steps.getByText('Resolved')).not.toHaveAttribute('aria-current')
+    const item = (name: string): HTMLElement => steps.getByText(name).closest('li')!
+    expect(item('Filed')).toHaveTextContent(/done/)
+    expect(item('Under inspection')).toHaveAttribute('aria-current', 'step')
+    expect(item('Resolved')).not.toHaveAttribute('aria-current')
   })
 
   it('lists the evidence with a link that opens safely in a new tab', async () => {

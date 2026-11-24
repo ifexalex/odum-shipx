@@ -182,14 +182,25 @@ def enqueue_notification(
         record_suppressed(tenant_id, template_id, channel, customer_id, recipient, f"customer has not agreed to {channel}")
         return False
 
-    # Check tenant notification preferences
+    # Check tenant notification preferences (both legacy per-channel dict and canonical should_notify keys)
     try:
         prefs = _get_notification_prefs(tenant_id)
         channel_prefs = prefs.get(channel, {})
-        if isinstance(channel_prefs, dict) and channel_prefs.get("enabled") is False:
+        if (isinstance(channel_prefs, dict) and channel_prefs.get("enabled") is False) or (
+            prefs.get(f"{channel}_enabled", True) is False
+        ):
             logger.info(
                 "Notification channel '%s' disabled for tenant %s — suppressed",
                 channel,
+                tenant_id,
+            )
+            return False
+        event_channels = (prefs.get("events") or {}).get(template_id)
+        if event_channels is not None and channel not in event_channels:
+            logger.info(
+                "Notification channel '%s' for event '%s' disabled for tenant %s — suppressed",
+                channel,
+                template_id,
                 tenant_id,
             )
             return False
@@ -210,18 +221,28 @@ def enqueue_notification(
         )
         return False
 
-    message_body = json.dumps(
-        {
-            "tenant_id": tenant_id,
-            "channel": channel,
-            "recipient": recipient,
-            "template_id": template_id,
-            "template_vars": template_vars,
-            "locale": locale,
-            "request_id": request_id,
-            "customer_id": customer_id,
-        }
-    )
+    recipient_dict = {"email": recipient} if channel == "email" else {"phone": recipient, "whatsapp": recipient}
+    branding = _tenant_branding(tenant_id)
+    custom_tmpl = _get_custom_template(tenant_id, template_id, channel)
+    template_override = _build_template_override(channel, custom_tmpl) if custom_tmpl else None
+
+    payload: dict[str, Any] = {
+        "tenant_id": tenant_id,
+        "event_type": template_id,
+        "channel": channel,
+        "recipient": recipient_dict,
+        "tenant_branding": branding,
+        "template_data": template_vars,
+        "template_id": template_id,
+        "template_vars": template_vars,
+        "locale": locale,
+        "request_id": request_id,
+        "customer_id": customer_id,
+    }
+    if template_override:
+        payload["template_override"] = template_override
+
+    message_body = json.dumps(payload)
 
     try:
         get_queue_provider().send(destination=queue_url, body=message_body)
@@ -404,9 +425,11 @@ def _tenant_branding(tenant_id: str) -> dict[str, Any]:
         return {}
     if not rows:
         return {}
-    branding: dict[str, Any] = dict(rows[0]["branding_config"] or {})
+    branding: dict[str, Any] = dict(rows[0].get("branding_config") or {})
     # Only as a floor: a tenant that set `display_name` keeps it.
-    branding.setdefault("company_name", rows[0]["company_name"] or "")
+    company_name = rows[0].get("company_name") or ""
+    if company_name:
+        branding.setdefault("company_name", company_name)
     return branding
 
 

@@ -120,6 +120,24 @@ class TestBlobStorageProvider:
         )
         assert captured["content_disposition"] == 'attachment; filename="safe.pdf"'
 
+    def test_delete_object_removes_only_that_key(self, blob_provider):
+        blob_provider.put_object("tenant-1/a.png", b"a", content_type="image/png")
+        blob_provider.put_object("tenant-1/a.png2", b"b", content_type="image/png")
+        blob_provider.delete_object("tenant-1/a.png")
+        assert blob_provider.object_size("tenant-1/a.png") is None
+        assert blob_provider.object_size("tenant-1/a.png2") == 1
+
+    def test_delete_object_of_a_missing_blob_is_not_an_error(self, blob_provider, monkeypatch):
+        from azure.core.exceptions import ResourceNotFoundError
+
+        def missing(name, delete_snapshots):  # noqa: ARG001
+            raise ResourceNotFoundError("gone")
+
+        client = blob_provider._container_client()
+        monkeypatch.setattr(client, "delete_blob", missing)
+        monkeypatch.setattr(blob_provider, "_container_client", lambda: client)
+        blob_provider.delete_object("tenant-1/missing.png")
+
     def test_delete_prefix_removes_only_matching_keys_and_counts_them(self, blob_provider):
         blob_provider.put_object("tenant-1/a.txt", b"a", content_type="text/plain")
         blob_provider.put_object("tenant-1/nested/b.txt", b"b", content_type="text/plain")

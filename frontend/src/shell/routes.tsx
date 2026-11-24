@@ -6,6 +6,7 @@ import { SessionLoading } from '../auth/SessionLoading'
 import { useSession } from '../auth/useSession'
 import { lazyNamed } from '../lib/lazyPage'
 import { LandingPage } from '../pages/marketing/LandingPage'
+import { useDocumentTitle } from './documentTitle'
 import { NotFoundPage } from './NotFoundPage'
 import { routeTable, type RouteDef } from './routeTable'
 import { screenForRoute } from './screens'
@@ -35,6 +36,12 @@ function RootRedirect(): JSX.Element {
   return <LandingPage />
 }
 
+/** The tab title of a page with no app layout (sign-in, public tracking, print): its route's title (FD-48). */
+function RouteTitle(): null {
+  useDocumentTitle([])
+  return null
+}
+
 function elementForRoute(route: RouteDef): JSX.Element {
   // A route without a screen is a build error (routes.test.tsx). Should one ship anyway, say "not found" honestly
   // rather than render a placeholder that looks like a page.
@@ -42,7 +49,12 @@ function elementForRoute(route: RouteDef): JSX.Element {
 
   if (route.allow === 'public') {
     // A public screen that is not in the entry chunk loads on demand, on the same spinner the session restore uses.
-    return <Suspense fallback={<SessionLoading />}>{page}</Suspense>
+    return (
+      <Suspense fallback={<SessionLoading />}>
+        <RouteTitle />
+        {page}
+      </Suspense>
+    )
   }
 
   // Two boundaries. The outer one covers the layout's own chunk (the first guarded page of a session); the inner one
@@ -55,7 +67,10 @@ function elementForRoute(route: RouteDef): JSX.Element {
           <CustomerLayout>{content}</CustomerLayout>
         ) : route.layout === 'none' ? (
           // Guarded but shell-less — print/document views (14.12).
-          content
+          <>
+            <RouteTitle />
+            {content}
+          </>
         ) : (
           <StaffLayout>{content}</StaffLayout>
         )}
@@ -69,6 +84,24 @@ function elementForRoute(route: RouteDef): JSX.Element {
 // becomes exactly one <Route>, guarded and shelled per its own declaration,
 // so nav (navConfig.ts), guards, and the actual route tree all read from the
 // same source (06_routing_rbac_and_navigation.md).
+/**
+ * An address that matches no route (FD-55): a signed-in user keeps their layout and menu around the not-found page; a
+ * signed-out visitor gets the bare page.
+ */
+function UnknownPath(): JSX.Element {
+  const { session, status } = useSession()
+  if (status === 'loading') return <SessionLoading />
+  if (status !== 'authenticated' || !session) return <NotFoundPage />
+  const Layout = session.role === 'customer' ? CustomerLayout : StaffLayout
+  return (
+    <Suspense fallback={<SessionLoading />}>
+      <Layout>
+        <NotFoundPage inLayout />
+      </Layout>
+    </Suspense>
+  )
+}
+
 export function AppRoutes(): JSX.Element {
   return (
     <Routes>
@@ -76,7 +109,7 @@ export function AppRoutes(): JSX.Element {
       {routeTable.map((route) => (
         <Route key={route.path} path={route.path} element={elementForRoute(route)} />
       ))}
-      <Route path="*" element={<NotFoundPage />} />
+      <Route path="*" element={<UnknownPath />} />
     </Routes>
   )
 }

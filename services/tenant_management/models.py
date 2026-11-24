@@ -130,6 +130,8 @@ class CreateTenantUserRequest(BaseModel):
 
     @model_validator(mode="after")
     def _default_and_validate_primary_role(self) -> "CreateTenantUserRequest":
+        # Deduplicate while preserving order so duplicate roles cannot violate PK(tenant_user_id, role).
+        self.roles = list(dict.fromkeys(self.roles))
         if self.primary_role is None:
             self.primary_role = self.roles[0]
         elif self.primary_role not in self.roles:
@@ -153,6 +155,7 @@ class UpdateTenantUserRequest(BaseModel):
     @model_validator(mode="after")
     def _default_and_validate_primary_role(self) -> "UpdateTenantUserRequest":
         if self.roles is not None:
+            self.roles = list(dict.fromkeys(self.roles))
             if self.primary_role is None:
                 self.primary_role = self.roles[0]
             elif self.primary_role not in self.roles:
@@ -202,6 +205,8 @@ class BankTransferConfigRequest(BaseModel):
     account. This makes it a real per-tenant setting instead.
     """
 
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     bank_name: str = Field(min_length=1, max_length=100)
     account_name: str = Field(min_length=1, max_length=200)
     account_number: str = Field(min_length=1, max_length=50)
@@ -214,6 +219,21 @@ class UpdateTenantConfigRequest(BaseModel):
     notification_preferences: dict[str, Any] | None = None
     webhook_config: WebhookConfigRequest | None = None
     bank_transfer_config: BankTransferConfigRequest | None = None
+
+
+class LogoUploadRequest(BaseModel):
+    """Presigned-upload request for the tenant's logo (FD-29)."""
+
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(min_length=1, max_length=100)
+    #: The file's size in bytes; at most 5 MB (shared.uploads.TENANT_LOGO), checked by the upload policy.
+    size_bytes: int | None = None
+
+
+class SetLogoRequest(BaseModel):
+    """Use an uploaded file as the tenant's logo (FD-29). The key must be one this tenant's presign returned."""
+
+    file_key: str = Field(min_length=1, max_length=512)
 
 
 class PaystackConfigRequest(BaseModel):

@@ -16,11 +16,29 @@ def _status_list(filters: dict[str, Any]) -> list[str]:
     return [statuses] if isinstance(statuses, str) else list(statuses)
 
 
+def overdue_condition(alias: str = "") -> str:
+    """SQL condition for an overdue invoice: money still owed on it, billed more than 30 days ago.
+
+    The one definition, shared by the billing stats ("Overdue (30+ days)") and the invoice list's `overdue` filter
+    that the stat opens (FD-18), so the number and the list it leads to cannot disagree. A fixed fragment, no input.
+
+    Args:
+        alias: The billing table's alias in the caller's query (`"b"`), or empty for an unaliased query.
+    """
+    col = f"{alias}." if alias else ""
+    return (
+        f"{col}status NOT IN ('paid', 'waived', 'cancelled')"
+        f" AND {col}balance_ngn > 0"
+        f" AND {col}billed_at < now() - interval '30 days'"
+    )
+
+
 def billing_filter(tenant_id: str, filters: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     """WHERE clause and parameters for the invoice list (aliases `b` billing, `cu` customer, `c` container).
 
-    Recognised filters: `status`, `customer_id`, `created_after` / `created_before` (on `billed_at`), and `q`, a
-    free-text match on invoice number, customer name or container number.
+    Recognised filters: `status`, `customer_id`, `created_after` / `created_before` (on `billed_at`), `overdue`
+    (true: only overdue invoices, `overdue_condition`), and `q`, a free-text match on invoice number, customer name or
+    container number.
     """
     conditions = ["b.tenant_id = %(tenant_id)s"]
     params: dict[str, Any] = {"tenant_id": tenant_id}
@@ -37,6 +55,8 @@ def billing_filter(tenant_id: str, filters: dict[str, Any]) -> tuple[str, dict[s
     if filters.get("created_before"):
         conditions.append("b.billed_at <= %(created_before)s")
         params["created_before"] = filters["created_before"]
+    if filters.get("overdue"):
+        conditions.append(f"({overdue_condition('b')})")
     if filters.get("q"):
         conditions.append("(b.invoice_number ILIKE %(q)s OR cu.name ILIKE %(q)s OR c.container_number ILIKE %(q)s)")
         params["q"] = f"%{filters['q']}%"

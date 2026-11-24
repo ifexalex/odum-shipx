@@ -13,10 +13,10 @@ after each run).
 """
 
 import logging
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing, record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
@@ -37,7 +37,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     bind_log_context(request_id=getattr(context, "aws_request_id", None))
     # Aggregate all completed days (yesterday and earlier) — never today,
     # since today's records are still accumulating.
-    yesterday = date.today() - timedelta(days=1)
+    yesterday = datetime.now(UTC).date() - timedelta(days=1)
 
     tenants = _get_active_tenants()
     aggregated = errors = 0
@@ -76,11 +76,13 @@ def _aggregate_tenant(tenant_id: str, up_to: date) -> int:
         """
         SELECT metric_type,
                period_start,
+               MAX(period_end)     AS period_end,
                SUM(value)::DECIMAL AS total_value,
                COUNT(*)            AS row_count
         FROM usage_record
-        WHERE tenant_id   = %s
+        WHERE tenant_id    = %s
           AND period_start <= %s
+          AND period_end   = period_start
         GROUP BY metric_type, period_start
         HAVING COUNT(*) > 1
         ORDER BY period_start ASC, metric_type ASC
@@ -91,6 +93,7 @@ def _aggregate_tenant(tenant_id: str, up_to: date) -> int:
     if not groups:
         return 0
 
+    consolidated = 0
     for group in groups:
         try:
             _consolidate_group(
@@ -98,7 +101,9 @@ def _aggregate_tenant(tenant_id: str, up_to: date) -> int:
                 metric_type=group["metric_type"],
                 period_start=group["period_start"],
                 total_value=group["total_value"],
+                period_end=group.get("period_end"),
             )
+            consolidated += 1
         except Exception:
             logger.exception(
                 "Failed to consolidate usage group tenant=%s metric=%s period=%s",
@@ -110,12 +115,12 @@ def _aggregate_tenant(tenant_id: str, up_to: date) -> int:
 
     logger.info(
         "Aggregated %d usage groups for tenant %s up to %s",
-        len(groups),
+        consolidated,
         tenant_id,
         up_to,
         extra={"tenant_id": tenant_id},
     )
-    return len(groups)
+    return consolidated
 
 
 def _consolidate_group(
@@ -123,45 +128,48 @@ def _consolidate_group(
     metric_type: str,
     period_start: date,
     total_value: Any,
+    period_end: date | None = None,
 ) -> None:
-    """Delete individual rows for a group and insert one aggregated row."""
-    # Delete all rows for this group
-    execute_write_with_tenant(
-        tenant_id,
-        """
-        DELETE FROM usage_record
-        WHERE tenant_id   = %(tenant_id)s
-          AND metric_type = %(metric_type)s
-          AND period_start = %(period_start)s
-        RETURNING id
-        """,
-        {
-            "tenant_id": tenant_id,
-            "metric_type": metric_type,
-            "period_start": period_start,
-        },
-    )
-
-    # Re-insert the aggregated row
-    execute_write_with_tenant(
-        tenant_id,
-        """
-        INSERT INTO usage_record (
-            tenant_id, metric_type, value, period_start, period_end
-        ) VALUES (
-            %(tenant_id)s, %(metric_type)s, %(value)s,
-            %(period_start)s, %(period_end)s
+    """Delete individual rows for a group and insert one aggregated row atomically."""
+    resolved_period_end = period_end if period_end is not None else period_start
+    with tenant_transaction(tenant_id):
+        execute_write_with_tenant(
+            tenant_id,
+            """
+            DELETE FROM usage_record
+            WHERE tenant_id    = %(tenant_id)s
+              AND metric_type  = %(metric_type)s
+              AND period_start = %(period_start)s
+              AND period_end   = %(period_end)s
+            RETURNING id
+            """,
+            {
+                "tenant_id": tenant_id,
+                "metric_type": metric_type,
+                "period_start": period_start,
+                "period_end": resolved_period_end,
+            },
         )
-        RETURNING id
-        """,
-        {
-            "tenant_id": tenant_id,
-            "metric_type": metric_type,
-            "value": total_value,
-            "period_start": period_start,
-            "period_end": period_start,
-        },
-    )
+
+        execute_write_with_tenant(
+            tenant_id,
+            """
+            INSERT INTO usage_record (
+                tenant_id, metric_type, value, period_start, period_end
+            ) VALUES (
+                %(tenant_id)s, %(metric_type)s, %(value)s,
+                %(period_start)s, %(period_end)s
+            )
+            RETURNING id
+            """,
+            {
+                "tenant_id": tenant_id,
+                "metric_type": metric_type,
+                "value": total_value,
+                "period_start": period_start,
+                "period_end": resolved_period_end,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

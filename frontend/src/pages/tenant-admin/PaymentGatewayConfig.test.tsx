@@ -77,7 +77,7 @@ describe('PaymentGatewayConfig', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Connect Paystack' }))
 
     await waitFor(() => expect(configApi.updatePaystackConfig).toHaveBeenCalledWith(VALID_KEY))
-    expect(await screen.findByText('Paystack key saved.')).toBeInTheDocument()
+    expect(await screen.findByText('Paystack key saved')).toBeInTheDocument()
   })
 
   it('runs a live test-connection check and shows the result', async () => {

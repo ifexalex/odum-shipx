@@ -1,44 +1,32 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, type Billing } from '../../api/billing'
 import { billingKeys, packingListKeys } from '../../api/keys'
 import { packingListApi } from '../../api/packingList'
 import { STALE_30S } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Icon, Mono, Table, ViewLink } from '../../design/components'
+import { Banner, Button, Card, EmptyState, Icon, Mono, QuickActionCard, StatCard, Table, StatusBadge, PageSkeleton } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import { useSession } from '../../auth/useSession'
 import { CustomerStepper } from './CustomerStepper'
 import styles from './MyShipments.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
-
-const ACTIVE_STATUSES = new Set([
-  'loading', 'sealed', 'in_transit', 'arrived', 'customs_clearance', 'cleared', 'at_warehouse',
-])
-
-const CONTAINER_STATUS_BADGE: Record<string, { label: string; variant: 'info' | 'warning' | 'success' | 'neutral' }> = {
-  loading:           { label: 'Packing',     variant: 'info' },
-  sealed:            { label: 'Packed',      variant: 'info' },
-  in_transit:        { label: 'In transit',  variant: 'info' },
-  arrived:           { label: 'Arrived NG',  variant: 'warning' },
-  customs_clearance: { label: 'Customs',     variant: 'warning' },
-  cleared:           { label: 'Cleared',     variant: 'success' },
-  at_warehouse:      { label: 'Ready',       variant: 'success' },
-  fully_released:    { label: 'Delivered',   variant: 'success' },
-}
+import { formatCbm, formatDate, formatNgn, formatNgnCompact, plural, todayIso } from '../../lib/format'
+import { activeSummary, arrivalLabel, shipmentStage } from './shipmentStage'
+import { PageHeader } from '../../shell/PageHeader'
 
 function fmtNgn(val: string | number | null | undefined): string {
   return formatNgn(val)
 }
 
+// Money is ink; only an amount still owed is red (FD-27). The total cost was amber, with no meaning behind it.
 function CustStat({ label, value, color }: { label: string; value: string; color?: string }): JSX.Element {
   return (
     <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
         {label}
       </div>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: color ?? 'var(--color-ink)', marginTop: 2, letterSpacing: '-0.01em' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-xl)', color: color ?? 'var(--color-ink)', marginTop: 'var(--space-0-5)', letterSpacing: 'var(--tracking-tight)' }}>
         {value}
       </div>
     </div>
@@ -86,15 +74,26 @@ export function MyShipments(): JSX.Element {
 
   // Split into active and past
   const { active: activeShipments, past: pastShipments } = useMemo(() => {
-    const active = shipments.filter((pl) => pl.container_status && ACTIVE_STATUSES.has(pl.container_status))
-    const past = shipments.filter((pl) => pl.container_status === 'fully_released' || pl.container_status === 'cancelled')
+    const active = shipments.filter((pl) => {
+      const stage = shipmentStage(pl.container_status)
+      return stage === 'in_transit' || stage === 'ready_for_pickup'
+    })
+    const past = shipments.filter((pl) => shipmentStage(pl.container_status) === 'complete')
     return { active, past }
   }, [shipments])
 
-  // Stats for greeting
+  // Stats for greeting and KPI strip
   const outstandingTotal = useMemo(
     () => billing.reduce((sum, b) => sum + Number(b.outstanding_ngn ?? 0), 0),
     [billing],
+  )
+  const unpaidInvoices = useMemo(
+    () => billing.filter((b) => Number(b.outstanding_ngn ?? 0) > 0),
+    [billing],
+  )
+  const totalCartons = useMemo(
+    () => shipments.reduce((sum, pl) => sum + Number(pl.carton_count ?? 0), 0),
+    [shipments],
   )
 
   // Billing lookup by container_id for the active card
@@ -105,9 +104,10 @@ export function MyShipments(): JSX.Element {
   }, [billing])
 
   const name = session?.name?.split(' ')[0] ?? 'there'
+  const today = todayIso()
 
   if (loading) {
-    return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading your shipments…</div>
+    return <PageSkeleton kind="list" label="Loading your shipments" />
   }
 
   return (
@@ -118,24 +118,75 @@ export function MyShipments(): JSX.Element {
         </div>
       )}
 
-      {/* Greeting */}
-      <div className={styles.greeting}>
-        <div className={styles.greetingEyebrow}>My shipments</div>
-        <h2 className={styles.greetingTitle}>
-          Hello {name} 👋
-          {activeShipments.length === 1
-            ? ' — your shipment is moving.'
-            : activeShipments.length > 1
-              ? ` — ${activeShipments.length} shipments on the way.`
-              : ' — no active shipments right now.'}
-        </h2>
-        <p className={styles.greetingSub}>
-          {activeShipments.length} active
-          {' · '}
-          {pastShipments.length} completed
-          {outstandingTotal > 0 && ` · ${fmtNgn(outstandingTotal)} outstanding balance to settle`}
-        </p>
-      </div>
+      <PageHeader
+        title="My shipments"
+        meta={[
+          `Hello ${name}`,
+          // By stage, not "5 on the way" counting ones already waiting at the warehouse (FD-27).
+          activeSummary(activeShipments.map((pl) => pl.container_status)),
+          `${pastShipments.length} completed`,
+          outstandingTotal > 0 && `${fmtNgn(outstandingTotal)} outstanding`,
+        ]}
+      />
+
+      {/* Executive KPI overview — gives customers instant clarity at a glance */}
+      {shipments.length > 0 && (
+        <div className={styles.statsRow}>
+          <StatCard
+            label="Active shipments"
+            value={activeShipments.length}
+            icon="ship"
+            sublabel={activeShipments.length > 0 ? 'currently moving' : 'none in transit'}
+          />
+          <StatCard
+            label="Completed"
+            value={pastShipments.length}
+            icon="check"
+            sublabel="delivered shipments"
+          />
+          <StatCard
+            label="Total cartons"
+            value={totalCartons}
+            icon="package"
+            sublabel="across all shipments"
+          />
+          <StatCard
+            label="Balance due"
+            value={outstandingTotal > 0 ? formatNgnCompact(outstandingTotal) : '₦0'}
+            icon="coin"
+            accentColor={outstandingTotal > 0 ? 'var(--color-error)' : undefined}
+            sublabel={outstandingTotal > 0 ? 'click to review billing' : 'all paid up'}
+            onSelect={outstandingTotal > 0 ? () => navigate('/my-billing') : undefined}
+          />
+        </div>
+      )}
+
+      {/* Action-needed callout when there is an unpaid balance */}
+      {outstandingTotal > 0 && (
+        <div className={styles.actionBar}>
+          <div className={styles.actionLeft}>
+            <div className={styles.actionIcon}>
+              <Icon name="coin" size={18} stroke={2} />
+            </div>
+            <div>
+              <div className={styles.actionTitle}>
+                Balance due: {fmtNgn(outstandingTotal)}
+              </div>
+              <div className={styles.actionSub}>
+                You have {plural(unpaidInvoices.length, 'invoice')} with a remaining balance. Review your breakdown or settle online.
+              </div>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            trailingIcon="arrowright"
+            onClick={() => navigate('/my-billing')}
+          >
+            Review &amp; pay
+          </Button>
+        </div>
+      )}
 
       {/* Active shipments — every shipment still in transit, not just the most recent */}
       {activeShipments.length > 0 && (
@@ -148,9 +199,13 @@ export function MyShipments(): JSX.Element {
           <div className={styles.activeList}>
             {activeShipments.map((shipment) => {
               const b = billingByContainer.get(shipment.container_id)
-              const statusInfo = CONTAINER_STATUS_BADGE[shipment.container_status ?? '']
+              const arrival = arrivalLabel(shipment.container_status, shipment.container_eta, today)
+              const owed = b ? Number(b.outstanding_ngn) : 0
               return (
-                <Card key={shipment.id} padding={0} style={{ overflow: 'hidden' }}>
+                // The whole card opens the shipment (FD-27): the reference is a link stretched over the card, so
+                // there is one link per card for a screen reader and no separate button.
+                <div key={shipment.id} className={styles.activeCard}>
+                  <Card padding="none" style={{ overflow: 'hidden' }}>
                   <div className={styles.activeCardHeader}>
                     {/* Left — icon + reference + meta */}
                     <div className={styles.activeCardLeft}>
@@ -159,11 +214,13 @@ export function MyShipments(): JSX.Element {
                       </div>
                       <div>
                         <div className={styles.activeCardRef}>
-                          <Mono color="var(--color-ink)" style={{ fontSize: 16, fontWeight: 700 }}>
-                            {shipment.reference ?? shipment.id.slice(0, 8)}
-                          </Mono>
-                          {statusInfo && (
-                            <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                          <Link to={`/my-shipments/${shipment.id}`} className={styles.cardLink}>
+                            <Mono color="var(--color-ink)" style={{ fontSize: 'var(--text-lg)', fontWeight: 700 }}>
+                              {shipment.reference ?? shipment.id.slice(0, 8)}
+                            </Mono>
+                          </Link>
+                          {shipment.container_status && (
+                            <StatusBadge kind="container" status={shipment.container_status} audience="customer" />
                           )}
                         </div>
                         <div className={styles.activeCardMeta}>
@@ -174,14 +231,20 @@ export function MyShipments(): JSX.Element {
                         </div>
                       </div>
                     </div>
-                    {/* Right — ETA */}
-                    {shipment.container_eta && (
+                    {/* Right — arrival: expected, delayed or arrived, by the container's real stage */}
+                    {arrival && (
                       <div className={styles.activeCardEta}>
-                        <div className={styles.etaLabel}>Expected arrival</div>
-                        <div className={styles.etaDate}>
-                          {formatDate(shipment.container_eta)}
-                        </div>
-                        <div className={styles.etaSub}>Tin Can Port, Lagos</div>
+                        {arrival.label === 'Expected arrival' ? (
+                          <>
+                            <div className={styles.etaLabel}>{arrival.label}</div>
+                            <div className={styles.etaDate}>{arrival.detail}</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className={styles.etaDate}>{arrival.label}</div>
+                            {arrival.detail && <div className={styles.etaSub}>{arrival.detail}</div>}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -191,87 +254,111 @@ export function MyShipments(): JSX.Element {
                     <CustomerStepper containerStatus={shipment.container_status ?? null} />
                   </div>
 
-                  {/* Stats row + CTA */}
+                  {/* Stats row */}
                   <div className={styles.activeCardFooter}>
                     <div className={styles.footerStats}>
                       <CustStat label="Cartons" value={String(shipment.carton_count)} />
-                      <CustStat label="CBM" value={Number(shipment.total_cbm ?? 0).toFixed(3)} />
-                      <CustStat
-                        label="Total cost"
-                        value={b ? fmtNgn(b.total_due_ngn) : '—'}
-                        color={b ? 'var(--color-warning)' : undefined}
-                      />
+                      <CustStat label="CBM" value={formatCbm(shipment.total_cbm ?? 0)} />
+                      <CustStat label="Total cost" value={b ? fmtNgn(b.total_due_ngn) : '—'} />
                       <CustStat
                         label="Outstanding"
-                        value={b && Number(b.outstanding_ngn) > 0 ? fmtNgn(b.outstanding_ngn) : '—'}
-                        color={b && Number(b.outstanding_ngn) > 0 ? 'var(--color-error)' : undefined}
+                        value={owed > 0 ? fmtNgn(owed) : '—'}
+                        color={owed > 0 ? 'var(--color-error)' : undefined}
                       />
                     </div>
-                    <Button
-                      className={styles.footerCta}
-                      variant="primary"
-                      icon="arrowright"
-                      onClick={() => navigate(`/my-shipments/${shipment.id}`)}
-                    >
-                      View details
-                    </Button>
+                    <Icon name="chevright" size={20} color="var(--color-ink-4)" />
                   </div>
-                </Card>
+                  </Card>
+                </div>
               )
             })}
           </div>
         </>
       )}
 
-      {/* Past shipments table */}
+      {/* Past shipments table — Falcon card-header band + payment visibility */}
       {pastShipments.length > 0 && (
-        <>
-          <SectionHead
-            title="Past shipments"
-            sub={`Your previous ${pastShipments.length} deliveries`}
-          />
-          <div className={styles.sectionSpacer} />
-          <Card padding={0}>
-            <Table
-              columns={[
-                { title: 'Tracking code' },
-                { title: 'Container' },
-                { title: 'Status' },
-                { title: 'Cartons', align: 'right' },
-                { title: 'Delivered' },
-                { title: 'Amount paid', align: 'right' },
-                { title: '', width: '60px' },
-              ]}
-              rows={pastShipments.map((pl) => {
-                const b = billingByContainer.get(pl.container_id)
-                return {
-                  cells: [
-                    <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
-                    <Mono key="ctn">{pl.container_number ?? '—'}</Mono>,
-                    <Badge key="status" variant="success">Delivered</Badge>,
-                    <Mono key="cartons">{pl.carton_count}</Mono>,
-                    <span key="date" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                      {formatDate(pl.created_at)}
-                    </span>,
-                    <Mono key="paid">{b ? fmtNgn(b.total_paid_ngn) : '—'}</Mono>,
-                    <ViewLink key="view" onClick={() => navigate(`/my-shipments/${pl.id}`)} />,
-                  ],
-                }
-              })}
+        <Card padding="none">
+          <div className={styles.cardHeader}>
+            <SectionHead
+              title="Past shipments"
+              sub={`Your previous ${plural(pastShipments.length, 'delivery', 'deliveries')}`}
             />
-          </Card>
-        </>
+          </div>
+          <Table
+            columns={[
+              { title: 'Tracking code', type: 'reference' },
+              { title: 'Container', type: 'reference' },
+              { title: 'Status', type: 'status' },
+              { title: 'Cartons', type: 'number' },
+              // The packing list's own date: "Delivered" claimed a delivery date this is not (FD-27).
+              { title: 'Booked', type: 'date' },
+              { title: 'Payment', type: 'status' },
+              { title: 'Amount paid (₦)', type: 'money' },
+            ]}
+            rows={pastShipments.map((pl) => {
+              const b = billingByContainer.get(pl.container_id)
+              return {
+                onOpen: () => navigate(`/my-shipments/${pl.id}`),
+                cells: [
+                  <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
+                  <Mono key="ctn">{pl.container_number ?? '—'}</Mono>,
+                  <StatusBadge key="status" kind="container" status={pl.container_status ?? 'fully_released'} audience="customer" />,
+                  <Mono key="cartons">{pl.carton_count}</Mono>,
+                  <span key="date" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                    {formatDate(pl.created_at)}
+                  </span>,
+                  b ? (
+                    <StatusBadge key="pay" kind="invoice" status={b.payment_status} audience="customer" />
+                  ) : (
+                    <span key="pay" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>—</span>
+                  ),
+                  <Mono key="paid">{b ? fmtNgn(b.total_paid_ngn) : '—'}</Mono>,
+                ],
+              }
+            })}
+          />
+        </Card>
       )}
 
       {/* Empty state */}
       {shipments.length === 0 && !loading && (
-        <div className={styles.empty}>
-          <p className={styles.emptyTitle}>No shipments yet</p>
-          <p style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>
-            Your cargo will appear here once your packing list has been approved.
-          </p>
-        </div>
+        <Card padding="default">
+          <EmptyState
+            icon="ship"
+            title="No shipments yet"
+            body="Your cargo will appear here once your packing list has been approved."
+          />
+        </Card>
       )}
+
+      {/* Quick actions — clean shortcuts to common customer tasks */}
+      <div className={styles.quickSection}>
+        <SectionHead title="Quick actions" />
+        <div className={styles.quickGrid}>
+          <QuickActionCard
+            icon="coin"
+            title="Invoices & payments"
+            sub={outstandingTotal > 0 ? `${fmtNgn(outstandingTotal)} remaining across your invoices` : 'View receipts and download invoice PDFs'}
+            cta="Open billing"
+            onAction={() => navigate('/my-billing')}
+          />
+          <QuickActionCard
+            icon="warn"
+            title="Report damaged cargo"
+            sub="File a damage claim within 7 days of delivery"
+            cta="File a claim"
+            onAction={() => navigate('/my-claims/new')}
+          />
+          <QuickActionCard
+            icon="bell"
+            title="Account & notifications"
+            sub="Update your phone, WhatsApp, and alert language"
+            cta="Manage account"
+            onAction={() => navigate('/account')}
+          />
+        </div>
+      </div>
     </div>
   )
 }

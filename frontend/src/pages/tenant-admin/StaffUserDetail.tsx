@@ -6,22 +6,18 @@ import { usersApi, type TenantUser, type TenantUserRole } from '../../api/tenant
 import { staffKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Badge, Banner, Button, Card, Kvp, LocaleCard, type BadgeVariant, type StaffLocale } from '../../design/components'
+import { Action, Banner, Button, Kvp, LocaleCard, type StaffLocale, RoleBadge, StatusBadge, PageSkeleton, ConfirmDialog } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import { ActivityFeed } from '../../shell/ActivityFeed'
-import { SectionHead } from '../../shell/SectionHead'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { roleLabel } from '../../design/status'
+import { toast } from '../../design/toast'
+import { Section } from '../../shell/Section'
+import { DetailPage } from '../../shell/DetailPage'
 
-const ROLE_VARIANT: Record<TenantUserRole, BadgeVariant> = {
-  tenant_admin: 'error',
-  china_office_staff: 'info',
-  nigeria_office_staff: 'success',
-  warehouse_attendant: 'warning',
-  customer: 'neutral',
-}
 
 const ROLE_OPTIONS: TenantUserRole[] = [
   'tenant_admin', 'china_office_staff', 'nigeria_office_staff', 'warehouse_attendant',
@@ -85,7 +81,7 @@ export function StaffUserDetail(): JSX.Element {
   const [editRoles, setEditRoles] = useState<TenantUserRole[] | null>(null)
   const [editPrimaryRole, setEditPrimaryRole] = useState<TenantUserRole | null>(null)
   const [saving, setSaving] = useState(false)
-  const [actionMsg, setActionMsg] = useState<string | null>(null)
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
   const [savingLocale, setSavingLocale] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -119,6 +115,7 @@ export function StaffUserDetail(): JSX.Element {
         roles: editRoles,
         primary_role: editPrimaryRole ?? editRoles[0],
       })
+      toast.success('Roles updated', updated.full_name)
       applyUser(updated)
       setEditRoles(null)
       setEditPrimaryRole(null)
@@ -136,17 +133,17 @@ export function StaffUserDetail(): JSX.Element {
     try {
       if (action === 'resend') {
         await usersApi.resendInvite(user.id)
-        setActionMsg('Invite email resent.')
+        toast.success('Invite email resent.')
       } else if (action === 'activate') {
         await usersApi.resendActivation(user.id)
-        setActionMsg('Activation link sent.')
+        toast.success('Activation link sent.')
       } else if (action === 'reset') {
         await usersApi.resetPassword(user.id)
-        setActionMsg('Password reset email sent.')
+        toast.success('Password reset email sent.')
       } else {
         await usersApi.deactivate(user.id)
         applyUser({ ...user, status: 'inactive' })
-        setActionMsg('User deactivated.')
+        toast.success('User deactivated.')
       }
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Action failed.')
@@ -163,7 +160,7 @@ export function StaffUserDetail(): JSX.Element {
       const updated = await usersApi.update(user.id, { locale })
       applyUser(updated)
       setLocaleDraft(null)
-      setActionMsg('Notification language updated.')
+      toast.success('Notification language updated.')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not update locale.')
     } finally {
@@ -171,127 +168,270 @@ export function StaffUserDetail(): JSX.Element {
     }
   }
 
-  if (loading && !user) return <div style={{ padding: 48, color: 'var(--color-text-muted)' }}>Loading…</div>
-  if (error && !user) return <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+  if (loading && !user) return <PageSkeleton kind="detail" label="Loading the page" />
+  if (error && !user)
+    return (
+      <>
+        <PageHeader title="Staff member" />
+        <div className={styles.banner}><Banner variant="error">{error}</Banner></div>
+      </>
+    )
   if (!user) return <></>
 
-  return (
-    <div>
-      <PageHeader title={user.full_name} subtitle={user.email} />
+  const assignedRoles = user.roles.length > 0 ? user.roles : [user.role]
+  const localeDirty = locale !== (user.locale === 'zh' ? 'zh' : 'en')
 
+  return (
+    <DetailPage
+      header={
+        <PageHeader
+          title={user.full_name}
+          meta={user.email}
+          status={
+            <>
+              <StatusBadge kind="staffUser" status={user.status} />
+              <RoleBadge role={user.role} />
+            </>
+          }
+        />
+      }
+    >
       {session?.readOnly && (
         <div className={styles.banner}>
           <Banner variant="warning" icon="eye" title="Read-only session">
-            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
+            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but
+            every create, edit, approve, and delete action is disabled. The session ends
+            automatically after 30 minutes or when you exit.
           </Banner>
         </div>
       )}
-      {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
-      {actionMsg && <div className={styles.banner}><Banner variant="success">{actionMsg}</Banner></div>}
+      {error && (
+        <div className={styles.banner}>
+          <Banner variant="error">{error}</Banner>
+        </div>
+      )}
 
-      <SectionHead title="Profile" />
-      <Card padding={20}>
+      <Section title="Profile">
         <Kvp label="Email" value={user.email} />
-        <Kvp label="Roles" value={
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {(user.roles.length > 0 ? user.roles : [user.role]).map((r) => (
-                <Badge key={r} variant={ROLE_VARIANT[r]}>
-                  {r.replace(/_/g, ' ')}{r === user.role ? ' · primary' : ''}
-                </Badge>
-              ))}
-              {editRoles === null && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditRoles(user.roles.length > 0 ? user.roles : [user.role])
-                    setEditPrimaryRole(user.role)
-                  }}
-                >
-                  Change
-                </Button>
+        <Kvp
+          label="Roles"
+          value={
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  flexWrap: 'wrap',
+                }}
+              >
+                {(user.roles.length > 0 ? user.roles : [user.role]).map((r) => (
+                  <span
+                    key={r}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}
+                  >
+                    <RoleBadge role={r} />
+                    {r === user.role && (
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+                        Primary
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {editRoles === null && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditRoles(user.roles.length > 0 ? user.roles : [user.role])
+                      setEditPrimaryRole(user.role)
+                    }}
+                  >
+                    Change
+                  </Button>
+                )}
+              </div>
+              {editRoles !== null && (
+                <div>
+                  <RoleCheckboxList
+                    options={ROLE_OPTIONS}
+                    selected={editRoles}
+                    primary={editPrimaryRole}
+                    onChange={(nextRoles, nextPrimary) => {
+                      setEditRoles(nextRoles)
+                      setEditPrimaryRole(nextPrimary)
+                    }}
+                    roleLabel={roleLabel}
+                  />
+                  <div
+                    style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}
+                  >
+                    <Action
+                      variant="primary"
+                      size="sm"
+                      loading={saving}
+                      disabled={editRoles.length === 0}
+                      onClick={() => void handleSaveRoles()}
+                    >
+                      Save
+                    </Action>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditRoles(null)
+                        setEditPrimaryRole(null)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
-            {editRoles !== null && (
-              <div>
-                <RoleCheckboxList
-                  options={ROLE_OPTIONS}
-                  selected={editRoles}
-                  primary={editPrimaryRole}
-                  onChange={(nextRoles, nextPrimary) => {
-                    setEditRoles(nextRoles)
-                    setEditPrimaryRole(nextPrimary)
-                  }}
-                  roleLabel={(r) => r.replace(/_/g, ' ')}
-                />
-                <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-                  <Action variant="primary" size="sm" loading={saving} disabled={editRoles.length === 0} onClick={() => void handleSaveRoles()}>
-                    Save
-                  </Action>
-                  <Button variant="ghost" size="sm" onClick={() => { setEditRoles(null); setEditPrimaryRole(null) }}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        } />
-        <Kvp label="Status" value={<Badge variant={user.status === 'active' ? 'success' : 'neutral'}>{user.status}</Badge>} />
+          }
+        />
+        <Kvp label="Status" value={<StatusBadge kind="staffUser" status={user.status} />} />
         <Kvp label="Member since" value={formatDate(user.created_at)} divider={false} />
-      </Card>
+      </Section>
 
-      <SectionHead title="Permissions" sub="What this role can and cannot do — fixed per role, enforced server-side" />
-      <Card padding={20}>
-        {ROLE_PERMISSIONS[user.role]?.map((p, i, arr) => (
-          <div key={p.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none' }}>
-            <span style={{
-              width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: p.allowed ? 'var(--color-success-soft)' : 'var(--color-error-soft)',
-              color: p.allowed ? 'var(--color-success)' : 'var(--color-error)',
-              fontSize: 12, fontWeight: 700,
-            }}>{p.allowed ? '✓' : '✕'}</span>
-            <span style={{ fontSize: 13, color: 'var(--color-ink-2)' }}>{p.label}</span>
-          </div>
-        ))}
-      </Card>
+      <Section
+        title="Permissions"
+        sub="What this staff member's assigned roles can and cannot do — enforced server-side"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {assignedRoles.map((r) => (
+            <div key={r}>
+              {assignedRoles.length > 1 && (
+                <div style={{ marginBottom: 'var(--space-2)' }}>
+                  <RoleBadge role={r} />
+                </div>
+              )}
+              {ROLE_PERMISSIONS[r]?.map((p, i, arr) => (
+                <div
+                  key={`${r}-${p.label}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    padding: 'var(--space-2) 0',
+                    borderBottom: i < arr.length - 1 ? '1px dashed var(--color-line-soft)' : 'none',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 'var(--radius-md)',
+                      flexShrink: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: p.allowed ? 'var(--color-success-soft)' : 'var(--color-error-soft)',
+                      color: p.allowed ? 'var(--color-success)' : 'var(--color-error)',
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {p.allowed ? '✓' : '✕'}
+                  </span>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)' }}>
+                    {p.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </Section>
 
-      <SectionHead title="Recent activity" sub="What this user has done across the tenant" />
-      <Card padding={20}>
+      <Section title="Recent activity" sub="What this user has done across the tenant">
         <ActivityFeed actorId={user.id} limit={10} showActor={false} />
-      </Card>
+      </Section>
 
-      <SectionHead title="Actions" />
-      <Card padding={20}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('activate')}>
-            Resend activation link
-          </Button>
-          <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('resend')}>
-            Resend invite
-          </Button>
-          <Button variant="secondary" size="sm" loading={saving} onClick={() => void handleAction('reset')}>
-            Reset password
-          </Button>
+      <Section
+        title="Account access"
+        sub={
+          user.status === 'active'
+            ? 'Send a password reset link or deactivate this account.'
+            : user.status === 'inactive'
+              ? 'This account is deactivated and cannot sign in.'
+              : 'This staff member has not finished setting up their account yet.'
+        }
+      >
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          {user.status !== 'active' && user.status !== 'inactive' && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={saving}
+                onClick={() => void handleAction('resend')}
+              >
+                Resend invite
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={saving}
+                onClick={() => void handleAction('activate')}
+              >
+                Resend activation link
+              </Button>
+            </>
+          )}
           {user.status === 'active' && (
-            <Button variant="danger-outline" size="sm" loading={saving} onClick={() => void handleAction('deactivate')}>
-              Deactivate user
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={saving}
+                onClick={() => void handleAction('reset')}
+              >
+                Reset password
+              </Button>
+              <Button
+                variant="danger-ghost"
+                size="sm"
+                loading={saving}
+                onClick={() => setConfirmDeactivate(true)}
+              >
+                Deactivate user
+              </Button>
+            </>
           )}
         </div>
-      </Card>
+      </Section>
 
-      <SectionHead title="Notification language" />
-      <Card padding={20}>
+      <Section title="Notification language">
         <LocaleCard value={locale} onChange={setLocaleDraft} />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-          <Action variant="primary" size="sm" loading={savingLocale} onClick={() => void handleSaveLocale()}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-4)' }}>
+          <Action
+            variant="primary"
+            size="sm"
+            loading={savingLocale}
+            disabled={!localeDirty}
+            onClick={() => void handleSaveLocale()}
+          >
             Save language
           </Action>
         </div>
-      </Card>
-
-    </div>
+      </Section>
+      <ConfirmDialog
+        open={confirmDeactivate}
+        title={`Deactivate ${user.full_name}?`}
+        confirmLabel="Deactivate user"
+        undo={false}
+        busy={saving}
+        error={actionError}
+        onConfirm={async () => {
+          await handleAction('deactivate')
+          setConfirmDeactivate(false)
+        }}
+        onCancel={() => setConfirmDeactivate(false)}
+      >
+        They will be signed out immediately and will no longer be able to sign in. Their records and audit history stay intact.
+      </ConfirmDialog>
+    </DetailPage>
   )
 }

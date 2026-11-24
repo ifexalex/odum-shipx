@@ -10,6 +10,11 @@ export default defineConfig({
   define: {
     global: 'globalThis',
   },
+  build: {
+    // Fonts are always emitted as files, never inlined as data: URLs: the CSP allows font-src 'self' only, and the
+    // ₦ subset (src/design/fonts.css) is under Vite's 4 KB inline limit. Other assets keep the default (undefined).
+    assetsInlineLimit: (filePath) => (/\.woff2?$/.test(filePath) ? false : undefined),
+  },
   server: {
     proxy: {
       // Local-dev-only shim for browser uploads to object storage.
@@ -33,6 +38,15 @@ export default defineConfig({
         target: process.env.VITE_STORAGE_PROXY_TARGET ?? 'http://localhost:5100',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/__storage/, ''),
+      },
+      // Same-origin proxy for local Moto Cognito-IDP requests (used by
+      // auth-logout.spec.ts and local /login): Moto's OPTIONS preflight on
+      // http://localhost:5100/ omits Access-Control-Allow-Origin in newer
+      // Chromium/Linux environments, causing CORS preflight failures.
+      '/__cognito': {
+        target: process.env.VITE_COGNITO_PROXY_TARGET ?? 'http://localhost:5100',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/__cognito/, '') || '/',
       },
     },
   },

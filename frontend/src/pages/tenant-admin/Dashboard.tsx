@@ -8,12 +8,12 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { billingApi } from '../../api/billing'
 import { claimsApi } from '../../api/claims'
-import { CONTAINER_STATUS_LABELS } from '../../api/containerRules'
+import { } from '../../api/containerRules'
 import { billingKeys, claimKeys, containerKeys, customerKeys } from '../../api/keys'
 import { formatNgnCompact, formatDate, formatNgn } from '../../lib/format'
 import { ARRIVED_IN_NG } from '../../api/manifestRules'
 import { customersApi } from '../../api/tenantManagement'
-import { containersApi, type ContainerStatus } from '../../api/tracking'
+import { containersApi } from '../../api/tracking'
 import { useSession } from '../../auth/useSession'
 import {
   useActiveReleaseNotes,
@@ -23,31 +23,20 @@ import {
   usePendingPackingLists,
   useRecentContainers,
 } from '../../hooks/useDashboard'
-import { Badge, Button, Card, Mono, QuickActionCard, StatCard, Table, UserCell, type BadgeVariant } from '../../design/components'
+import { Badge, Button, Card, Mono, QuickActionCard, StatCard, StatusBadge, Table, UserCell, EmptyState } from '../../design/components'
 import { ContainerPipeline } from './DashboardPipeline'
 import { ActivityFeed } from '../../shell/ActivityFeed'
 import { PlanUsagePanel } from '../../shell/PlanUsagePanel'
 import { SectionHead } from '../../shell/SectionHead'
 import { UnbilledQueue } from '../../shell/UnbilledQueue'
 import styles from './admin.module.css'
+import { PageHeader } from '../../shell/PageHeader'
 
 function greeting(): string {
   const h = new Date().getHours()
   if (h < 12) return 'Good morning'
   if (h < 17) return 'Good afternoon'
   return 'Good evening'
-}
-
-const CONTAINER_BADGE: Record<string, BadgeVariant> = {
-  loading: 'neutral',
-  sealed: 'info',
-  in_transit: 'info',
-  arrived: 'warning',
-  customs_clearance: 'warning',
-  cleared: 'primary',
-  at_warehouse: 'primary',
-  fully_released: 'success',
-  cancelled: 'neutral',
 }
 
 export function Dashboard(): JSX.Element {
@@ -100,27 +89,61 @@ export function Dashboard(): JSX.Element {
 
   const firstName = session?.name?.split(' ')[0] ?? 'team'
   const customsAwaiting = (containerStats?.customs_clearance ?? 0) + (containerStats?.arrived ?? 0)
-  const summaryLine =
-    `${containerStats?.in_transit ?? 0} in transit · ${customsAwaiting} awaiting customs · ${containerStats?.at_warehouse ?? 0} ready for pickup`
+  const unsettledInvoices = billingStats
+    ? billingStats.unpaid + billingStats.partially_paid + billingStats.released_with_outstanding
+    : null
+  const attentionItems = useMemo(() => {
+    if (!isAdmin) return []
+    const items: Array<{ label: string; detail: string; to: string; tone: 'warning' | 'error' | 'info' }> = []
+    if ((claimStats?.open ?? 0) > 0) {
+      items.push({
+        label: `${claimStats!.open} open damage ${claimStats!.open === 1 ? 'claim' : 'claims'}`,
+        detail: 'Review inspection and resolution status',
+        to: '/claims',
+        tone: 'error',
+      })
+    }
+    if ((billingStats?.overdue ?? 0) > 0) {
+      items.push({
+        label: `${billingStats!.overdue} overdue ${billingStats!.overdue === 1 ? 'invoice' : 'invoices'}`,
+        detail: `${formatNgnCompact(billingStats!.outstanding_ngn)} outstanding across unpaid & partial bills`,
+        to: '/billing',
+        tone: 'warning',
+      })
+    }
+    if (customsAwaiting > 0) {
+      items.push({
+        label: `${customsAwaiting} ${customsAwaiting === 1 ? 'container' : 'containers'} awaiting customs / arrival`,
+        detail: 'Verify manifests to unlock customer billing',
+        to: '/containers',
+        tone: 'info',
+      })
+    }
+    return items
+  }, [isAdmin, claimStats, billingStats, customsAwaiting])
 
   return (
     <div>
-      {/* Greeting hero — prototype 3.1 */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
-          {greeting()}
-        </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 28, color: 'var(--color-ink)', margin: 0, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
-          Lead every shipment, {firstName}.
-        </h1>
-        <p style={{ fontSize: 14, color: 'var(--color-ink-3)', margin: '6px 0 0' }}>{summaryLine}</p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        meta={[
+          `${greeting()}, ${firstName}`,
+          `${containerStats?.in_transit ?? 0} in transit`,
+          `${customsAwaiting} awaiting customs`,
+          `${containerStats?.at_warehouse ?? 0} ready for pickup`,
+        ]}
+      />
 
       {/* Headline + financial KPIs. The per-stage operational counts
           (in transit / arrived / customs / at warehouse …) live in the
           Container pipeline rail below, so they're not duplicated here. */}
       <div className={styles.statsRow}>
-        <StatCard label="Containers" value={containerStats?.total ?? '—'} icon="container" />
+        <StatCard
+          label="Containers"
+          value={containerStats?.total ?? '—'}
+          icon="container"
+          onSelect={() => navigate('/containers')}
+        />
         {isNigeria && (
           <StatCard
             label="Ready for pickup"
@@ -128,44 +151,107 @@ export function Dashboard(): JSX.Element {
             icon="package"
             sublabel="active release notes"
             accentColor="var(--color-primary)"
+            onSelect={() => navigate('/release-notes')}
           />
         )}
-        <StatCard label="Unpaid billing" value={billingStats?.unpaid ?? '—'} icon="coin" />
+        <StatCard
+          label="Unsettled invoices"
+          value={unsettledInvoices ?? '—'}
+          icon="coin"
+          sublabel={
+            billingStats
+              ? `${billingStats.unpaid} unpaid · ${billingStats.partially_paid + billingStats.released_with_outstanding} partial`
+              : undefined
+          }
+          onSelect={() => navigate('/billing?status=unpaid')}
+        />
         <StatCard
           label="Outstanding"
           value={billingStats ? formatNgnCompact(billingStats.outstanding_ngn) : '—'}
           icon="coin"
           sublabel="unpaid + partial"
+          onSelect={() => navigate('/billing')}
         />
-        {isAdmin && <StatCard label="Active customers" value={customerStats?.active ?? '—'} icon="users" />}
-        {isAdmin && <StatCard label="Open claims" value={claimStats?.open ?? '—'} icon="warn" sublabel={claimStats?.open ? 'needs attention' : 'no active disputes'} />}
+        {isAdmin && (
+          <StatCard
+            label="Active customers"
+            value={customerStats?.active ?? '—'}
+            icon="users"
+            onSelect={() => navigate('/admin/customers')}
+          />
+        )}
+        {isAdmin && (
+          <StatCard
+            label="Open claims"
+            value={claimStats?.open ?? '—'}
+            icon="warn"
+            sublabel={claimStats?.open ? 'needs attention' : 'no active disputes'}
+            onSelect={() => navigate('/claims')}
+          />
+        )}
       </div>
+
+      {isAdmin && attentionItems.length > 0 && (
+        <Card padding="default" style={{ marginBottom: 'var(--space-5)' }}>
+          <SectionHead
+            title="Needs your attention"
+            sub="Items requiring follow-up across operations and billing"
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
+            {attentionItems.map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--space-3)',
+                  flexWrap: 'wrap',
+                  padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-surface-muted)',
+                  border: '1px solid var(--color-line-soft)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                  <Badge variant={item.tone} size="sm">{item.label}</Badge>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>{item.detail}</span>
+                </div>
+                <Button variant="ghost" size="sm" trailingIcon="arrowright" onClick={() => navigate(item.to)}>
+                  Open
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <UnbilledQueue />
 
       {isNigeria && (
-        <div style={{ marginTop: 8, marginBottom: 20 }}>
+        <div style={{ marginTop: 'var(--space-2)', marginBottom: 'var(--space-5)' }}>
           <ContainerPipeline counts={containerStats} />
           {pendingPls.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <Card padding="none">
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="Packing lists awaiting approval"
                     sub={`${pendingPls.length} submitted`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/packing-lists?status=pending_approval')}>Review all →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/packing-lists?status=pending_approval')}>Review all</Button>}
                   />
                 </div>
                 <Table
                   dense
                   cardBreakpoint={600}
-                  columns={[{ title: 'Ref' }, { title: 'Customer' }, { title: 'Cartons', align: 'right' }, { title: 'Status' }]}
+                  columns={[{ title: 'Ref', type: 'reference' }, { title: 'Customer' }, { title: 'Cartons', type: 'number' }, { title: 'Status', type: 'status' }]}
                   rows={pendingPls.map((pl) => ({
+                    onOpen: () => navigate(`/packing-lists/${pl.id}`),
                     cells: [
                       <Mono key="ref">{pl.reference ?? pl.id.slice(0, 8)}</Mono>,
                       <UserCell key="cust" name={pl.customer_name ?? '—'} email="" />,
                       <Mono key="cartons">{pl.carton_count}</Mono>,
-                      <Badge key="status" variant="warning">Submitted</Badge>,
+                      <StatusBadge key="status" kind="packingList" status={pl.status} />,
                     ],
                   }))}
                 />
@@ -175,27 +261,25 @@ export function Dashboard(): JSX.Element {
 
           {/* 6.1 action queues (P2-5) — only render when there's work to do */}
           {pendingManifests.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <Card padding="none">
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="Containers awaiting manifest verification"
                     sub={`${pendingManifests.length} arrived in Nigeria, manifest still pending — blocks billing + release`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/manifests?status=pending')}>Verify →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/manifests?status=pending')}>Verify</Button>}
                   />
                 </div>
                 <Table
                   dense
                   cardBreakpoint={600}
-                  columns={[{ title: 'Container' }, { title: 'Container status' }, { title: 'Cartons', align: 'right' }, { title: '', width: '60px' }]}
+                  columns={[{ title: 'Container', type: 'reference' }, { title: 'Container status', type: 'status' }, { title: 'Cartons', type: 'number' }]}
                   rows={pendingManifests.slice(0, 6).map((m) => ({
+                    onOpen: () => navigate(`/manifests/${m.id}`),
                     cells: [
                       <Mono key="num">{m.container_number ?? '—'}</Mono>,
-                      <Badge key="status" variant={CONTAINER_BADGE[m.container_status ?? ''] ?? 'neutral'}>
-                        {CONTAINER_STATUS_LABELS[m.container_status as ContainerStatus] ?? m.container_status}
-                      </Badge>,
+                      <StatusBadge key="status" kind="container" status={m.container_status ?? ''} />,
                       <Mono key="cartons">{m.total_cartons}</Mono>,
-                      <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/manifests/${m.id}`)}>View</Button>,
                     ],
                   }))}
                 />
@@ -204,24 +288,33 @@ export function Dashboard(): JSX.Element {
           )}
 
           {openDisputes.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <Card padding="none">
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="CBM disputes need response"
                     sub={`${openDisputes.length} submitted — 24h acknowledge SLA`}
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing/disputes?status=submitted')}>Respond →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/billing/disputes?status=submitted')}>Respond</Button>}
                   />
                 </div>
                 <Table
                   dense
                   cardBreakpoint={600}
-                  columns={[{ title: 'Submitted' }, { title: 'Original CBM', align: 'right' }, { title: 'Status' }]}
+                  columns={[
+                    { title: 'Customer' },
+                    { title: 'Container', type: 'reference' },
+                    { title: 'Original (CBM)', type: 'number' },
+                    { title: 'Submitted', type: 'date' },
+                    { title: 'Status', type: 'status' },
+                  ]}
                   rows={openDisputes.slice(0, 5).map((d) => ({
+                    onOpen: () => navigate(`/billing/${d.billing_id}`),
                     cells: [
-                      <span key="when" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
+                      <UserCell key="cust" name={d.customer_name ?? '—'} email="" />,
+                      <Mono key="ctn">{d.container_number ?? '—'}</Mono>,
                       <Mono key="cbm">{d.original_cbm ?? '—'}</Mono>,
-                      <Badge key="status" variant="warning">Submitted</Badge>,
+                      <span key="when" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(d.submitted_at)}</span>,
+                      <StatusBadge key="status" kind="dispute" status={d.status} />,
                     ],
                   }))}
                 />
@@ -230,45 +323,46 @@ export function Dashboard(): JSX.Element {
           )}
 
           {/* Bottom two-column — what Nigeria ops chases: money in + goods out. */}
-          <div className={styles.dashGrid2} style={{ marginTop: 16 }}>
+          <div className={styles.dashGrid2} style={{ marginTop: 'var(--space-4)' }}>
             {outstanding.length > 0 && (
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+              <Card padding="none">
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="Outstanding invoices"
                     sub="Oldest unpaid first — chase these before storage fees mount"
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/billing')}>View all →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/billing')}>View all</Button>}
                   />
                 </div>
                 <Table
                   dense
                   cardBreakpoint={420}
-                  columns={[{ title: 'Customer' }, { title: 'Container' }, { title: 'Outstanding (₦)', align: 'right' }, { title: '', width: '56px' }]}
+                  columns={[{ title: 'Customer' }, { title: 'Container', type: 'reference' }, { title: 'Outstanding (₦)', type: 'money' }]}
                   rows={outstanding.map((b) => ({
+                    onOpen: () => navigate(`/billing/${b.id}`),
                     cells: [
                       <UserCell key="cust" name={b.customer_name ?? '—'} email="" />,
                       <Mono key="ctn">{b.container_number ?? '—'}</Mono>,
                       <Mono key="out" color="var(--color-error)">{formatNgn(b.outstanding_ngn)}</Mono>,
-                      <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/billing/${b.id}`)}>View</Button>,
                     ],
                   }))}
                 />
               </Card>
             )}
             {awaitingPickup.length > 0 && (
-              <Card padding={0}>
-                <div style={{ padding: '18px 20px' }}>
+              <Card padding="none">
+                <div className={styles.cardHeader}>
                   <SectionHead
                     title="Awaiting pickup"
                     sub="Released — not yet collected by the customer"
-                    action={<Button variant="secondary" size="sm" onClick={() => navigate('/release-notes')}>View all →</Button>}
+                    action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/release-notes')}>View all</Button>}
                   />
                 </div>
                 <Table
                   dense
                   cardBreakpoint={420}
-                  columns={[{ title: 'Customer' }, { title: 'Container' }, { title: 'Cartons', align: 'right' }, { title: 'Status' }, { title: '', width: '56px' }]}
+                  columns={[{ title: 'Customer' }, { title: 'Container', type: 'reference' }, { title: 'Cartons', type: 'number' }, { title: 'Status', type: 'status' }]}
                   rows={awaitingPickup.slice(0, 6).map((n) => ({
+                    onOpen: () => navigate(`/release-notes/${n.id}`),
                     cells: [
                       <UserCell key="cust" name={n.customer_name ?? '—'} email="" />,
                       <Mono key="ctn">{n.container_number ?? '—'}</Mono>,
@@ -276,7 +370,6 @@ export function Dashboard(): JSX.Element {
                       n.is_on_credit
                         ? <Badge key="st" variant="warning">On credit</Badge>
                         : <Badge key="st" variant="info">Ready</Badge>,
-                      <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/release-notes/${n.id}`)}>View</Button>,
                     ],
                   }))}
                 />
@@ -288,47 +381,44 @@ export function Dashboard(): JSX.Element {
 
       {/* 3.1 two-column main — Recent containers (left) + Activity feed (right) */}
       {isAdmin && (
-        <div className={styles.dashCols} style={{ marginBottom: 20 }}>
-          <Card padding={0}>
-            <div style={{ padding: '18px 20px' }}>
+        <div className={styles.dashCols} style={{ marginBottom: 'var(--space-5)' }}>
+          <Card padding="none">
+            <div className={styles.cardHeader}>
               <SectionHead
                 title="Recent containers"
                 sub="Latest across all stages"
-                action={<Button variant="secondary" size="sm" onClick={() => navigate('/containers')}>View all →</Button>}
+                action={<Button variant="secondary" size="sm" trailingIcon="arrowright" onClick={() => navigate('/containers')}>View all</Button>}
               />
             </div>
             <Table
               dense
               cardBreakpoint={600}
               columns={[
-                { title: 'Container' },
-                { title: 'Status' },
-                { title: 'ETA' },
-                { title: '', width: '60px' },
+                { title: 'Container', type: 'reference' },
+                { title: 'Status', type: 'status' },
+                { title: 'ETA', type: 'date' },
               ]}
               rows={containers.slice(0, 6).map((c) => ({
+                onOpen: () => navigate(`/containers/${c.id}`),
                 cells: [
                   <div key="num">
                     <Mono>{c.container_number}</Mono>
-                    <div style={{ fontSize: 11, color: 'var(--color-ink-4)', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-0-5)' }}>
                       {c.vessel_name ?? c.origin}
                     </div>
                   </div>,
-                  <Badge key="status" variant={CONTAINER_BADGE[c.status] ?? 'neutral'}>
-                    {CONTAINER_STATUS_LABELS[c.status] ?? c.status}
-                  </Badge>,
-                  <span key="eta" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>{formatDate(c.estimated_arrival_date)}</span>,
-                  <Button key="view" variant="ghost" size="sm" onClick={() => navigate(`/containers/${c.id}`)}>View</Button>,
+                  <StatusBadge key="status" kind="container" status={c.status} />,
+                  <span key="eta" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>{formatDate(c.estimated_arrival_date)}</span>,
                 ],
               }))}
-              emptyState={<span>No containers yet.</span>}
+              emptyState={<EmptyState compact title="No containers yet" />}
             />
           </Card>
-          <Card padding={0}>
-            <div style={{ padding: '18px 20px 4px' }}>
+          <Card padding="none">
+            <div className={styles.cardHeader}>
               <SectionHead title="Activity" sub="Recent across your tenant" />
             </div>
-            <div style={{ padding: '0 20px 12px' }}>
+            <div style={{ padding: 'var(--space-2) var(--space-5) var(--space-4)' }}>
               <ActivityFeed limit={8} />
             </div>
           </Card>
@@ -339,7 +429,7 @@ export function Dashboard(): JSX.Element {
       {isAdmin && (
         <div className={styles.dashCols}>
           <PlanUsagePanel />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <SectionHead title="Quick actions" />
             <QuickActionCard
               icon="plus"

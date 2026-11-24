@@ -1,0 +1,29 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.text {
+  margin: 0;
+  font-size: var(--text-md);
+  line-height: var(--text-md-line);
+  color: var(--color-ink-2);
+}
+
+.undo,
+.final {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm-line);
+}
+
+.undo {
+  color: var(--color-ink-3);
+}
+
+/* Said plainly, in the error colour: there is no way back. */
+.final {
+  color: var(--color-error);
+  font-weight: 600;
+}

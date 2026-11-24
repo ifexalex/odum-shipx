@@ -30,7 +30,7 @@ import logging
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from shared.circuit_breaker import get_circuit_breaker
@@ -127,15 +127,38 @@ def fetch_bybit_ngn_rate() -> Decimal:
         logger.warning("Bybit P2P returned an unparseable response: %s", exc)
         raise ExternalServiceError("Bybit P2P", "malformed response") from exc
 
-    if payload.get("ret_code") != 0:
-        raise ExternalServiceError("Bybit P2P", payload.get("ret_msg", "non-zero ret_code"))
+    if not isinstance(payload, dict):
+        raise ExternalServiceError("Bybit P2P", "malformed response")
 
-    items = (payload.get("result") or {}).get("items") or []
-    if not items:
+    if payload.get("ret_code") != 0:
+        raise ExternalServiceError("Bybit P2P", str(payload.get("ret_msg", "non-zero ret_code")))
+
+    result = payload.get("result")
+    items = result.get("items") if isinstance(result, dict) else None
+    if not isinstance(items, list) or not items:
         raise ExternalServiceError("Bybit P2P", "no online ads returned")
 
     sample = items[:_SAMPLE_SIZE]
-    prices = [Decimal(str(item["price"])) for item in sample]
+    prices: list[Decimal] = []
+    for item in sample:
+        if not isinstance(item, dict) or "price" not in item:
+            raise ExternalServiceError("Bybit P2P", "malformed ad item")
+        try:
+            price = Decimal(str(item["price"]))
+        except (InvalidOperation, ValueError, TypeError) as exc:
+            raise ExternalServiceError("Bybit P2P", "malformed ad price") from exc
+        if not price.is_finite() or price <= Decimal("0"):
+            raise ExternalServiceError("Bybit P2P", "invalid non-positive ad price")
+        prices.append(price)
+
+    # Guard against spoofed/outlier P2P ads (>2x or <0.5x median when >= 3 quotes).
+    if len(prices) >= 3:
+        ordered = sorted(prices)
+        median = ordered[len(ordered) // 2]
+        filtered = [p for p in prices if median * Decimal("0.5") <= p <= median * Decimal("2")]
+        if filtered:
+            prices = filtered
+
     return (sum(prices, Decimal("0")) / len(prices)).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
 

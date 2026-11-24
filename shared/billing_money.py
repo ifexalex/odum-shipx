@@ -140,21 +140,75 @@ def create_overpayment_refund(
     billing: dict[str, Any],
     amount_ngn: Decimal,
     reason: str,
+    *,
+    refund_type: str = "overpayment",
 ) -> dict[str, Any] | None:
     """Open a ``pending_review`` refund request for money the customer overpaid."""
     return execute_write_with_tenant(
         tenant_id,
         """
-        INSERT INTO refund_request (tenant_id, customer_id, billing_id, amount_ngn, reason, status)
-        VALUES (%(tenant_id)s, %(customer_id)s, %(billing_id)s, %(amount)s, %(reason)s, 'pending_review')
+        INSERT INTO refund_request (tenant_id, customer_id, billing_id, refund_type, amount_ngn, reason, status)
+        VALUES (%(tenant_id)s, %(customer_id)s, %(billing_id)s, %(refund_type)s, %(amount)s, %(reason)s, 'pending_review')
         RETURNING *
         """,
         {
             "tenant_id": tenant_id,
             "customer_id": billing["customer_id"],
             "billing_id": billing["id"],
+            "refund_type": refund_type,
             "amount": amount_ngn,
             "reason": reason,
+        },
+    )
+
+
+def settle_overpayment_refund(
+    tenant_id: str,
+    billing_id: str,
+    amount_ngn: Decimal,
+    tolerance: Decimal = TOLERANCE,
+) -> dict[str, Any] | None:
+    """Settle an approved overpayment / CBM-correction refund against an invoice.
+
+    Reduces ``amount_paid_ngn`` by at most the invoice's current overpayment excess
+    (``GREATEST(amount_paid_ngn - total_ngn, 0)``) without ever modifying ``total_ngn``
+    or spawning another overpayment refund. Flips ``overpaid`` back to ``paid`` once the
+    excess is returned (either as cash ``processed`` or as ``applied_as_credit``).
+    """
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        WITH locked AS (
+            SELECT id,
+                   total_ngn,
+                   amount_paid_ngn,
+                   LEAST(%(amount)s, GREATEST(amount_paid_ngn - total_ngn, 0)) AS settle_amount
+            FROM billing
+            WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+            FOR UPDATE
+        )
+        UPDATE billing b
+           SET amount_paid_ngn = b.amount_paid_ngn - locked.settle_amount,
+               status = CASE
+                   WHEN b.status IN ('unpaid', 'partially_paid', 'paid', 'overpaid') THEN
+                       CASE
+                           WHEN ABS(b.total_ngn - (b.amount_paid_ngn - locked.settle_amount)) <= %(tol)s THEN 'paid'
+                           WHEN b.total_ngn - (b.amount_paid_ngn - locked.settle_amount) < -%(tol)s THEN 'overpaid'
+                           WHEN (b.amount_paid_ngn - locked.settle_amount) > 0 THEN 'partially_paid'
+                           ELSE 'unpaid'
+                       END
+                   ELSE b.status
+               END,
+               updated_at = NOW()
+          FROM locked
+         WHERE b.tenant_id = %(tenant_id)s AND b.id = locked.id
+        RETURNING b.*
+        """,
+        {
+            "tenant_id": tenant_id,
+            "id": billing_id,
+            "amount": amount_ngn,
+            "tol": tolerance,
         },
     )
 
@@ -165,6 +219,8 @@ def adjust_billing_and_refund_overpayment(
     total_delta: Decimal,
     reason: str,
     misc_delta: Decimal = Decimal("0"),
+    *,
+    refund_type: str = "overpayment",
 ) -> tuple[dict[str, Any], Decimal]:
     """`adjust_billing`, plus a refund request if it left the customer newly overpaid.
 
@@ -180,5 +236,5 @@ def adjust_billing_and_refund_overpayment(
         raise RuntimeError(f"billing {billing_id} not found in tenant")
     overpayment = new_overpayment(billing, total_delta)
     if overpayment > 0:
-        create_overpayment_refund(tenant_id, billing, overpayment, reason)
+        create_overpayment_refund(tenant_id, billing, overpayment, reason, refund_type=refund_type)
     return billing, overpayment

@@ -142,6 +142,6 @@ describe('GenerateBillingModal', () => {
     renderModal()
 
     expect(await screen.findByText("Couldn't load containers")).toBeInTheDocument()
-    expect(screen.getByText('Server exploded.')).toBeInTheDocument()
+    expect(screen.getByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
   })
 })

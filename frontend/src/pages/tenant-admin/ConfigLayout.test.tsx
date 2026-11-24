@@ -47,11 +47,13 @@ describe('ConfigLayout', () => {
     renderWebhooks()
     expect(await screen.findByText('Outbound webhook')).toBeInTheDocument()
 
-    // Each section appears exactly once — a second rail would duplicate these.
+    // Each section appears exactly once in the rail — a second rail would duplicate these. ("Webhooks" is also the
+    // page's own title, in its PageHeader.)
     for (const label of ['Company', 'Dollar rate', 'CBM rate', 'Charge types', 'Webhooks']) {
-      expect(screen.getAllByText(label)).toHaveLength(1)
+      expect(screen.getAllByText(label, { selector: '[class*="subNavLabel"]' })).toHaveLength(1)
     }
-    expect(screen.getByText('Webhooks').closest('[aria-current="page"], [class*="subNavItem"]')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1, name: 'Webhooks' })).toBeInTheDocument()
+    expect(screen.getByText('Webhooks', { selector: '[class*="subNavLabel"]' }).closest('[aria-current="page"]')).toBeTruthy()
   })
 
   it('rail navigation swaps only the content area', async () => {

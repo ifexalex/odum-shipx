@@ -1,29 +1,26 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  /* Falcon subtle pill badge: compact, crisp tonal hairline border, sentence case. */
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
   border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--badge-dot) 22%, transparent);
   font-family: var(--font-body);
   font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  /* In a narrow cell (a table's phone card) a long status wraps instead of running out of it. */
+  font-size: var(--text-xs);
+  line-height: var(--text-xs-line);
+  /* A long status ("Released, balance owed") wraps between words when its column is narrow, so a table fits its
+     page instead of scrolling sideways (FD-10). */
+  white-space: normal;
+  overflow-wrap: break-word;
   max-width: 100%;
-}
-@media (max-width: 600px) {
-  .badge {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
 }
 
 .sm {
-  gap: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
+  gap: var(--space-1);
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--text-xs);
 }
 
 .dot {
@@ -65,12 +62,13 @@
   --badge-dot: var(--color-role-platform-text);
 }
 .neutral {
-  background: var(--color-line);
+  background: var(--color-surface-muted);
   color: var(--color-ink-3);
+  border-color: var(--color-line);
   --badge-dot: var(--color-ink-4);
 }
 .primary {
   background: var(--color-primary-soft);
-  color: var(--color-primary-deep);
+  color: var(--color-primary-on-soft);
   --badge-dot: var(--color-primary);
 }

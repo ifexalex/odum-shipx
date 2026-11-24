@@ -112,21 +112,21 @@ describe('ManifestDetail', () => {
   it('hides Verify manifest for tenant_admin (read-only role here)', async () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub())
     renderPage('tenant_admin')
-    await waitFor(() => expect(screen.getByText('HLBU9384712')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Manifest HLBU9384712' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /Verify manifest/ })).not.toBeInTheDocument()
   })
 
   it('shows Resolve discrepancy for nigeria_office_staff when discrepancies_found', async () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub({ verification_status: 'discrepancies_found' }))
     renderPage('nigeria_office_staff')
-    await waitFor(() => expect(screen.getByRole('button', { name: /Resolve discrepancy/ })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /Resolve discrepancies/ })).toBeInTheDocument())
   })
 
   it('hides Resolve discrepancy for china_office_staff — verify-only, not resolve', async () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub({ verification_status: 'discrepancies_found' }))
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByText('HLBU9384712')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /Resolve discrepancy/ })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Manifest HLBU9384712' })).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /Resolve discrepancies/ })).not.toBeInTheDocument()
   })
 
   it('submits a Verified outcome with no discrepancies', async () => {
@@ -183,9 +183,9 @@ describe('ManifestDetail', () => {
     vi.mocked(manifestApi.get).mockResolvedValue(manifestStub({ verification_status: 'discrepancies_found' }))
     vi.mocked(manifestApi.resolveDiscrepancy).mockResolvedValue(manifestStub({ verification_status: 'resolved' }))
     renderPage('nigeria_office_staff')
-    await waitFor(() => expect(screen.getByRole('button', { name: /Resolve discrepancy/ })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('button', { name: /Resolve discrepancies/ })).toBeInTheDocument())
 
-    await userEvent.click(screen.getByRole('button', { name: /Resolve discrepancy/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Resolve discrepancies/ }))
     await userEvent.type(screen.getByLabelText('Resolution notes', { exact: false }), 'Recounted, all cartons found.')
     await userEvent.click(screen.getByRole('button', { name: /Confirm resolution/ }))
 
@@ -215,7 +215,7 @@ describe('ManifestDetail', () => {
     renderPage('nigeria_office_staff')
     await waitFor(() => expect(screen.getByText('Weight discrepancies')).toBeInTheDocument())
     expect(screen.getByText('SHX-00005')).toBeInTheDocument()
-    expect(screen.getByText('+1.700')).toBeInTheDocument()
+    expect(screen.getByText('+1.7')).toBeInTheDocument()
   })
 
   // F-D3 — manifest-verify photo upload

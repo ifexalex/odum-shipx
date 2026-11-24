@@ -1,10 +1,12 @@
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { type Billing } from '../../../api/billing'
-import { releaseNotesApi } from '../../../api/releaseNotes'
+import { releaseNotesApi, type ReleaseNote } from '../../../api/releaseNotes'
 import { useWarehouses } from '../../../hooks/useWarehouses'
-import { Action, Banner, Button, Field, DialogGuard } from '../../../design/components'
+import { Action, Banner, Button, Field, DialogGuard, Select, CheckboxField, DateField } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
+import { toast } from '../../../design/toast'
+import { formatNgn, plural } from '../../../lib/format'
 
 // ---------------------------------------------------------------------------
 // GenerateReleaseNoteModal
@@ -13,7 +15,7 @@ import styles from '../BillingDetail.module.css'
 export interface GenerateReleaseNoteModalProps {
   billing: Billing
   onCancel: () => void
-  onSuccess: () => void
+  onSuccess: (created?: ReleaseNote) => void
 }
 
 export function GenerateReleaseNoteModal({
@@ -21,11 +23,13 @@ export function GenerateReleaseNoteModal({
   onCancel,
   onSuccess,
 }: GenerateReleaseNoteModalProps): JSX.Element {
+  const outstandingBalance = Number(billing.outstanding_ngn ?? 0)
+  const hasOutstanding = outstandingBalance > 0
   const [releaseMode, setReleaseMode] = useState<'tags' | 'count'>('tags')
   const [tagsRaw, setTagsRaw] = useState('')
   const [packagesReleased, setPackagesReleased] = useState('')
   const [packageUnit, setPackageUnit] = useState('cartons')
-  const [releaseWithOutstanding, setReleaseWithOutstanding] = useState(false)
+  const [releaseWithOutstanding, setReleaseWithOutstanding] = useState(hasOutstanding)
   const [approvalNotes, setApprovalNotes] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [physicalDocumentNumber, setPhysicalDocumentNumber] = useState('')
@@ -47,27 +51,29 @@ export function GenerateReleaseNoteModal({
     .map((t) => t.trim())
     .filter(Boolean)
   const packagesReleasedCount = Number(packagesReleased)
+  const creditRelease = hasOutstanding && releaseWithOutstanding
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
     try {
-      await releaseNotesApi.create({
+      const created = await releaseNotesApi.create({
         billing_id: billing.id,
         carton_tags: releaseMode === 'tags' ? cartonTags : [],
         packages_released: releaseMode === 'count' ? packagesReleasedCount : undefined,
         package_unit: releaseMode === 'count' ? packageUnit.trim() : undefined,
-        release_with_outstanding: releaseWithOutstanding,
-        approval_notes: approvalNotes || undefined,
+        release_with_outstanding: creditRelease,
+        approval_notes: creditRelease ? approvalNotes.trim() || undefined : undefined,
         warehouse_id: warehouseId || undefined,
         physical_document_number: physicalDocumentNumber.trim() || undefined,
         packing_list_invoice_numbers: invoiceNumbers.length > 0 ? invoiceNumbers : undefined,
-        credit_granted_by_name: releaseWithOutstanding
+        credit_granted_by_name: creditRelease
           ? creditGrantedByName.trim() || undefined
           : undefined,
-        due_date: releaseWithOutstanding ? dueDate || undefined : undefined,
+        due_date: creditRelease ? dueDate || undefined : undefined,
       })
-      onSuccess()
+      toast.success('Release note generated', created.reference_number)
+      onSuccess(created)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not generate release note.')
     } finally {
@@ -79,7 +85,7 @@ export function GenerateReleaseNoteModal({
     (releaseMode === 'tags'
       ? cartonTags.length > 0
       : packagesReleasedCount > 0 && packageUnit.trim().length > 0) &&
-    (!releaseWithOutstanding || approvalNotes.trim().length > 0) &&
+    (!creditRelease || (approvalNotes.trim().length > 0 && creditGrantedByName.trim().length > 0)) &&
     !submitting
 
   return (
@@ -104,14 +110,14 @@ export function GenerateReleaseNoteModal({
           <label
             style={{
               fontWeight: 600,
-              fontSize: '0.875rem',
+              fontSize: 'var(--text-md)',
               display: 'block',
-              marginBottom: 6,
+              marginBottom: 'var(--space-2)',
             }}
           >
             Release by
           </label>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <Button
               variant={releaseMode === 'tags' ? 'primary' : 'ghost'}
               onClick={() => setReleaseMode('tags')}
@@ -141,12 +147,12 @@ export function GenerateReleaseNoteModal({
             {cartonTags.length > 0 && (
               <p
                 style={{
-                  fontSize: '0.8125rem',
-                  color: 'var(--color-text-muted)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--color-ink-4)',
                   margin: 0,
                 }}
               >
-                {cartonTags.length} tag(s) parsed
+                {plural(cartonTags.length, 'tag')} read
               </p>
             )}
           </>
@@ -174,12 +180,7 @@ export function GenerateReleaseNoteModal({
 
         {warehouses.length > 0 && (
           <div className={styles.selectField}>
-            <label className={styles.selectLabel}>
-              Warehouse / branch <span className={styles.optional}>Optional</span>
-            </label>
-            <select
-              aria-label="Warehouse / branch"
-              className={styles.select}
+            <Select label="Warehouse / branch" optional
               value={warehouseId}
               onChange={(e) => setWarehouseId(e.target.value)}
             >
@@ -190,7 +191,7 @@ export function GenerateReleaseNoteModal({
                   {w.is_default ? ' (default)' : ''}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
 
@@ -212,50 +213,46 @@ export function GenerateReleaseNoteModal({
           onChange={(e) => setInvoiceNumbersRaw(e.target.value)}
         />
 
-        <label
-          style={{
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            cursor: 'pointer',
-            fontSize: '0.875rem',
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={releaseWithOutstanding}
-            onChange={(e) => setReleaseWithOutstanding(e.target.checked)}
-          />
-          <span>Release with outstanding balance (waive payment requirement)</span>
-        </label>
-
-        {releaseWithOutstanding && (
+        {hasOutstanding && (
           <>
-            <Field
-              label="Approval notes"
-              name="approval_notes"
-              required
-              multiline
-              placeholder="Manager authorisation reference or reason…"
-              value={approvalNotes}
-              onChange={(e) => setApprovalNotes(e.target.value)}
+            <CheckboxField
+              label={`Release on credit (${formatNgn(outstandingBalance)} still owed)`}
+              checked={releaseWithOutstanding}
+              onChange={setReleaseWithOutstanding}
             />
-            <Field
-              label="Credit granted by"
-              name="credit_granted_by_name"
-              optional
-              placeholder="Name of the staff member authorising this credit release"
-              value={creditGrantedByName}
-              onChange={(e) => setCreditGrantedByName(e.target.value)}
-            />
-            <Field
-              label="Debt payment date"
-              name="due_date"
-              type="date"
-              optional
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
+
+            {releaseWithOutstanding && (
+              <>
+                <Banner variant="warning" title="Releasing with unpaid balance">
+                  <strong>{formatNgn(outstandingBalance)}</strong> remains unpaid on this invoice and will
+                  be recorded as credit owed by the customer.
+                </Banner>
+                <Field
+                  label="Credit granted by"
+                  name="credit_granted_by_name"
+                  required
+                  placeholder="Name of the manager/staff authorising this credit release"
+                  value={creditGrantedByName}
+                  onChange={(e) => setCreditGrantedByName(e.target.value)}
+                />
+                <Field
+                  label="Approval notes"
+                  name="approval_notes"
+                  required
+                  multiline
+                  placeholder="Manager authorisation reference or reason…"
+                  value={approvalNotes}
+                  onChange={(e) => setApprovalNotes(e.target.value)}
+                />
+                <DateField
+                  label="Debt payment date"
+                  name="due_date"
+                  optional
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </>
+            )}
           </>
         )}
 
@@ -269,7 +266,7 @@ export function GenerateReleaseNoteModal({
             disabled={!canSubmit}
             onClick={() => void handleSubmit()}
           >
-            Generate
+            Generate release note
           </Action>
         </div>
       </div>

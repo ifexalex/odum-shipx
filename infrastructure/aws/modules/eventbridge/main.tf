@@ -106,7 +106,8 @@ resource "aws_cloudwatch_event_rule" "route_metering" {
   state          = "ENABLED"
 
   event_pattern = jsonencode({
-    source = [{ prefix = "${var.project_name}." }]
+    source      = [{ prefix = "${var.project_name}." }]
+    detail-type = ["UsageRecorded"]
   })
 
   tags = local.common_tags

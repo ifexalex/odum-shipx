@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { withQuery } from '../../test/queryWrapper'
 import { ApiError } from '../../api/client'
 import { warehousesApi, type Warehouse } from '../../api/warehouses'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { Warehouses } from './Warehouses'
 
 vi.mock('../../api/warehouses', () => ({
@@ -43,9 +42,9 @@ function renderPage() {
   return render(
     withQuery(
       <MemoryRouter>
-        <TopBarTestWrapper>
+        <>
           <Warehouses />
-        </TopBarTestWrapper>
+        </>
       </MemoryRouter>,
     ),
   )
@@ -295,7 +294,7 @@ describe('Warehouses', () => {
     renderPage()
     await screen.findByText('Aba — Ariaria')
     await userEvent.click(screen.getByRole('button', { name: 'Set default' }))
-    await screen.findByText('Internal server error')
+    await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')
   })
 
   it('can create a warehouse already marked as the default', async () => {

@@ -129,14 +129,17 @@ describe('Dashboard (B3)', () => {
 
   it('greets the admin by first name with a container summary line', async () => {
     renderDashboard()
-    expect(await screen.findByText(/Lead every shipment, Amara\./)).toBeInTheDocument()
-    // The summary line arrives with the container stats, a tick after the greeting.
-    expect(await screen.findByText(/1 in transit · 0 awaiting customs · 0 ready for pickup/)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.getByText(/, Amara$/)).toBeInTheDocument()
+    // The summary facts arrive with the container stats, a tick after the greeting.
+    expect(await screen.findByText('1 in transit')).toBeInTheDocument()
+    expect(screen.getByText('0 awaiting customs')).toBeInTheDocument()
+    expect(screen.getByText('0 ready for pickup')).toBeInTheDocument()
   })
 
   it('shows admin-only active-customers and open-claims stats', async () => {
     renderDashboard()
-    await screen.findByText(/Lead every shipment/)
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' })
     await waitFor(() => expect(screen.getByText('142')).toBeInTheDocument())   // customers
     await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())     // open claims (filed + under_inspection)
     expect(screen.getByText('Active customers')).toBeInTheDocument()
@@ -154,7 +157,7 @@ describe('Dashboard (B3)', () => {
     } as never)
 
     renderDashboard('nigeria_office_staff')
-    await screen.findByText(/Lead every shipment/)
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' })
 
     await waitFor(() => expect(screen.getByText('Outstanding invoices')).toBeInTheDocument())
     expect(screen.getByText('₦50,000')).toBeInTheDocument()
@@ -162,14 +165,14 @@ describe('Dashboard (B3)', () => {
 
   it('renders the recent-containers table for admins', async () => {
     renderDashboard()
-    await screen.findByText(/Lead every shipment/)
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' })
     expect(screen.getByText('Recent containers')).toBeInTheDocument()
     expect(await screen.findByText('MSCU1234567')).toBeInTheDocument()
   })
 
   it('does not show the admin-only extras for nigeria staff', async () => {
     renderDashboard('nigeria_office_staff')
-    await screen.findByText(/Lead every shipment/)
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' })
     expect(screen.queryByText('Active customers')).toBeNull()
     expect(screen.queryByText('Recent containers')).toBeNull()
     expect(customersApi.list).not.toHaveBeenCalled()
@@ -200,7 +203,7 @@ describe('Dashboard (B3)', () => {
     } as never)
 
     renderDashboard('nigeria_office_staff')
-    await screen.findByText(/Lead every shipment/)
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' })
 
     await waitFor(() => expect(screen.getByText('Containers awaiting manifest verification')).toBeInTheDocument())
     // Only the arrived container is queued — the in-transit one is filtered out.
@@ -217,7 +220,7 @@ describe('Dashboard (B3)', () => {
   // §3.1 bottom row — QuickActionCards replaced the old generic nav-card stacks
   it('shows admin quick actions instead of the old nav stacks', async () => {
     renderDashboard()
-    await screen.findByText(/Lead every shipment/)
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' })
     expect(screen.getByText('Quick actions')).toBeInTheDocument()
     // Card title + CTA both carry the label — assert the heading
     expect(screen.getByRole('heading', { name: 'Add customer' })).toBeInTheDocument()
@@ -238,7 +241,7 @@ describe('Dashboard (B3)', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
     } as never)
     renderDashboard('nigeria_office_staff')
-    await screen.findByText(/Lead every shipment/)
+    await screen.findByRole('heading', { level: 1, name: 'Dashboard' })
     await waitFor(() => expect(screen.getByText('Awaiting pickup')).toBeInTheDocument())
     expect(screen.getByText('Chidi Okafor')).toBeInTheDocument()
     expect(screen.getByText('On credit')).toBeInTheDocument()

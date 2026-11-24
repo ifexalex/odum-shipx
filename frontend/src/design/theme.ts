@@ -14,22 +14,22 @@ export const colors = {
   accentDeep: '#7c2d12',
   accentHover: '#c2410c',
   accentSoft: '#fed7aa',
-  ink: '#1c1b1c',
+  ink: '#1f2329',
   ink2: '#374151',
-  ink3: '#666666',
-  ink4: '#6b7280',
-  line: '#cccccc',
+  ink3: '#4b5563',
+  ink4: '#5f6672',
+  line: '#d1d5db',
   lineSoft: '#e5e7eb',
   surface: '#ffffff',
   surfaceMuted: '#f9fafb',
   page: '#f3f4f6',
-  success: '#16a34a',
+  success: '#15803d',
   successStrong: '#14532d',
   successSoft: '#dcfce7',
-  warning: '#d97706',
+  warning: '#b45309',
   warningStrong: '#7c2d0e',
   warningSoft: '#fef3c7',
-  error: '#dc2626',
+  error: '#c81e1e',
   errorStrong: '#991b1b',
   errorSoft: '#fee2e2',
   info: '#2563eb',
@@ -40,14 +40,14 @@ export const colors = {
   roleAdmin: '#1c7922',
   roleChina: '#4f46e5',
   roleNigeria: '#9a3412',
-  roleWarehouse: '#d97706',
-  roleCustomer: '#2dc438',
+  roleWarehouse: '#b45309',
+  roleCustomer: '#1a7f26',
 } as const satisfies Record<string, string>
 
 export const fonts = {
-  display: '"Averta", "Manrope", sans-serif',
-  body: '"Kumbh Sans", sans-serif',
-  mono: '"JetBrains Mono", monospace',
+  display: '"ShipX Naira", "Manrope Variable", sans-serif',
+  body: '"ShipX Naira", "Kumbh Sans Variable", sans-serif',
+  mono: '"ShipX Naira", "JetBrains Mono Variable", monospace',
 } as const
 
 export interface TypeStyle {
@@ -79,46 +79,55 @@ export const typeScale = {
   mono: { fontFamily: fonts.mono, fontSize: 13, fontWeight: 400, lineHeight: 1.54 },
 } as const satisfies Record<string, TypeStyle>
 
+/** The spacing scale in px, mirroring --space-* in tokens.css (FD-02). */
 export const spacing = {
-  xs: 4,
-  sm: 8,
-  md: 16,
-  lg: 24,
-  xl: 32,
-  '2xl': 48,
-  '3xl': 64,
+  '0-5': 2,
+  1: 4,
+  2: 8,
+  3: 12,
+  4: 16,
+  5: 20,
+  6: 24,
+  8: 32,
+  12: 48,
+  16: 64,
 } as const
 
 export const layout = {
-  sidebarWidth: 240,
-  sidebarWidthCollapsed: 64,
-  contentMaxWidth: 1280,
+  sidebarWidth: 232,
+  sidebarWidthCollapsed: 60,
+  contentMaxWidth: 1320,
 } as const
 
 export const radius = {
   none: 0,
-  sm: 8,
-  md: 10,
-  lg: 14,
-  xl: 12,
+  sm: 4,
+  md: 6,
+  lg: 10,
+  xl: 14,
   full: 9999,
 } as const
 
 export const shadows = {
-  rest: '0 1px 3px rgba(11,47,13,0.08), 0 1px 2px rgba(11,47,13,0.05)',
-  hover: '0 4px 12px rgba(11,47,13,0.10), 0 2px 4px rgba(11,47,13,0.06)',
-  modal: '0 10px 25px rgba(11,47,13,0.18)',
-  focusRing: '0 0 0 3px rgba(45,196,56,0.35)',
+  control: '0 1px 2px rgba(11,47,13,0.06), 0 1px 1px rgba(11,47,13,0.04)',
+  rest: '0 7px 14px 0 rgba(11,47,13,0.06), 0 3px 6px 0 rgba(11,47,13,0.04)',
+  hover: '0 10px 22px 0 rgba(11,47,13,0.10), 0 4px 8px 0 rgba(11,47,13,0.06)',
+  modal: '0 20px 44px 0 rgba(11,47,13,0.20), 0 6px 16px 0 rgba(11,47,13,0.10)',
+  focusRing: '0 0 0 3px rgba(45,196,56,0.32)',
   scrimModal: 'rgba(11,47,13,0.55)',
 } as const
 
+/**
+ * Role colours as CSS variables, so a role-tinted element (an avatar's initials) follows the theme; the dark theme
+ * lightens them to stay readable (FD-03). `colors.role*` stay fixed hex values for the always-dark sidebar.
+ */
 export const roleColors = {
-  platform: colors.rolePlatform,
-  admin: colors.roleAdmin,
-  china: colors.roleChina,
-  nigeria: colors.roleNigeria,
-  warehouse: colors.roleWarehouse,
-  customer: colors.roleCustomer,
+  platform: 'var(--color-role-platform)',
+  admin: 'var(--color-role-admin)',
+  china: 'var(--color-role-china)',
+  nigeria: 'var(--color-role-nigeria)',
+  warehouse: 'var(--color-role-warehouse)',
+  customer: 'var(--color-role-customer)',
 } as const satisfies Record<string, string>
 
 export type Role = keyof typeof roleColors

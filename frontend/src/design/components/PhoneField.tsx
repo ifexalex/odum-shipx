@@ -32,6 +32,7 @@ export interface PhoneFieldProps {
   disabled?: boolean
   placeholder?: string
   autoComplete?: string
+  autoFocus?: boolean
 }
 
 /**
@@ -57,6 +58,7 @@ export function PhoneField({
   disabled = false,
   placeholder = '801 234 5678',
   autoComplete = 'tel',
+  autoFocus = false,
 }: PhoneFieldProps): JSX.Element {
   const fieldId = id ?? name
   const { countryCode, national } = useMemo(
@@ -80,14 +82,12 @@ export function PhoneField({
 
   return (
     <div className={styles.fieldRoot}>
+      {/* What sighted users read; the number input carries the same words as its own (hidden) label. */}
       {label && (
-        <label className={styles.label} htmlFor={fieldId}>
-          <span>
-            {label}
-            {required && <span className={styles.required}>*</span>}
-          </span>
+        <div className={styles.label} aria-hidden="true">
+          <span>{label}</span>
           {optional && <span className={styles.optionalTag}>Optional</span>}
-        </label>
+        </div>
       )}
       <div className={phoneStyles.row}>
         <div className={phoneStyles.dial}>
@@ -106,11 +106,14 @@ export function PhoneField({
         </div>
         <div className={phoneStyles.number}>
           <Field
+            label={label ?? 'Phone number'}
+            hideLabel
             id={fieldId}
             name={name}
             type="tel"
             inputMode="tel"
             autoComplete={autoComplete}
+            autoFocus={autoFocus}
             required={required}
             disabled={disabled}
             placeholder={placeholder}

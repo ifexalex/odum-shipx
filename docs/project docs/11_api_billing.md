@@ -249,11 +249,16 @@ Guards (all must pass; any violation → 422 `BUSINESS_RULE_VIOLATION`):
 1. Billing status must be `unpaid` — billing with any payment cannot be cancelled.
 2. No confirmed `payment_record` rows linked to this billing.
 3. No active (non-terminal) `release_note` rows linked to this billing.
+4. (2026-11-19) If the invoice used customer credit (`credits_applied_ngn > 0`) but that use is not fully recorded in `billing_credit_application` (an invoice issued before migration 070) → 422 `rule_id: CREDIT_NOT_TRACEABLE`. Restore the credit by hand first (runbook).
 
-On success:
+On success, in one transaction (2026-11-19):
 - Sets `billing.status = 'cancelled'`; records `cancel_reason`, `cancelled_by`, `cancelled_at`.
-- Writes an audit log entry.
-- Returns the updated billing row.
+- Gives back every credit the invoice used: `refund_request.credit_applied_ngn` falls by what this invoice took, a used-up (`processed`) credit is `applied_as_credit` again, and each `billing_credit_application` row is stamped `reversed_at`.
+- Reopens the earlier balances it carried over: `carryover_ledger` rows `applied` to it become `outstanding` (target and `applied_at` cleared), so the customer's next invoice picks them up.
+- Writes an audit log entry; `after_state` lists `credits_restored` (`refund_request_id`, `amount_ngn`) and `carryovers_reopened`.
+- Returns the updated billing row plus `credits_restored_ngn` and `carryovers_reopened` (a count).
+
+~~Before 2026-11-19 the credit an invoice used stayed spent when it was cancelled, and its carried-over balance was lost.~~ An invoice paid in full by credit is issued `paid` and cannot be cancelled (guard 1).
 
 Billing status values (migration 017 adds `cancelled` to existing CHECK constraint):
 `unpaid | partially_paid | paid | overpaid | waived | released_with_outstanding | cancelled`
@@ -289,6 +294,8 @@ Nigeria staff and admins keep the inline view on the invoice page (a deliberate 
 `tests/db/test_dispute_detail.py`. API Gateway route added (`GET /v1/billing/disputes/{id}`); Postman has "Get Dispute (measurements only)".
 
 ## Implementation notes — invoice list export (2026-11-16)
+
+`GET /v1/billing/report?created_after=&created_before=` (billing service; tenant admin and Nigeria staff) returns the reports page's aggregates: `overview`, `claims`, `container_pipeline` (8 fixed weeks), `top_customers` (top 20) and `container_billing` (top 200 containers by amount billed, from `get_container_billing`, shared with the export). Its export, `GET /v1/billing/report/export` (excel service, tenant admin only, 2026-11-20), has every container in the period; see `19_excel_import_export.md` "Report export". Ground-truth gap closed 2026-11-20: the reports page showed two Export buttons with no handler.
 
 `GET /v1/billing/export` (excel service; **tenant admin only** since 2026-11-17) exports the invoice list's filters and sort as xlsx or csv; see `19_excel_import_export.md`. The invoice list's WHERE clause moved to `shared/list_filters.py::billing_filter`, shared by the list and the export; the generated SQL is unchanged (checked for 7 filter combinations). Not changed: the list's `q` search treats `%` and `_` as LIKE wildcards (bound, so not an injection, but `50%` matches more than it says); global search (`21_missing_endpoints.md` Part 12) escapes them.
 
@@ -337,3 +344,19 @@ Verified by running the generated SQL page by page in SQLite (`tests/unit/test_p
 - **An old rate tells tenant admins:** when the invoice used `last_known` older than `FX_RATE_MAX_AGE_MINUTES` (env, default 120; invalid or < 1 falls back to 120 / 1) — or of unknown age — a staff notification `invoice_old_exchange_rate` goes to `tenant_admin` on that invoice. Never fails the invoice.
 - **Staff see it:** `GET /v1/billing/{id}/detail` adds `exchange_rate_source` and `exchange_rate_fetched_at` (ISO) for staff roles only; a customer's read omits both. `BillingDetail` shows "Last known market rate, fetched …" under the exchange-rate line when the source is `last_known`.
 - Verified against the dev database (`tests/db/test_invoice_rate_source.py`): with the feed cut and the cache empty, a real invoice is written with `last_known` and the true fetch time, the tenant-admin notice row exists, and the staff detail read shows both; with no stored rate, no invoice is written; the CHECK refuses an unknown source.
+
+## No "payment due" message for an invoice the credit covered (2026-11-19)
+
+**Ground-truth gap closed:** an invoice whose total the customer's credit brought to ₦0 (issued `paid`) still sent the `payment_due` SMS, WhatsApp and email, reading "NGN 0.00 due". `_notify_customer_payment_due` now sends them only when `total_ngn > 0`; the in-app bell still goes out ("nothing to pay. Your credit covered this invoice."). The `PaymentDue` event and tenant webhook are unchanged. A dedicated "covered by credit" message would need its own WhatsApp template approved by Meta; not built.
+
+## Invoice list sorted by billed date pages correctly (2026-11-19)
+
+Unbilled invoices (no `billed_at`) now sort last in both directions, and paging through them no longer restarts at page one. See `02_shared_utilities.md`, "Paging past empty sort values".
+
+## Overdue filter on the invoice list (2026-11-20, audit FD-18)
+
+`GET /v1/billing?overdue=true` (also `1`) returns only overdue invoices: status not paid, waived or cancelled, a balance still owed, billed more than 30 days ago. It is the definition the list's "Overdue (30+ days)" stat counts with (`GET /v1/billing/stats` `overdue`), shared as `shared/list_filters.py::overdue_condition` so the stat and the list it opens cannot disagree. `GET /v1/billing/export` accepts the same parameter. Tests: `tests/db/test_overdue_filter.py` (real Postgres: the list is exactly what the stat counts), `tests/unit/test_list_exports.py`, `tests/unit/test_billing.py`.
+
+### Invoice PDF (FD-39, 2026-11-21)
+
+`GET /v1/billing/{id}/pdf` (excel service; nigeria_office_staff, tenant_admin, customer own only → 404 otherwise) returns `{filename, download_url, expires_in_seconds: 300, ...}`: the branded invoice (line items, totals, how to pay). It replaces `GET /v1/billing/{id}/export?format=pdf`, a landscape table of column names; `?format=pdf` on the export is now 422. See `19_excel_import_export.md` "PDF documents".

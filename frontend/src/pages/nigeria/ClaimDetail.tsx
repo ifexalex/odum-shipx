@@ -6,46 +6,32 @@ import {
   claimsApi,
   presignedUploadApi,
   type Claim,
+  type ClaimEvidenceFile,
   type DamageClaimStatus,
   type InspectionMethod,
   type ResolutionType,
   type ResolveClaimInput,
 } from '../../api/claims'
+import type { RefundStatus } from '../../api/refunds'
 import {
   canResolveClaim,
   canStartInspection,
-  CLAIM_STATUS_ORDER,
   isTerminalClaimStatus,
 } from '../../api/claimsRules'
 import { claimKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Action, Badge, Banner, Button, Card, Field, Kvp, Mono, DialogGuard, type BadgeVariant } from '../../design/components'
-import { SectionHead } from '../../shell/SectionHead'
+import { Action, Banner, Button, DialogGuard, Field, Kvp, Mono, StatusBadge, Pressable, Select, Stepper, PageSkeleton, ErrorState } from '../../design/components'
 import { EvidenceUploader } from './EvidenceUploader'
 import styles from './ClaimDetail.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
+import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-
-const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed: 'warning',
-  under_inspection: 'warning',
-  inspection_complete: 'warning',
-  pending_resolution: 'warning',
-  resolved: 'success',
-  closed: 'neutral',
-}
-
-function statusLabel(s: DamageClaimStatus): string {
-  switch (s) {
-    case 'filed': return 'Filed'
-    case 'under_inspection': return 'Under inspection'
-    case 'inspection_complete': return 'Inspection complete'
-    case 'pending_resolution': return 'Pending resolution'
-    case 'resolved': return 'Resolved'
-    case 'closed': return 'Closed'
-  }
-}
+import { PageHeader } from '../../shell/PageHeader'
+import { RecordLink } from '../../shell/RecordLink'
+import { claimProgress, claimSteps } from '../../design/steps'
+import { toast } from '../../design/toast'
+import { Section } from '../../shell/Section'
+import { DetailPage } from '../../shell/DetailPage'
 
 // ---------------------------------------------------------------------------
 // StartInspectionModal
@@ -73,6 +59,7 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
     setError(null)
     try {
       const updated = await claimsApi.startInspection(claimId, { inspection_method: method })
+      toast.success('Inspection started', updated.reference ?? undefined)
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not start inspection.')
@@ -90,18 +77,18 @@ function StartInspectionModal({ onCancel, onSuccess, claimId }: StartInspectionM
         <h3 className={styles.panelTitle}>Start inspection</h3>
         {error && <div className={styles.panelBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
         <div className={styles.selectField}>
-          <label className={styles.selectLabel}>Inspection method <span className={styles.required}>*</span></label>
-          <select className={styles.select} value={method} onChange={(e) => setMethod(e.target.value as InspectionMethod)}>
+          <Select label="Inspection method" value={method} onChange={(e) => setMethod(e.target.value as InspectionMethod)}>
             {INSPECTION_METHODS.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
         {method === 'customer_evidence' && (
           <div className={styles.evidenceSection}>
-            <label className={styles.selectLabel}>Evidence files <span className={styles.required}>*</span></label>
+            <label className={styles.selectLabel}>Evidence files</label>
             <EvidenceUploader
               getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type, f.size)}
+              confirmUpload={(evidenceId) => presignedUploadApi.confirm(claimId, evidenceId)}
               onUploaded={() => setEvidenceUploaded(true)}
               disabled={submitting}
             />
@@ -139,26 +126,25 @@ const RESOLUTION_TYPES: { value: ResolutionType; title: string; sub: string }[] 
 
 function ResolutionPick({ title, sub, current, onClick }: { title: string; sub: string; current: boolean; onClick: () => void }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Pressable
       onClick={onClick}
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10, textAlign: 'left',
+        display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', textAlign: 'left',
         border: `${current ? 2 : 1}px solid ${current ? 'var(--color-primary)' : 'var(--color-line-soft)'}`,
-        borderRadius: 10, padding: 12, cursor: 'pointer',
+        borderRadius: 'var(--radius-lg)', padding: 'var(--space-3)', cursor: 'pointer',
         background: current ? 'var(--color-primary-tint)' : 'var(--color-surface)',
       }}
     >
       <span style={{
-        width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+        width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 'var(--space-0-5)',
         border: `${current ? 5 : 1.5}px solid ${current ? 'var(--color-primary)' : 'var(--color-line)'}`,
         background: 'var(--color-surface)',
       }} />
       <span>
-        <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 13 }}>{title}</span>
-        <span style={{ display: 'block', fontSize: 11, color: 'var(--color-ink-3)', marginTop: 2 }}>{sub}</span>
+        <span style={{ display: 'block', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 'var(--text-sm)' }}>{title}</span>
+        <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', marginTop: 'var(--space-0-5)' }}>{sub}</span>
       </span>
-    </button>
+    </Pressable>
   )
 }
 
@@ -178,6 +164,15 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
 
   const isStaff = role === 'nigeria_office_staff'
   const enteredAmount = Number(amountNgn)
+  const enteredDiscount = Number(discountPct)
+  const amountError =
+    needsAmount && amountNgn.trim() !== '' && (!Number.isFinite(enteredAmount) || enteredAmount <= 0)
+      ? 'Enter an amount greater than 0.'
+      : undefined
+  const discountError =
+    needsDiscount && discountPct.trim() !== '' && (!Number.isFinite(enteredDiscount) || enteredDiscount <= 0 || enteredDiscount > 100)
+      ? 'Enter a percentage between 1 and 100.'
+      : undefined
   const likelyNeedsAdminApproval =
     isStaff && needsAmount && enteredAmount > 0 && enteredAmount > _STAFF_LIMIT_HINT_NGN
 
@@ -189,6 +184,7 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
       if (needsAmount && amountNgn) body.amount_ngn = amountNgn
       if (needsDiscount && discountPct) body.discount_percentage = discountPct
       const updated = await claimsApi.resolve(claimId, body)
+      toast.success('Claim resolved', updated.reference ?? undefined)
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not resolve claim.')
@@ -197,7 +193,10 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
     }
   }
 
-  const canSubmit = reason.trim().length > 0 && !submitting
+  const amountValid = !needsAmount || (amountNgn.trim() !== '' && Number.isFinite(enteredAmount) && enteredAmount > 0)
+  const discountValid =
+    !needsDiscount || (discountPct.trim() !== '' && Number.isFinite(enteredDiscount) && enteredDiscount > 0 && enteredDiscount <= 100)
+  const canSubmit = reason.trim().length > 0 && amountValid && discountValid && !submitting
 
   return (
     <div className={styles.overlay} onClick={onCancel}>
@@ -214,8 +213,8 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
           </div>
         )}
         <div>
-          <label className={styles.selectLabel}>Resolution type <span className={styles.required}>*</span></label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginTop: 8, marginBottom: 4 }}>
+          <label className={styles.selectLabel}>Resolution type</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-3)', marginTop: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
             {RESOLUTION_TYPES.map((r) => (
               <ResolutionPick
                 key={r.value}
@@ -228,7 +227,8 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
           </div>
         </div>
         {needsAmount && (
-          <Field label="Amount (₦)" name="amount_ngn" type="number" placeholder="e.g. 25000"
+          <Field label="Amount (₦)" name="amount_ngn" type="number" min="1" required placeholder="e.g. 25000"
+            error={amountError}
             value={amountNgn} onChange={(e) => setAmountNgn(e.target.value)} />
         )}
         {resolutionType === 'refund' && enteredAmount > 0 && (
@@ -237,7 +237,8 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
           </Banner>
         )}
         {needsDiscount && (
-          <Field label="Discount (%)" name="discount_pct" type="number" placeholder="e.g. 10"
+          <Field label="Discount (%)" name="discount_pct" type="number" min="1" max="100" required placeholder="e.g. 10"
+            error={discountError}
             value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} />
         )}
         {/* A decision against the customer is explained to them; otherwise the reason stays internal. */}
@@ -263,20 +264,74 @@ function ResolveClaimModal({ onCancel, onSuccess, claimId, role }: ResolveClaimM
 // ---------------------------------------------------------------------------
 
 function StatusStepper({ current }: { current: DamageClaimStatus }): JSX.Element {
-  const currentIdx = CLAIM_STATUS_ORDER.indexOf(current)
+  const progress = claimProgress(current)
+  return <Stepper steps={claimSteps('staff')} current={progress.current} complete={progress.complete} label="Claim progress" />
+}
+
+function inspectionMethodLabel(method: InspectionMethod | null): string {
+  switch (method) {
+    case 'delegate_visit':
+      return 'Delegate visit — in-person inspection'
+    case 'customer_evidence':
+      return 'Customer evidence — photos/video'
+    default:
+      return 'Not started'
+  }
+}
+
+function resolutionTypeLabel(type: ResolutionType): string {
+  switch (type) {
+    case 'refund':
+      return 'Refund'
+    case 'discount':
+      return 'Discount'
+    case 'compensation':
+      return 'Compensation'
+    case 'no_action':
+      return 'No action'
+  }
+}
+
+function formatFileSize(bytes: number | null): string {
+  if (bytes === null) return ''
+  return bytes >= 1_048_576
+    ? `${formatCount(Math.round(bytes / 1_048_576))} MB`
+    : `${formatCount(Math.max(1, Math.round(bytes / 1024)))} KB`
+}
+
+function EvidenceFileList({ files }: { files: ClaimEvidenceFile[] }): JSX.Element {
+  if (files.length === 0) {
+    return <span className={styles.emptyNote}>No evidence files attached yet.</span>
+  }
   return (
-    <div className={styles.stepper}>
-      {CLAIM_STATUS_ORDER.map((s, i) => (
-        <div key={s} className={[
-          styles.step,
-          i < currentIdx ? styles.stepDone : '',
-          i === currentIdx ? styles.stepActive : '',
-        ].join(' ')}>
-          <div className={styles.stepDot} />
-          <span className={styles.stepLabel}>{statusLabel(s)}</span>
-        </div>
-      ))}
-    </div>
+    <ul className={styles.evidenceList}>
+      {files.map((file) => {
+        const sizeLabel = formatFileSize(file.file_size_bytes)
+        return (
+          <li key={file.id} className={styles.evidenceItem}>
+            <div className={styles.evidenceMeta}>
+              <span className={styles.evidenceName}>{file.file_name}</span>
+              <span className={styles.evidenceSub}>
+                {[sizeLabel, file.file_type, `Uploaded ${formatDate(file.uploaded_at)}`].filter(Boolean).join(' · ')}
+              </span>
+            </div>
+            {file.download_url ? (
+              <a
+                href={file.download_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.evidenceLink}
+                aria-label={`Open ${file.file_name}`}
+              >
+                Open file
+              </a>
+            ) : (
+              <span className={styles.emptyNote}>Link unavailable</span>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -294,14 +349,14 @@ export function ClaimDetail(): JSX.Element {
   const [showInspect, setShowInspect] = useState(false)
   const [showResolve, setShowResolve] = useState(false)
 
-  // Router state from ClaimList seeds the first paint; claimKeys.detail(id) is
-  // the slot the existing `useClaim` hook reads, so the two share one entry.
+  // Router state from ClaimList seeds the first paint, while GET /v1/claims/{id}
+  // still fetches detail-only fields (evidence, resolution, refund).
   const stateClaim = (location.state as { claim?: Claim } | null)?.claim ?? null
-  const { data: claim = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: claim = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: claimKeys.detail(id ?? ''),
     queryFn: () => claimsApi.get(id!),
     enabled: !!id,
-    ...(stateClaim ? { initialData: stateClaim } : {}),
+    ...(stateClaim ? { placeholderData: stateClaim } : {}),
     staleTime: STALE_30S,
   })
   // Names this record in the breadcrumb once loaded (FD-46).
@@ -313,107 +368,154 @@ export function ClaimDetail(): JSX.Element {
       : 'Could not load this claim.'
     : null
 
-  // The inspect/resolve responses carry the updated claim, so write it into the
-  // cache directly instead of replacing local state.
+  // Write the updated claim into cache immediately, then refetch so detail-only
+  // fields (such as a newly generated refund record) stay in sync.
   const applyUpdated = (updated: Claim): void => {
     qc.setQueryData(claimKeys.detail(id ?? ''), updated)
+    void qc.invalidateQueries({ queryKey: claimKeys.detail(id ?? '') })
   }
 
-  if (loading) return <div className={styles.loadingState}>Loading claim…</div>
-  if (error || !claim) {
+  if (loading && !claim) return <PageSkeleton kind="detail" label="Loading claim" />
+  if ((error && !claim) || !claim) {
     return (
-      <div className={styles.loadingState}>
-        <Banner variant="error" title="Couldn't load this claim">{error ?? 'Not found.'}</Banner>
-      </div>
+      <>
+        <PageHeader title="Damage claim" />
+        <ErrorState title="Couldn't load this claim" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
 
   const r = role as Parameters<typeof canStartInspection>[1]
+  const evidenceFiles = claim.evidence ?? []
 
   return (
-    <div>
-      {/* Hero */}
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>Damage claim</h1>
-              <Badge variant={STATUS_VARIANT[claim.status]}>{statusLabel(claim.status)}</Badge>
-            </div>
-            <div className={styles.heroMeta}>
-              <Mono>{claim.id}</Mono>
-              <span className={styles.dot}>·</span>
-              <span>Filed {formatDate(claim.created_at)}</span>
-            </div>
-          </div>
-        </div>
-        {!isTerminalClaimStatus(claim.status) && (
-          <div className={styles.heroActions}>
-            {canStartInspection(claim, r) && (
+    <DetailPage
+      header={
+        <PageHeader
+          title={claim.reference ? `Damage claim ${claim.reference}` : 'Damage claim'}
+          status={<StatusBadge kind="claim" status={claim.status} />}
+          meta={[
+            claim.customer_name && claim.customer_id && (
+              <RecordLink to={`/admin/customers/${claim.customer_id}`}>
+                {claim.customer_name}
+              </RecordLink>
+            ),
+            claim.container_number && claim.container_id && (
+              <RecordLink to={`/containers/${claim.container_id}`}>
+                <Mono>{claim.container_number}</Mono>
+              </RecordLink>
+            ),
+            `Filed ${formatDate(claim.created_at)}`,
+          ]}
+          primary={
+            isTerminalClaimStatus(claim.status) ? null : canStartInspection(claim, r) ? (
               <Action variant="primary" onClick={() => setShowInspect(true)}>
                 Start inspection
               </Action>
-            )}
-            {canResolveClaim(claim, r) && (
-              <Action variant="success" onClick={() => setShowResolve(true)}>
+            ) : canResolveClaim(claim, r) ? (
+              <Action variant="primary" onClick={() => setShowResolve(true)}>
                 Resolve claim
               </Action>
-            )}
-          </div>
-        )}
-      </div>
-
+            ) : null
+          }
+        />
+      }
+    >
       {/* Status stepper */}
-      <div className={styles.section}>
-        <SectionHead title="Progress" />
-        <Card padding={20}>
-          <StatusStepper current={claim.status} />
-        </Card>
-      </div>
+      <Section title="Progress">
+        <StatusStepper current={claim.status} />
+      </Section>
 
       {/* Claim context */}
-      {(claim.description || claim.container_id || claim.customer_id) && (
-        <div className={styles.section}>
-          <SectionHead title="Claim details" />
-          <Card padding={20}>
-            {claim.description && <Kvp label="Description" value={claim.description} />}
-            {claim.container_id && <Kvp label="Container ID" value={<Mono>{claim.container_id}</Mono>} />}
-            {claim.customer_id && <Kvp label="Customer ID" value={<Mono>{claim.customer_id}</Mono>} divider={false} />}
-          </Card>
-        </div>
+      {(claim.description || claim.inspection_method) && (
+        <Section title="Claim details">
+          {claim.description && (
+            <Kvp label="Description" value={claim.description} divider={!!claim.inspection_method} />
+          )}
+          {claim.inspection_method && (
+            <Kvp label="Inspection method" value={inspectionMethodLabel(claim.inspection_method)} divider={false} />
+          )}
+        </Section>
+      )}
+
+      {/* Resolution & linked refund */}
+      {claim.resolution && (
+        <Section title="Resolution">
+          <Kvp label="Decision" value={resolutionTypeLabel(claim.resolution.resolution_type)} />
+          {claim.resolution.amount_ngn !== null &&
+            claim.resolution.resolution_type !== 'discount' &&
+            claim.resolution.resolution_type !== 'no_action' && (
+              <Kvp label="Amount" value={<Mono>{formatNgn(claim.resolution.amount_ngn)}</Mono>} />
+            )}
+          {claim.resolution.discount_percentage !== null && claim.resolution.resolution_type === 'discount' && (
+            <Kvp label="Discount" value={`${Number(claim.resolution.discount_percentage)}%`} />
+          )}
+          <Kvp label="Resolved on" value={formatDate(claim.resolution.resolved_at)} divider={Boolean(claim.resolution.reason || claim.refund)} />
+          {claim.resolution.reason && (
+            <Kvp label="Reason" value={claim.resolution.reason} divider={Boolean(claim.refund)} />
+          )}
+          {claim.refund && (
+            <Kvp
+              label="Refund record"
+              divider={false}
+              value={
+                <span className={styles.refundRow}>
+                  <RecordLink to={`/refunds/${claim.refund.id}`}>
+                    View refund
+                  </RecordLink>
+                  <StatusBadge kind="refund" status={claim.refund.status as RefundStatus} />
+                  {claim.refund.amount_ngn !== null && (
+                    <Mono>{formatNgn(claim.refund.amount_ngn)}</Mono>
+                  )}
+                </span>
+              }
+            />
+          )}
+        </Section>
       )}
 
       {/* Cartons affected */}
-      <div className={styles.section}>
-        <SectionHead title="Cartons affected" />
-        <Card padding={20}>
-          {claim.cartons_affected.length > 0 ? (
-            <div className={styles.cartonList}>
-              {claim.cartons_affected.map((tag) => (
-                <span key={tag} className={styles.cartonTag}><Mono>{tag}</Mono></span>
-              ))}
-            </div>
-          ) : (
-            <span className={styles.emptyNote}>No specific carton tags recorded.</span>
-          )}
-        </Card>
-      </div>
+      <Section title="Cartons affected">
+        {claim.cartons_affected.length > 0 ? (
+          <div className={styles.cartonList}>
+            {claim.cartons_affected.map((tag) => (
+              <span key={tag} className={styles.cartonTag}>
+                <Mono>{tag}</Mono>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className={styles.emptyNote}>No specific carton tags recorded.</span>
+        )}
+      </Section>
 
-      {/* Evidence upload — available while claim is not terminal */}
-      {!isTerminalClaimStatus(claim.status) && (
-        <div className={styles.section}>
-          <SectionHead title="Attach evidence" sub="Upload photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)" />
-          <Card padding={20}>
-            <EvidenceUploader getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)} onUploaded={() => { /* evidence logged server-side */ }} />
-          </Card>
-        </div>
-      )}
+      {/* Evidence files + upload */}
+      <Section
+        title="Evidence"
+        sub={!isTerminalClaimStatus(claim.status) ? 'Photos or PDF documents (JPEG · PNG · PDF, max 5 MB each)' : undefined}
+      >
+        <EvidenceFileList files={evidenceFiles} />
+        {!isTerminalClaimStatus(claim.status) && (
+          <div className={styles.uploaderWrap}>
+            <EvidenceUploader
+              getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)}
+              confirmUpload={(evidenceId) => presignedUploadApi.confirm(claim.id, evidenceId)}
+              onUploaded={() => {
+                void refetch()
+              }}
+            />
+          </div>
+        )}
+      </Section>
 
       {showInspect && (
         <StartInspectionModal
           claimId={claim.id}
           onCancel={() => setShowInspect(false)}
-          onSuccess={(updated) => { setShowInspect(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowInspect(false)
+            applyUpdated(updated)
+          }}
         />
       )}
       {showResolve && (
@@ -421,9 +523,12 @@ export function ClaimDetail(): JSX.Element {
           claimId={claim.id}
           role={role}
           onCancel={() => setShowResolve(false)}
-          onSuccess={(updated) => { setShowResolve(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowResolve(false)
+            applyUpdated(updated)
+          }}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }

@@ -3,14 +3,20 @@
 Routes:
   GET  /v1/packing-lists/{id}/export          — china_office_staff, nigeria_office_staff, tenant_admin
   GET  /v1/packing-lists/{id}/pdf             — china_office_staff, nigeria_office_staff, tenant_admin, customer (own only)
+  GET  /v1/billing/{id}/pdf                   — the invoice: nigeria_office_staff, tenant_admin, customer (own only)
+  GET  /v1/manifests/{id}/pdf                 — platform_admin, tenant_admin, china/nigeria office staff
   GET  /v1/release-notes/{id}/pdf             — nigeria_office_staff, tenant_admin, warehouse_attendant, customer (own only)
   GET  /v1/payments/{id}/receipt/pdf          — nigeria_office_staff, tenant_admin, customer (own only)
   GET  /v1/manifests/{id}/export              — china_office_staff, nigeria_office_staff, tenant_admin
   GET  /v1/billing/{id}/export                — nigeria_office_staff, tenant_admin, customer (own only)
+  GET  /v1/containers/{id}/events/export      — tenant_admin, nigeria/china office staff, warehouse_attendant
+                                                 (the tracking tab's event log; xlsx or csv)
   GET  /v1/containers/{id}/billing/export     — nigeria_office_staff, tenant_admin (all customers on the
                                                  container — never customer-facing)
   GET  /v1/billing/export                     — tenant_admin only (the invoice list's
                                                  filters and sort; xlsx or csv)
+  GET  /v1/billing/report/export              — tenant_admin only (the reports page's billing by
+                                                 container for its period; xlsx or csv)
   GET  /v1/containers/export                  — china_office_staff, nigeria_office_staff, tenant_admin
                                                  (the container list's filters and sort; xlsx or csv)
   POST /v1/packing-lists/import               — china_office_staff
@@ -28,7 +34,7 @@ from typing import Any, cast
 
 from shared.auth import get_tenant_context
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
@@ -43,6 +49,7 @@ from .models import (
     ImportRequest,
     ListExportQuery,
     ManifestImportRequest,
+    ReportExportQuery,
 )
 
 setup_logging()
@@ -70,6 +77,13 @@ _BILLING_SINGLE_EXPORT_ROLES = (*_BILLING_EXPORT_ROLES, UserRole.CUSTOMER)
 # 2026-11-17). Nigeria staff export one invoice or one container's billing.
 _BILLING_LIST_EXPORT_ROLES = (UserRole.TENANT_ADMIN,)
 _IMPORT_ROLES = (UserRole.CHINA_OFFICE_STAFF,)
+# Everyone who can read a container's events (GET /v1/containers/{id}/events) can export them.
+_EVENT_EXPORT_ROLES = (
+    UserRole.TENANT_ADMIN,
+    UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.CHINA_OFFICE_STAFF,
+    UserRole.WAREHOUSE_ATTENDANT,
+)
 _PL_PDF_ROLES = (
     UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,
@@ -114,15 +128,30 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -169,6 +198,11 @@ def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
         return json.loads(raw)  # type: ignore[no-any-return]
     except json.JSONDecodeError:
         return {}
+
+
+def _customer_user_id(ctx: Any) -> str | None:
+    is_customer_only = bool(getattr(ctx, "is_customer_only", ctx.role == UserRole.CUSTOMER))
+    return str(ctx.user_id) if is_customer_only else None
 
 
 def _dispatch(
@@ -230,7 +264,7 @@ def _dispatch(
     # GET /v1/packing-lists/{id}/pdf
     if resource == "packing-lists" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_PL_PDF_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
+        customer_user_id = _customer_user_id(ctx)
         result = service.export_packing_list_pdf(
             tenant_id,
             parts[2],
@@ -240,10 +274,25 @@ def _dispatch(
         )
         return success(result, request_id=request_id)
 
+    # GET /v1/billing/{id}/pdf — the invoice (FD-39); a customer gets their own only
+    if resource == "billing" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
+        ctx.assert_role(*_BILLING_SINGLE_EXPORT_ROLES)
+        customer_user_id = _customer_user_id(ctx)
+        result = service.export_invoice_pdf(
+            tenant_id, parts[2], actor_id=ctx.user_id, actor_role=str(ctx.role), customer_user_id=customer_user_id
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/manifests/{id}/pdf — the manifest (FD-39), staff who can export it
+    if resource == "manifests" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
+        ctx.assert_role(*_EXPORT_ROLES)
+        result = service.export_manifest_pdf(tenant_id, parts[2], actor_id=ctx.user_id, actor_role=str(ctx.role))
+        return success(result, request_id=request_id)
+
     # GET /v1/release-notes/{id}/pdf
     if resource == "release-notes" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_RELEASE_NOTE_PDF_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
+        customer_user_id = _customer_user_id(ctx)
         result = service.export_release_note_pdf(
             tenant_id,
             parts[2],
@@ -256,7 +305,7 @@ def _dispatch(
     # GET /v1/payments/{id}/receipt/pdf
     if resource == "payments" and len(parts) == 5 and parts[3] == "receipt" and parts[4] == "pdf" and method == "GET":
         ctx.assert_role(*_RECEIPT_PDF_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
+        customer_user_id = _customer_user_id(ctx)
         result = service.export_receipt_pdf(
             tenant_id,
             parts[2],
@@ -276,6 +325,19 @@ def _dispatch(
             fmt=query.format,
             sort_field=query.sort,
             sort_direction=query.direction,
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/billing/report/export — the reports page's billing by container, every container in its period
+    if resource == "billing" and len(parts) == 4 and parts[2] == "report" and parts[3] == "export" and method == "GET":
+        ctx.assert_role(*_BILLING_LIST_EXPORT_ROLES)
+        report_query = parse_validated(ReportExportQuery, _query_params(event))
+        result = service.export_report_container_billing(
+            tenant_id,
+            report_query.filters(),
+            fmt=report_query.format,
             actor_id=ctx.user_id,
             actor_role=str(ctx.role),
         )
@@ -301,26 +363,39 @@ def _dispatch(
     # GET /v1/packing-lists/{id}/export
     if resource == "packing-lists" and len(parts) == 4 and parts[3] == "export" and method == "GET":
         ctx.assert_role(*_EXPORT_ROLES)
-        result = service.export_packing_list(tenant_id, parts[2], fmt=fmt)
+        result = service.export_packing_list(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     # GET /v1/manifests/{id}/export
     if resource == "manifests" and len(parts) == 4 and parts[3] == "export" and method == "GET":
         ctx.assert_role(*_EXPORT_ROLES)
-        result = service.export_manifest(tenant_id, parts[2], fmt=fmt)
+        result = service.export_manifest(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     # GET /v1/billing/{id}/export — the customer's downloadable invoice
     if resource == "billing" and len(parts) == 4 and parts[3] == "export" and method == "GET":
         ctx.assert_role(*_BILLING_SINGLE_EXPORT_ROLES)
-        customer_user_id = ctx.user_id if ctx.role == UserRole.CUSTOMER else None
-        result = service.export_billing(tenant_id, parts[2], fmt=fmt, customer_user_id=customer_user_id)
+        customer_user_id = _customer_user_id(ctx)
+        result = service.export_billing(
+            tenant_id,
+            parts[2],
+            fmt=fmt,
+            customer_user_id=customer_user_id,
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/containers/{id}/events/export — the tracking tab's event log, xlsx or csv
+    if resource == "containers" and len(parts) == 5 and parts[3] == "events" and parts[4] == "export" and method == "GET":
+        ctx.assert_role(*_EVENT_EXPORT_ROLES)
+        result = service.export_container_events(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     # GET /v1/containers/{id}/billing/export
     if resource == "containers" and len(parts) == 5 and parts[3] == "billing" and parts[4] == "export" and method == "GET":
         ctx.assert_role(*_BILLING_EXPORT_ROLES)
-        result = service.export_container_billing(tenant_id, parts[2], fmt=fmt)
+        result = service.export_container_billing(tenant_id, parts[2], fmt=fmt, actor_id=ctx.user_id, actor_role=str(ctx.role))
         return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", path)
@@ -331,13 +406,17 @@ def _query_params(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_format(event: dict[str, Any]) -> str:
-    """Return validated export format from ?format= query param (default: xlsx)."""
+    """Return validated export format from ?format= query param (default: xlsx).
+
+    The data exports are spreadsheets only (FD-39): a PDF is a document with its own layout, served from the record's
+    ``/pdf`` route, never a table of column names.
+    """
     raw = cast(str, (event.get("queryStringParameters") or {}).get("format", "xlsx")).lower()
-    if raw not in {"xlsx", "csv", "pdf"}:
+    if raw not in {"xlsx", "csv"}:
         from shared.exceptions import ValidationError
 
         raise ValidationError(
-            "Invalid export format",
-            field_errors={"format": f"Must be one of: xlsx, csv, pdf. Got: '{raw}'"},
+            "Invalid export format: use xlsx or csv. A record's PDF has its own /pdf link.",
+            field_errors={"format": f"Must be one of: xlsx, csv. Got: '{raw}'."},
         )
     return raw

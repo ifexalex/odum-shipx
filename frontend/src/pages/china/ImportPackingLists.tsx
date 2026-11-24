@@ -1,13 +1,14 @@
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { excelApi, type ImportResult, type ManifestImportResult } from '../../api/excel'
+import { excelApi, type ImportErrorDetail, type ImportResult, type ManifestImportResult } from '../../api/excel'
 import { FileTooLargeError, UploadFailedError, uploadImportFile } from '../../api/uploads'
-import { Banner, Button, Card, Icon, Mono } from '../../design/components'
+import { Banner, Button, Card, Icon, Mono, Pressable, Select, FileInput, Stepper, Table } from '../../design/components'
 import { useContainerLookup } from '../../hooks/useContainers'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './ImportPackingLists.module.css'
+import { plural } from '../../lib/format'
 
 /**
  * Two genuinely different import shapes share this wizard:
@@ -24,35 +25,48 @@ interface WizardStepsProps {
   current: 1 | 2 | 3
 }
 
+/** The import's three steps (FD-09: the shared Stepper in wizard mode). */
 function WizardSteps({ current, mode }: WizardStepsProps & { mode: ImportMode }): JSX.Element {
-  const steps: { n: 1 | 2 | 3; label: string; sub: string }[] = [
-    { n: 1, label: 'Upload file', sub: mode === 'manifest' ? 'Pick the .xlsx manifest' : 'Pick container + .xlsx' },
-    { n: 2, label: 'Confirm import', sub: 'Create packing lists' },
-    { n: 3, label: 'Results', sub: 'Per-row outcome' },
+  const steps = [
+    { key: 'upload', label: 'Upload file', sub: mode === 'manifest' ? 'Pick the .xlsx manifest' : 'Pick container + .xlsx' },
+    { key: 'confirm', label: 'Confirm import', sub: 'Create packing lists' },
+    { key: 'results', label: 'Results', sub: 'Per-row outcome' },
   ]
   return (
-    <Card padding={0}>
-      <div className={styles.steps}>
-        {steps.map((step, index) => {
-          const done = step.n < current
-          const isCurrent = step.n === current
-          return (
-            <div key={step.n} className={styles.stepWrap}>
-              <div className={[styles.step, isCurrent ? styles.stepActive : ''].join(' ')}>
-                <div className={[styles.stepCircle, done ? styles.stepDone : '', isCurrent ? styles.stepCurrent : ''].join(' ')}>
-                  {done ? <Icon name="check" size={16} stroke={3} color="#fff" /> : step.n}
-                </div>
-                <div>
-                  <div className={styles.stepLabel}>{step.label}</div>
-                  <div className={styles.stepSub}>{step.sub}</div>
-                </div>
-              </div>
-              {index < steps.length - 1 && <Icon name="chevright" size={14} color="var(--color-ink-4)" />}
-            </div>
-          )
-        })}
-      </div>
+    <Card padding="default">
+      <Stepper mode="wizard" steps={steps} current={current - 1} complete={current === 3} label="Import steps" />
     </Card>
+  )
+}
+
+/** The rows an import skipped and why. Manifest imports also name the sheet each row came from. */
+function SkippedRowsTable({ details, showSheet }: { details: ImportErrorDetail[]; showSheet: boolean }): JSX.Element {
+  return (
+    <div className={styles.errorSection}>
+      <Card padding="none">
+        <div className={styles.tableHead}>
+          <SectionHead title="Skipped rows" sub={`${details.length} ${details.length === 1 ? 'row' : 'rows'} skipped`} />
+        </div>
+        <Table
+          columns={[
+            { title: 'Row', type: 'number' },
+            ...(showSheet ? [{ title: 'Sheet' }] : []),
+            { title: 'Field' },
+            { title: 'Value' },
+            { title: 'Reason' },
+          ]}
+          rows={details.map((detail) => ({
+            cells: [
+              <Mono key="row">{detail.row}</Mono>,
+              ...(showSheet ? [<span key="sheet">{detail.sheet ?? '—'}</span>] : []),
+              <span key="field">{detail.field}</span>,
+              <span key="value">{detail.value}</span>,
+              <span key="reason">{detail.error}</span>,
+            ],
+          }))}
+        />
+      </Card>
+    </div>
   )
 }
 
@@ -61,7 +75,7 @@ export function ImportPackingLists(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [mode, setMode] = useState<ImportMode>('manifest')
-  const containerLookup = useContainerLookup()
+  const containerLookup = useContainerLookup({ status: 'loading' })
   const containers = containerLookup.data?.data ?? []
   const [containerId, setContainerId] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -119,9 +133,8 @@ export function ImportPackingLists(): JSX.Element {
   return (
     <div className={styles.wrap}>
       <PageHeader
-        eyebrow="China-side · bulk entry"
         title="Import from Excel"
-        subtitle="Bring a container’s cargo into ShipX in one pass — either your forwarder’s own manifest export, or a filled ShipX template."
+        meta="Bring a container’s cargo into ShipX in one pass — either your forwarder’s own manifest export, or a filled ShipX template."
       />
 
       <WizardSteps current={step} mode={mode} />
@@ -134,7 +147,7 @@ export function ImportPackingLists(): JSX.Element {
       )}
 
       {step === 1 && (
-        <Card padding={32}>
+        <Card padding="large">
           <SectionHead
             title="What are you importing?"
             sub="Pick the kind of file you have, then upload it."
@@ -154,7 +167,7 @@ export function ImportPackingLists(): JSX.Element {
                 sub: 'A blank template you filled in yourself. You pick the container, and every customer must already exist in ShipX.',
               },
             ]).map((option) => (
-              <button
+              <Pressable
                 key={option.value}
                 type="button"
                 role="radio"
@@ -169,7 +182,7 @@ export function ImportPackingLists(): JSX.Element {
                   <span className={styles.modeTitle}>{option.title}</span>
                   <span className={styles.modeSub}>{option.sub}</span>
                 </span>
-              </button>
+              </Pressable>
             ))}
           </div>
 
@@ -182,12 +195,8 @@ export function ImportPackingLists(): JSX.Element {
             </div>
           ) : (
           <div className={styles.selectField}>
-            <label className={styles.selectLabel} htmlFor="importContainerSelect">
-              Container<span className={styles.required}>*</span>
-            </label>
-            <select
+            <Select label="Container"
               id="importContainerSelect"
-              className={styles.select}
               value={containerId}
               onChange={(event) => setContainerId(event.target.value)}
             >
@@ -197,7 +206,7 @@ export function ImportPackingLists(): JSX.Element {
                   {container.container_number}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           )}
 
@@ -216,14 +225,7 @@ export function ImportPackingLists(): JSX.Element {
             </div>
             <div className={styles.dropzoneTitle}>Drag &amp; drop your .xlsx file here</div>
             <div className={styles.dropzoneSub}>or click to browse · .xlsx only, up to 5 MB</div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx"
-              className={styles.hiddenInput}
-              onChange={handleFileChange}
-              aria-label="Choose .xlsx file"
-            />
+            <FileInput ref={fileInputRef} label="Choose .xlsx file" accept=".xlsx" onChange={handleFileChange} />
           </div>
 
           {file && (
@@ -236,9 +238,9 @@ export function ImportPackingLists(): JSX.Element {
                 <div className={styles.selectedFileMeta}>{(file.size / 1024).toFixed(0)} KB</div>
               </div>
               <Icon name="check" size={18} color="var(--color-success)" stroke={2.5} />
-              <button type="button" className={styles.removeFile} onClick={() => setFile(null)}>
+              <Button variant="ghost" size="sm" onClick={() => setFile(null)}>
                 Remove
-              </button>
+              </Button>
             </div>
           )}
 
@@ -298,7 +300,7 @@ export function ImportPackingLists(): JSX.Element {
             <Button variant="ghost" icon="arrowleft" onClick={() => setStep(1)}>
               Back: Upload
             </Button>
-            <Button variant="accent" icon="check" loading={importing} onClick={() => void handleConfirmImport()}>
+            <Button variant="primary" icon="check" loading={importing} onClick={() => void handleConfirmImport()}>
               Confirm &amp; import
             </Button>
           </div>
@@ -310,7 +312,7 @@ export function ImportPackingLists(): JSX.Element {
           <Card>
             <SectionHead
               title="Import complete"
-              sub={`${manifestResult.items_created} item(s) added across ${manifestResult.packing_lists_created} packing list(s), ready for approval`}
+              sub={`${plural(manifestResult.items_created, 'item')} added across ${plural(manifestResult.packing_lists_created, 'packing list')}, ready for approval`}
             />
             <div className={styles.spacerLg} />
             <div className={styles.statsGrid}>
@@ -359,40 +361,7 @@ export function ImportPackingLists(): JSX.Element {
           </Card>
 
           {manifestResult.error_details.length > 0 && (
-            <div className={styles.errorSection}>
-              <Card padding={0}>
-                <div className={styles.tableHead}>
-                  <SectionHead
-                    title="Skipped rows"
-                    sub={`${manifestResult.error_details.length} row(s) skipped`}
-                  />
-                </div>
-                <table className={styles.errorTable}>
-                  <thead>
-                    <tr>
-                      <th>Sheet</th>
-                      <th>Row</th>
-                      <th>Field</th>
-                      <th>Value</th>
-                      <th>Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {manifestResult.error_details.map((detail, index) => (
-                      <tr key={index}>
-                        <td>{detail.sheet ?? '—'}</td>
-                        <td>
-                          <Mono>{detail.row}</Mono>
-                        </td>
-                        <td>{detail.field}</td>
-                        <td>{detail.value}</td>
-                        <td>{detail.error}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Card>
-            </div>
+            <SkippedRowsTable details={manifestResult.error_details} showSheet />
           )}
 
           <div className={styles.actionsRow}>
@@ -407,8 +376,15 @@ export function ImportPackingLists(): JSX.Element {
             >
               Import another file
             </Button>
-            <Button variant="primary" trailingIcon="arrowright" onClick={() => navigate('/containers')}>
+            <Button variant="secondary" onClick={() => navigate('/containers')}>
               View containers
+            </Button>
+            <Button
+              variant="primary"
+              trailingIcon="arrowright"
+              onClick={() => navigate('/packing-lists?status=pending_approval')}
+            >
+              Review pending lists
             </Button>
           </div>
         </>
@@ -417,7 +393,7 @@ export function ImportPackingLists(): JSX.Element {
       {step === 3 && result && (
         <>
           <Card>
-            <SectionHead title="Import complete" sub={`${result.packing_lists_created} packing list(s) ready for approval`} />
+            <SectionHead title="Import complete" sub={`${plural(result.packing_lists_created, 'packing list')} ready for approval`} />
             <div className={styles.spacerLg} />
             <div className={styles.statsGrid}>
               <div className={styles.statTile}>
@@ -439,37 +415,7 @@ export function ImportPackingLists(): JSX.Element {
             </div>
           </Card>
 
-          {result.error_details.length > 0 && (
-            <div className={styles.errorSection}>
-              <Card padding={0}>
-                <div className={styles.tableHead}>
-                  <SectionHead title="Skipped rows" sub={`${result.error_details.length} row(s) skipped`} />
-                </div>
-                <table className={styles.errorTable}>
-                  <thead>
-                    <tr>
-                      <th>Row</th>
-                      <th>Field</th>
-                      <th>Value</th>
-                      <th>Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.error_details.map((detail, index) => (
-                      <tr key={index}>
-                        <td>
-                          <Mono>{detail.row}</Mono>
-                        </td>
-                        <td>{detail.field}</td>
-                        <td>{detail.value}</td>
-                        <td>{detail.error}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Card>
-            </div>
-          )}
+          {result.error_details.length > 0 && <SkippedRowsTable details={result.error_details} showSheet={false} />}
 
           <div className={styles.actionsRow}>
             <Button variant="secondary" icon="upload" onClick={() => { setStep(1); setFile(null); setResult(null) }}>

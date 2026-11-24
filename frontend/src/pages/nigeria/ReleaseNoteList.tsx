@@ -1,112 +1,160 @@
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ReleaseNoteStatus } from '../../api/releaseNotes'
-import { releaseNoteStatusLabel, releaseTypeLabel } from '../../api/releaseNotesRules'
+import { releaseTypeLabel } from '../../api/releaseNotesRules'
 import { useReleaseNoteList, useReleaseNoteStats } from '../../hooks/useReleaseNotes'
-import { Badge, Banner, Card, Chip, Mono, StatCard, Table, ViewLink, ListFooter, type BadgeVariant } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
+import { Chip, ListFooter, Mono, SearchField, StatCard, StatusBadge, Table, EmptyState, ErrorState } from '../../design/components'
 import styles from './ReleaseNoteList.module.css'
 import { formatDate } from '../../lib/format'
+import { useStatusParam } from '../../lib/useStatusParam'
+import { statusLabel } from '../../design/status'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage, StatRow } from '../../shell/ListPage'
+import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: ReleaseNoteStatus[] = ['active', 'picked_up', 'expired', 'cancelled']
 
-const STATUS_VARIANT: Record<ReleaseNoteStatus, BadgeVariant> = {
-  active: 'success',
-  picked_up: 'neutral',
-  expired: 'error',
-  cancelled: 'neutral',
-}
-
-
 export function ReleaseNoteList(): JSX.Element {
   const navigate = useNavigate()
-  const [statusFilter, setStatusFilter] = useState<ReleaseNoteStatus | null>(null)
-  const { items: notes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount } = useReleaseNoteList(
+  const [statusFilter, setStatusFilter] = useStatusParam<ReleaseNoteStatus>(STATUS_FILTERS)
+  const [search, setSearch] = useState('')
+  const { items: notes, isLoading: loading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useReleaseNoteList(
     statusFilter ? { status: statusFilter } : {},
   )
+
+  const filteredNotes = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return notes
+    return notes.filter((n) =>
+      [n.reference_number, n.customer_name, n.container_number]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q)),
+    )
+  }, [notes, search])
 
   // §9.1 stats row (P2-3) — real per-status counts from GET /stats; hidden until loaded, and on failure.
   const { data: stats = null } = useReleaseNoteStats()
 
-  useTopBarSlot({ subtitle: 'Authorise and track carton pickups from the warehouse.' })
-
   return (
-    <div>
-
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load release notes">{error.message}</Banner>
-        </div>
-      )}
-
-      {stats && (
-        <div className={styles.statsRow}>
-          <StatCard label="Active · awaiting pickup" value={stats.active} icon="card" />
-          <StatCard label="Picked up today" value={stats.picked_up_today} icon="check" />
-          <StatCard
-            label="Partial pickups"
-            value={stats.partial_active}
-            icon="package"
-            sublabel={stats.partial_active > 0 ? 'awaiting follow-up' : 'none open'}
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Release notes"
+            meta={'Authorise and track carton pickups from the warehouse.'}
           />
-          <StatCard
-            label="Expired · uncollected"
-            value={stats.expired}
-            icon="warn"
-            sublabel={stats.expired > 0 ? 'contact the customer' : 'all clear'}
+        }
+        notices={
+          <>
+            {error && (
+              <ErrorState
+                compact
+                title="Couldn't load release notes"
+                error={error}
+                onRetry={() => void refetch()}
+              />
+            )}
+          </>
+        }
+        stats={
+          stats && (
+            <StatRow>
+              <StatCard
+                label="Awaiting pickup"
+                value={stats.active}
+                icon="card"
+                sublabel="active notes"
+                selected={statusFilter === 'active'}
+                onSelect={() => setStatusFilter(statusFilter === 'active' ? null : 'active')}
+              />
+              <StatCard
+                label="Partial pickups"
+                value={stats.partial_active}
+                icon="package"
+                sublabel={stats.partial_active > 0 ? 'awaiting follow-up' : 'none open'}
+              />
+              <StatCard
+                label="Expired, uncollected"
+                value={stats.expired}
+                icon="warn"
+                sublabel={stats.expired > 0 ? 'contact the customer' : 'all clear'}
+                selected={statusFilter === 'expired'}
+                onSelect={() => setStatusFilter(statusFilter === 'expired' ? null : 'expired')}
+              />
+            </StatRow>
+          )
+        }
+        filters={
+          <FilterBar
+            label="Filter release notes"
+            status={
+              <>
+                <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                  All
+                </Chip>
+                {STATUS_FILTERS.map((s) => (
+                  <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
+                    {statusLabel('releaseNote', s)}
+                  </Chip>
+                ))}
+              </>
+            }
+            search={
+              <SearchField
+                label="Search release notes"
+                placeholder="Reference, customer, container…"
+                value={search}
+                onChange={setSearch}
+              />
+            }
           />
-        </div>
-      )}
-
-      <Card padding={16}>
-        <div className={styles.chips}>
-          <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>All</Chip>
-          {STATUS_FILTERS.map((s) => (
-            <Chip key={s} active={statusFilter === s} onClick={() => setStatusFilter(s)}>
-              {releaseNoteStatusLabel(s)}
-            </Chip>
-          ))}
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding={0}>
-          <Table
-            columns={[
-              { title: 'Reference' },
-              { title: 'Customer' },
-              { title: 'Container' },
-              { title: 'Cartons', align: 'right' },
-              { title: 'Type' },
-              { title: 'Status' },
-              { title: 'Issued' },
-              { title: '', width: '60px' },
-            ]}
-            rows={notes.map((n) => ({
-              cells: [
-                <Mono key="ref">{n.reference_number}</Mono>,
-                <span key="cust">{n.customer_name ?? '—'}</span>,
-                <Mono key="con">{n.container_number ?? '—'}</Mono>,
-                <Mono key="cartons">{n.carton_count} / {n.total_cartons_for_customer}</Mono>,
-                <span key="type" className={styles.partial}>{releaseTypeLabel(n)}</span>,
-                <Badge key="status" variant={STATUS_VARIANT[n.status]}>{releaseNoteStatusLabel(n.status)}</Badge>,
-                <span key="date">{formatDate(n.authorized_at)}</span>,
-                <ViewLink key="view" onClick={() => navigate(`/release-notes/${n.id}`, { state: { note: n } })} />,
-              ],
-            }))}
-            loading={loading}
-            emptyState={!loading && notes.length === 0 ? <span>✓ No release notes match this filter.</span> : undefined}
+        }
+        footer={
+          <ListFooter
+            shown={filteredNotes.length}
+            total={search.trim() ? filteredNotes.length : totalCount}
+            hasMore={!search.trim() && hasMore}
+            loading={isFetchingMore}
+            onLoadMore={loadMore}
+            noun="release notes"
+            nounOne="release note"
           />
-        </Card>
-        <ListFooter
-        shown={notes.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="release notes"
-      />
-      </div>
-    </div>
+        }
+      >
+        <Table
+          columns={[
+            { title: 'Reference', type: 'reference' },
+            { title: 'Customer' },
+            { title: 'Container', type: 'reference' },
+            { title: 'Cartons', type: 'number' },
+            { title: 'Type' },
+            { title: 'Status', type: 'status' },
+            { title: 'Issued', type: 'date' },
+          ]}
+          rows={filteredNotes.map((n) => ({
+            onOpen: () => navigate(`/release-notes/${n.id}`, { state: { note: n } }),
+            cells: [
+              <Mono key="ref">{n.reference_number}</Mono>,
+              <span key="cust">{n.customer_name ?? '—'}</span>,
+              <Mono key="con">{n.container_number ?? '—'}</Mono>,
+              <Mono key="cartons">
+                {n.carton_count} / {n.total_cartons_for_customer}
+              </Mono>,
+              <span key="type" className={styles.partial}>
+                {releaseTypeLabel(n)}
+              </span>,
+              <StatusBadge key="status" kind="releaseNote" status={n.status} />,
+              <span key="date">{formatDate(n.authorized_at)}</span>,
+            ],
+          }))}
+          loading={loading}
+          emptyState={
+            !loading && filteredNotes.length === 0 ? (
+              <EmptyState compact title="No release notes match this filter" />
+            ) : undefined
+          }
+        />
+      </ListPage>
+    </>
   )
 }

@@ -1,7 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { withQuery } from '../../test/queryWrapper'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
@@ -9,23 +8,11 @@ import type { Session, UserRole } from '../../auth/types'
 import { ApiError } from '../../api/client'
 import { containerDocumentsApi, containersApi, uploadToPresignedUrl, type Container } from '../../api/tracking'
 import { packingListApi, type PackingList } from '../../api/packingList'
-import { TopBarContext } from '../../shell/TopBarContext'
 import { ContainerDetail } from './ContainerDetail'
 
-function TopBarWrapper({ children }: { children: ReactNode }) {
-  const [suffix, setSuffix] = useState<string | null>(null)
-  const [subtitle, setSubtitle] = useState<string | null>(null)
-  const [actions, setActions] = useState<ReactNode | null>(null)
-  return (
-    <TopBarContext.Provider value={{ suffix, setSuffix, subtitle, setSubtitle, actions, setActions }}>
-      {children}
-    </TopBarContext.Provider>
-  )
-}
-
 vi.mock('../../api/tracking', () => ({
-  containersApi: { get: vi.fn(), updateStatus: vi.fn(), events: vi.fn() },
-  containerDocumentsApi: { list: vi.fn(), presignUpload: vi.fn(), downloadUrl: vi.fn() },
+  containersApi: { get: vi.fn(), updateStatus: vi.fn(), events: vi.fn(), exportEvents: vi.fn() },
+  containerDocumentsApi: { list: vi.fn(), presignUpload: vi.fn(), confirmUpload: vi.fn(), downloadUrl: vi.fn() },
   uploadToPresignedUrl: vi.fn(),
 }))
 vi.mock('../../api/packingList', () => ({
@@ -114,11 +101,11 @@ function renderPage(role: UserRole) {
     withQuery(
       <SessionContext.Provider value={makeContextValue(role)}>
         <MemoryRouter initialEntries={['/containers/c1']}>
-          <TopBarWrapper>
+          <>
             <Routes>
               <Route path="/containers/:id" element={<ContainerDetail />} />
             </Routes>
-          </TopBarWrapper>
+          </>
         </MemoryRouter>
       </SessionContext.Provider>,
     ),
@@ -141,20 +128,20 @@ describe('ContainerDetail', () => {
   it('renders the container number and status', async () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument())
     expect(screen.getAllByText('Loading').length).toBeGreaterThan(0)
   })
 
   it('shows the advance-status action for china_office_staff on a china-owned stage', async () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByText('Advance to Sealed')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Seal container')).toBeInTheDocument())
   })
 
   it('hides the advance-status action for nigeria_office_staff on a china-owned stage', async () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('nigeria_office_staff')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument())
     expect(screen.queryByText(/Advance to/)).not.toBeInTheDocument()
   })
 
@@ -168,18 +155,18 @@ describe('ContainerDetail', () => {
     expect(screen.getByText('CHRIS(GQL)')).toBeInTheDocument()
     // container_type "40' HC" → 76 CBM capacity → utilization bar shown, plus the hero type badge.
     expect(screen.getByText('Utilization')).toBeInTheDocument()
-    // "40' HC" shows in both the hero badge and the Container-info row.
-    expect(screen.getAllByText("40' HC").length).toBeGreaterThanOrEqual(2)
+    // "40' HC" is stated once, as the header's type badge, not repeated in Container info (FD-19).
+    expect(screen.getAllByText("40' HC")).toHaveLength(1)
   })
 
   it('switches to the packing lists tab and lists them', async () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('tab', { name: 'Packing lists' }))
     // The Packages cell names the unit rather than showing a bare row count.
     expect(screen.getAllByText(/cartons?|bales?|bags?|—/).length).toBeGreaterThan(0)
-    expect(screen.getByText('approved')).toBeInTheDocument()
+    expect(screen.getByText('Approved')).toBeInTheDocument()
   })
 
   it('sorts the packing-lists sub-table by Ref # client-side, with no API param involved', async () => {
@@ -192,7 +179,7 @@ describe('ContainerDetail', () => {
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
     })
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('tab', { name: 'Packing lists' }))
 
     const refCellsInOrder = () => screen.getAllByText(/^PL-20260725-00[12]$/).map((el) => el.textContent)
@@ -214,8 +201,8 @@ describe('ContainerDetail', () => {
     vi.mocked(containersApi.get).mockResolvedValue({ ...containerStub, status: 'sealed' })
     vi.mocked(containersApi.updateStatus).mockResolvedValue({ ...containerStub, status: 'in_transit' })
     renderPage('china_office_staff')
-    await waitFor(() => expect(screen.getByText('Advance to In Transit')).toBeInTheDocument())
-    await userEvent.click(screen.getByText('Advance to In Transit'))
+    await waitFor(() => expect(screen.getByText('Mark in transit')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Mark in transit'))
 
     // Step 1 — Continue is gated on the required ship date
     const continueButton = screen.getByRole('button', { name: 'Continue' })
@@ -267,7 +254,7 @@ describe('ContainerDetail', () => {
     vi.mocked(containersApi.get).mockResolvedValue(containerStub)
     renderPage('china_office_staff')
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument(),
     )
 
     // The overview's top-shippers list is a compact ranked view (no contact);
@@ -308,7 +295,7 @@ describe('ContainerDetail', () => {
 
     renderPage('china_office_staff')
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument(),
     )
 
     expect(vi.mocked(packingListApi.listByContainer)).toHaveBeenCalledTimes(2)
@@ -335,7 +322,7 @@ describe('ContainerDetail', () => {
 
     renderPage('china_office_staff')
     await waitFor(() =>
-      expect(screen.getByRole('heading', { name: 'MSCU1234567' })).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Container MSCU1234567' })).toBeInTheDocument(),
     )
 
     // Compact ranked list, not an uncapped table.
@@ -347,7 +334,7 @@ describe('ContainerDetail', () => {
     expect(screen.queryByText('Customer 5')).not.toBeInTheDocument()
 
     // View-all switches to the full per-customer breakdown on the packing-lists tab.
-    await userEvent.click(screen.getByRole('button', { name: 'View all →' }))
+    await userEvent.click(screen.getByRole('button', { name: 'View all' }))
     expect(screen.getByText('Packing lists on this container')).toBeInTheDocument()
   })
 })
@@ -363,6 +350,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     vi.mocked(containerDocumentsApi.list).mockResolvedValue([])
     vi.mocked(containerDocumentsApi.presignUpload).mockReset()
     vi.mocked(uploadToPresignedUrl).mockReset()
+    vi.mocked(containerDocumentsApi.confirmUpload).mockReset()
   })
 
   async function openUpload(): Promise<HTMLElement> {
@@ -381,7 +369,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
   it('refuses a file the browser could not type, in the dialog, without asking the server', async () => {
     const dialog = await openUpload()
     await pick(dialog, new File(['x'], 'scan', { type: '' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     expect(await screen.findByText('Choose a PDF, JPEG, PNG or WebP file.')).toBeInTheDocument()
     expect(dialog).toContainElement(screen.getByText('Choose a PDF, JPEG, PNG or WebP file.'))
     expect(containerDocumentsApi.presignUpload).not.toHaveBeenCalled()
@@ -396,7 +384,7 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     } as never)
     const dialog = await openUpload()
     await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     await waitFor(() =>
       expect(containerDocumentsApi.presignUpload).toHaveBeenCalledWith('c1', {
         filename: 'bl.pdf',
@@ -423,9 +411,52 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     )
     const dialog = await openUpload()
     await pick(dialog, new File(['x'], 'a.png', { type: 'image/png' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     const message = await screen.findByText("content_type 'image/png' is not allowed.")
     expect(dialog).toContainElement(message)
+  })
+
+  const presigned = {
+    upload_url: 'https://storage.test/put',
+    document_id: 'd1',
+    s3_key: 't1/containers/c1/x-bl.pdf',
+    expires_in_seconds: 900,
+  } as never
+
+  it('confirms the upload after the file lands, then closes the dialog', async () => {
+    vi.mocked(containerDocumentsApi.presignUpload).mockResolvedValue(presigned)
+    vi.mocked(uploadToPresignedUrl).mockResolvedValue()
+    vi.mocked(containerDocumentsApi.confirmUpload).mockResolvedValue({} as never)
+    const dialog = await openUpload()
+    await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
+    await waitFor(() => expect(containerDocumentsApi.confirmUpload).toHaveBeenCalledWith('c1', 'd1'))
+    expect(vi.mocked(uploadToPresignedUrl).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(containerDocumentsApi.confirmUpload).mock.invocationCallOrder[0]!,
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('shows a file refused at confirmation (over the limit on Azure) inside the dialog', async () => {
+    vi.mocked(containerDocumentsApi.presignUpload).mockResolvedValue(presigned)
+    vi.mocked(uploadToPresignedUrl).mockResolvedValue()
+    vi.mocked(containerDocumentsApi.confirmUpload).mockRejectedValue(
+      new ApiError(
+        {
+          type: 'about:blank',
+          title: 'Business Rule Violation',
+          status: 422,
+          detail: 'The file is larger than 5 MB.',
+          error_code: 'BUSINESS_RULE_VIOLATION',
+          rule_id: 'FILE_TOO_LARGE',
+        },
+        null,
+      ),
+    )
+    const dialog = await openUpload()
+    await pick(dialog, new File(['%PDF'], 'bl.pdf', { type: 'application/pdf' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
+    expect(dialog).toContainElement(await screen.findByText('The file is larger than 5 MB.'))
   })
 
   it('refuses a file over 5 MB in the dialog, without asking the server', async () => {
@@ -433,9 +464,42 @@ describe('ContainerDetail document upload (audit BE-12)', () => {
     const big = new File(['x'], 'scan.pdf', { type: 'application/pdf' })
     Object.defineProperty(big, 'size', { value: 6 * 1024 * 1024 })
     await pick(dialog, big)
-    await userEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Upload document' }))
     expect(await screen.findByText('This file is 6.0 MB. The limit is 5 MB.')).toBeInTheDocument()
     expect(containerDocumentsApi.presignUpload).not.toHaveBeenCalled()
   })
 })
 
+describe('ContainerDetail tracking export', () => {
+  beforeEach(() => {
+    vi.mocked(containersApi.get).mockResolvedValue(containerStub)
+    vi.mocked(containersApi.events).mockResolvedValue([])
+    vi.mocked(packingListApi.listByContainer).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    vi.mocked(containerDocumentsApi.list).mockResolvedValue([])
+    vi.mocked(containersApi.exportEvents).mockReset()
+  })
+
+  it("exports the container's event log (the button used to do nothing)", async () => {
+    vi.mocked(containersApi.exportEvents).mockResolvedValue()
+    renderPage('china_office_staff')
+    await userEvent.click(await screen.findByRole('tab', { name: /Tracking/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+    expect(containersApi.exportEvents).toHaveBeenCalledWith('c1', 'xlsx')
+  })
+
+  it('shows a failed export instead of swallowing it', async () => {
+    vi.mocked(containersApi.exportEvents).mockRejectedValue(
+      new ApiError(
+        { type: 'about:blank', title: 'Not Found', status: 404, detail: 'container not found', error_code: 'NOT_FOUND' },
+        null,
+      ),
+    )
+    renderPage('china_office_staff')
+    await userEvent.click(await screen.findByRole('tab', { name: /Tracking/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+    expect(await screen.findByText("We couldn't find that. It may have been removed, or the link is out of date.")).toBeInTheDocument()
+  })
+})

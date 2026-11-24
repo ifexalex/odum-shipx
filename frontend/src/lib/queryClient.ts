@@ -1,4 +1,24 @@
-import { QueryClient } from '@tanstack/react-query'
+import { MutationCache, QueryClient } from '@tanstack/react-query'
+import { toast } from '../design/toast'
+
+/** What a mutation's toast says once it succeeds (FD-21): words, or words worked out from the response. */
+export type SuccessToast = string | { title: string; body?: string } | ((data: unknown) => { title: string; body?: string })
+
+declare module '@tanstack/react-query' {
+  interface Register {
+    mutationMeta: { successToast?: SuccessToast }
+  }
+}
+
+/** Every mutation that declares `meta.successToast` confirms itself with a toast; nothing per page. */
+const mutationCache = new MutationCache({
+  onSuccess: (data, _variables, _context, mutation) => {
+    const spec = mutation.meta?.successToast
+    if (!spec) return
+    const message = typeof spec === 'string' ? { title: spec } : typeof spec === 'function' ? spec(data) : spec
+    toast.success(message.title, message.body)
+  },
+})
 
 /**
  * Singleton QueryClient shared across the app.
@@ -33,6 +53,7 @@ import { QueryClient } from '@tanstack/react-query'
 const THREE_MINUTES = 3 * 60 * 1000
 
 export const queryClient = new QueryClient({
+  mutationCache,
   defaultOptions: {
     queries: {
       staleTime: THREE_MINUTES,

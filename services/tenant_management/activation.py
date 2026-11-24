@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from shared.app_urls import MissingBaseUrlError, activation_url
 from shared.audit import log_audit
 from shared.exceptions import (
+    BusinessRuleViolationError,
     ResourceNotFoundError,
 )
 from shared.providers import get_identity_provider
@@ -98,6 +99,11 @@ def resend_activation(
     user = repo.get_user_by_id(tenant_id, user_id)
     if not user:
         raise ResourceNotFoundError("user", user_id)
+    if user.get("status", "active") != "active":
+        raise BusinessRuleViolationError(
+            "Cannot resend activation for a deactivated user",
+            rule_id="USER_NOT_ACTIVE",
+        )
     issue_activation(tenant_id, user_id, user["email"], user.get("full_name") or "", created_by=actor_id, request_id=request_id)
     _audit_access_email(tenant_id, user_id, "ACTIVATION_RESENT", actor_id, actor_role, ip_address)
     return {"message": "Activation link sent", "email": _mask_email(user["email"])}
@@ -111,8 +117,12 @@ def get_activation_preview(token: str) -> dict[str, Any]:
     if not activation.is_activation_valid(row):
         raise ResourceNotFoundError("activation", "token")
     assert row is not None
-    user = repo.get_user_by_id(str(row["tenant_id"]), str(row["user_id"]))
-    if not user:
+    tenant_id = str(row["tenant_id"])
+    tenant = repo.get_tenant_by_id(tenant_id)
+    if tenant is not None and tenant.get("status") != "active":
+        raise ResourceNotFoundError("activation", "token")
+    user = repo.get_user_by_id(tenant_id, str(row["user_id"]))
+    if not user or user.get("status", "active") != "active":
         raise ResourceNotFoundError("activation", "token")
     return {"email": user["email"], "full_name": user.get("full_name")}
 
@@ -127,15 +137,21 @@ def activate_account(token: str, password: str) -> dict[str, Any]:
         raise ResourceNotFoundError("activation", "token")
     assert row is not None
     tenant_id = str(row["tenant_id"])
+    tenant = repo.get_tenant_by_id(tenant_id)
+    if tenant is not None and tenant.get("status") != "active":
+        raise ResourceNotFoundError("activation", "token")
     user = repo.get_user_by_id(tenant_id, str(row["user_id"]))
-    if not user:
+    if not user or user.get("status", "active") != "active":
+        raise ResourceNotFoundError("activation", "token")
+
+    # Atomically claim the single-use token BEFORE mutating the IdP password so
+    # concurrent submissions cannot both succeed with different passwords.
+    consumed = activation.consume_activation(tenant_id, str(row["id"]))
+    if consumed is None:
         raise ResourceNotFoundError("activation", "token")
 
     cognito = get_identity_provider()
     cognito.set_password(user["email"], password, force_change=False)
-    # Burn the token (single-use). set_password already succeeded, so a lost race
-    # here only means the link can't be reused — the password is set either way.
-    activation.consume_activation(tenant_id, str(row["id"]))
     logger.info("Account activated: tenant_id=%s user_id=%s", tenant_id, user["id"])
     return {"email": user["email"]}
 

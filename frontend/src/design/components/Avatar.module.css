@@ -6,7 +6,8 @@
   flex-shrink: 0;
   font-family: var(--font-body);
   font-weight: 700;
-  background: color-mix(in srgb, var(--avatar-color) 13%, transparent);
+  background: color-mix(in srgb, var(--avatar-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--avatar-color) 22%, transparent);
   color: var(--avatar-color);
   overflow: hidden;
 }

@@ -1,10 +1,14 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type JSX } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { billingApi } from '../../api/billing'
+import { billingKeys } from '../../api/keys'
 import { ApiError } from '../../api/client'
 import { Button } from '../../design/components'
+import { runDocument } from '../../lib/documents'
 import styles from './customer.module.css'
 import { useInvoiceCrumb } from './useInvoiceCrumb'
+import { ResultScreen } from '../../shell/ResultScreen'
 
 type ReconcileState = 'verifying' | 'success' | 'pending' | 'error'
 
@@ -32,6 +36,15 @@ export function PaymentSuccess(): JSX.Element {
   // browser back/forward).
   const missingReference = !id || !reference
   const [state, setState] = useState<ReconcileState>(() => (missingReference ? 'error' : 'verifying'))
+  // The payment this page confirmed, for its receipt (FD-43): found on the invoice by its Paystack reference, read once
+  // the payment is confirmed (its own cache slot, so a copy read before the payment cannot answer). A receipt is a
+  // bonus here: not finding one leaves the page as it was.
+  const { data: confirmedInvoice } = useQuery({
+    queryKey: [...billingKeys.detail(id ?? ''), 'after-payment', reference],
+    queryFn: () => billingApi.get(id!),
+    enabled: state === 'success' && !!id,
+  })
+  const receiptPaymentId = confirmedInvoice?.payments?.find((p) => p.payment_reference === reference)?.id ?? null
   const [error, setError] = useState<string | null>(() =>
     missingReference ? 'No payment reference found for this page.' : null,
   )
@@ -63,62 +76,74 @@ export function PaymentSuccess(): JSX.Element {
 
   if (state === 'success') {
     return (
-      <div className={styles.resultPage}>
-        <div className={styles.resultIcon}>✓</div>
-        <h1 className={styles.resultTitle}>Payment successful!</h1>
-        <p className={styles.resultBody}>
-          Your payment has been confirmed and your billing record is updated. Your release note is issued once the
-          balance is fully settled.
-        </p>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
-            View invoice
-          </Button>
-          <Button variant="primary" onClick={() => navigate('/my-billing')}>
-            Back to billing
-          </Button>
-        </div>
-      </div>
+      <ResultScreen
+        tone="success"
+        title="Payment successful"
+        actions={
+          <>
+            {receiptPaymentId && (
+              <Button
+                variant="secondary"
+                icon="download"
+                onClick={() => void runDocument('your receipt', () => billingApi.receiptPdf(receiptPaymentId))}
+              >
+                Download receipt
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
+              View invoice
+            </Button>
+            <Button variant="primary" onClick={() => navigate('/my-billing')}>
+              Back to billing
+            </Button>
+          </>
+        }
+      >
+        Your payment has been confirmed and your billing record is updated. Your release note is issued once the
+        balance is fully settled.
+      </ResultScreen>
     )
   }
 
   if (state === 'pending') {
     return (
-      <div className={styles.resultPage}>
-        <div className={styles.resultIcon} style={{ color: 'var(--color-warning)' }}>!</div>
-        <h1 className={styles.resultTitle}>Payment not yet confirmed</h1>
-        <p className={styles.resultBody}>
-          Paystack hasn't confirmed this payment as successful yet. If you completed the payment, check back on your
-          invoice in a moment — otherwise no charge was made and you can try again.
-        </p>
-        <div style={{ display: 'flex', gap: 12 }}>
+      <ResultScreen
+        tone="warning"
+        title="Payment not yet confirmed"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
+              View invoice
+            </Button>
+            <Button variant="primary" onClick={() => navigate('/my-billing')}>
+              Back to billing
+            </Button>
+          </>
+        }
+      >
+        Paystack hasn't confirmed this payment as successful yet. If you completed the payment, check back on your
+        invoice in a moment — otherwise no charge was made and you can try again.
+      </ResultScreen>
+    )
+  }
+
+  return (
+    <ResultScreen
+      tone="error"
+      title="Couldn't confirm your payment automatically"
+      actions={
+        <>
           <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
             View invoice
           </Button>
           <Button variant="primary" onClick={() => navigate('/my-billing')}>
             Back to billing
           </Button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className={styles.resultPage}>
-      <div className={styles.resultIcon} style={{ color: 'var(--color-error)' }}>!</div>
-      <h1 className={styles.resultTitle}>Couldn't confirm your payment automatically</h1>
-      <p className={styles.resultBody}>
-        {error} If you were charged, your invoice will update shortly — otherwise please try again or contact your
-        shipping company.
-      </p>
-      <div style={{ display: 'flex', gap: 12 }}>
-        <Button variant="secondary" onClick={() => navigate(`/my-billing/${id}`)}>
-          View invoice
-        </Button>
-        <Button variant="primary" onClick={() => navigate('/my-billing')}>
-          Back to billing
-        </Button>
-      </div>
-    </div>
+        </>
+      }
+    >
+      {error} If you were charged, your invoice will update shortly — otherwise please try again or contact your
+      shipping company.
+    </ResultScreen>
   )
 }

@@ -32,15 +32,6 @@ export function sentViaLabel(channels: string[]): string {
   return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? '')
 }
 
-export function releaseNoteStatusLabel(status: ReleaseNoteStatus): string {
-  switch (status) {
-    case 'active': return 'Active'
-    case 'picked_up': return 'Picked up'
-    case 'expired': return 'Expired'
-    case 'cancelled': return 'Cancelled'
-  }
-}
-
 export function releaseTypeLabel(note: ReleaseNote): string {
   return note.is_partial_release ? 'Partial release' : 'Full release'
 }

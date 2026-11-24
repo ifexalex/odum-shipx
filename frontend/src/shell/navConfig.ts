@@ -52,24 +52,27 @@ export function roleForPath(pathname: string, roles: UserRole[], preferred: User
 // and routeTable.ts's `allow` lists are the guard for the same paths, so "what's
 // in the nav" and "what's actually reachable" can't drift apart
 // (06_routing_rbac_and_navigation.md).
+//
+// FD-15: sentence case; within a role no two items share an icon; "Create …" pages are not menu items (each list
+// page's header has that button); the tenant admin's menu is grouped Overview, Operations, Billing and claims, Admin.
 const OPERATIONS_GROUP: NavLinkGroup = {
   group: 'Operations',
   items: [
     { icon: 'container', label: 'Containers', path: '/containers' },
-    { icon: 'package', label: 'Packing Lists', path: '/packing-lists' },
+    { icon: 'package', label: 'Packing lists', path: '/packing-lists' },
     { icon: 'file', label: 'Manifests', path: '/manifests' },
   ],
 }
 
 const BILLING_CLAIMS_GROUP: NavLinkGroup = {
-  group: 'Billing & Disputes',
+  group: 'Billing and claims',
   items: [
     { icon: 'coin', label: 'Billing', path: '/billing' },
-    { icon: 'warn', label: 'Claims', path: '/claims' },
-    { icon: 'package', label: 'Missing Items', path: '/claims/missing-items' },
-    { icon: 'warn', label: 'Seized Items', path: '/claims/seized-items' },
-    { icon: 'card', label: 'Refunds', path: '/refunds' },
-    { icon: 'file', label: 'Release Notes', path: '/release-notes' },
+    { icon: 'alert', label: 'Damage claims', path: '/claims' },
+    { icon: 'search', label: 'Missing items', path: '/claims/missing-items' },
+    { icon: 'shield', label: 'Seized items', path: '/claims/seized-items' },
+    { icon: 'refresh', label: 'Refunds', path: '/refunds' },
+    { icon: 'qr', label: 'Release notes', path: '/release-notes' },
   ],
 }
 
@@ -78,59 +81,51 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
     {
       items: [
         { icon: 'grid', label: 'Dashboard', path: '/platform/dashboard' },
-        { icon: 'mail', label: 'Onboarding Requests', path: '/platform/onboarding-requests' },
+        { icon: 'mail', label: 'Onboarding requests', path: '/platform/onboarding-requests' },
         { icon: 'building', label: 'Tenants', path: '/platform/tenants' },
         { icon: 'settings', label: 'Settings', path: '/platform/settings' },
-        { icon: 'log', label: 'Audit Log', path: '/platform/audit-log' },
+        { icon: 'log', label: 'Audit log', path: '/platform/audit-log' },
       ],
     },
   ],
   tenant_admin: [
     {
+      group: 'Overview',
       items: [
         { icon: 'grid', label: 'Dashboard', path: '/dashboard' },
-        { icon: 'users', label: 'Users', path: '/admin/users' },
-        { icon: 'user', label: 'Customers', path: '/admin/customers' },
-        { icon: 'settings', label: 'Configuration', path: '/admin/config' },
         { icon: 'chart', label: 'Reports', path: '/admin/reports' },
-        { icon: 'bell', label: 'Notifications', path: '/admin/notifications/log' },
-        { icon: 'bell', label: 'Announcements', path: '/announcements' },
-        { icon: 'log', label: 'Activity Log', path: '/admin/activity-log' },
+        { icon: 'clock', label: 'Activity log', path: '/admin/activity-log' },
       ],
     },
     OPERATIONS_GROUP,
     BILLING_CLAIMS_GROUP,
+    {
+      group: 'Admin',
+      items: [
+        { icon: 'users', label: 'Staff', path: '/admin/users' },
+        { icon: 'user', label: 'Customers', path: '/admin/customers' },
+        { icon: 'bell', label: 'Announcements', path: '/announcements' },
+        { icon: 'mail', label: 'Notification log', path: '/admin/notifications/log' },
+        { icon: 'settings', label: 'Settings', path: '/admin/config' },
+      ],
+    },
   ],
   china_office_staff: [
-    { items: [{ icon: 'grid', label: 'Work queue', path: '/work-queue' }] },
-    {
-      group: 'Operations',
-      items: [
-        { icon: 'container', label: 'Containers', path: '/containers' },
-        { icon: 'plus', label: 'Create container', path: '/containers/new' },
-      ],
-    },
-    {
-      group: 'Packing lists',
-      items: [
-        { icon: 'package', label: 'All packing lists', path: '/packing-lists' },
-        { icon: 'plus', label: 'Create packing list', path: '/packing-lists/new' },
-        { icon: 'upload', label: 'Import from Excel', path: '/packing-lists/import' },
-      ],
-    },
+    { group: 'Overview', items: [{ icon: 'grid', label: 'Work queue', path: '/work-queue' }] },
+    OPERATIONS_GROUP,
     {
       group: 'Coordination',
       items: [
-        { icon: 'file', label: 'Manifests', path: '/manifests' },
         // china_office_staff can see & resolve CBM disputes (_DISPUTE_LIST_ALL_ROLES)
         { icon: 'warn', label: 'CBM disputes', path: '/billing/disputes' },
         // ...and record the supply and loading check on a missing item (UX-08)
-        { icon: 'package', label: 'Missing items', path: '/claims/missing-items' },
+        { icon: 'search', label: 'Missing items', path: '/claims/missing-items' },
       ],
     },
   ],
   nigeria_office_staff: [
     {
+      group: 'Overview',
       items: [
         { icon: 'grid', label: 'Dashboard', path: '/dashboard' },
         { icon: 'bell', label: 'Announcements', path: '/announcements' },
@@ -145,19 +140,32 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
   warehouse_attendant: [
     {
       items: [
-        { icon: 'package', label: 'Warehouse', path: '/warehouse' },
-        { icon: 'file', label: 'Release Notes', path: '/release-notes' },
+        { icon: 'building', label: 'Warehouse', path: '/warehouse' },
+        { icon: 'qr', label: 'Release notes', path: '/release-notes' },
       ],
     },
   ],
   customer: [
     {
       items: [
-        { icon: 'package', label: 'My Shipments', path: '/my-shipments' },
+        { icon: 'ship', label: 'My shipments', path: '/my-shipments' },
         { icon: 'coin', label: 'Billing', path: '/my-billing' },
-        { icon: 'warn', label: 'Claims', path: '/my-claims' },
+        { icon: 'alert', label: 'Claims', path: '/my-claims' },
         { icon: 'user', label: 'Account', path: '/account' },
       ],
     },
   ],
+}
+
+/**
+ * The menu item for `pathname`: the longest item path that is the page or one of its parents, so
+ * `/claims/missing-items` lights Missing items and not Damage claims too, and `/packing-lists/new` lights Packing
+ * lists. Null when no item covers the page.
+ */
+export function activeNavPath(pathname: string, paths: readonly string[]): string | null {
+  let best: string | null = null
+  for (const path of paths) {
+    if ((pathname === path || pathname.startsWith(`${path}/`)) && (!best || path.length > best.length)) best = path
+  }
+  return best
 }

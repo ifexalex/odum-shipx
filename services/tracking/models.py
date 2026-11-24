@@ -57,5 +57,7 @@ class TrackingResponse(BaseModel):
     tracking_code: str
     current_stage: TrackingStage
     company_name: str | None = None
+    # The tenant's brand colour (#rrggbb) for the public tracking page, or None (FD-28).
+    brand_color: str | None = None
     stage_history: list[StageEvent] = Field(default_factory=list)
     estimated_stages: list[EstimatedStage] | None = None

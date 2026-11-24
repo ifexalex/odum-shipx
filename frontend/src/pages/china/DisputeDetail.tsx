@@ -5,22 +5,19 @@ import { disputeApi, type DisputeDetail as DisputeDetailData, type ResolveCBMDis
 import { isTerminalDisputeStatus } from '../../api/billingRules'
 import { ApiError } from '../../api/client'
 import { disputeKeys } from '../../api/keys'
-import { Badge, Banner, Button, Card, Field, Mono, Table } from '../../design/components'
+import { Banner, Button, Card, Field, Mono, Table, StatusBadge, PageSkeleton, EmptyState } from '../../design/components'
 import { STALE_30S } from '../../lib/queryClient'
 import { SectionHead } from '../../shell/SectionHead'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './DisputeDetail.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
+import { formatCbm, formatDate } from '../../lib/format'
+import { toast } from '../../design/toast'
+import { DetailPage } from '../../shell/DetailPage'
+import { nextActionLabel } from '../../design/nextAction'
 
-const STATUS_LABEL: Record<string, string> = {
-  submitted: 'Submitted',
-  acknowledged: 'Acknowledged',
-  investigating: 'Investigating',
-  escalated_china: 'Escalated to China',
-  resolved_adjusted: 'Resolved: adjusted',
-  resolved_no_change: 'Resolved: no change',
-  closed: 'Closed',
-}
+/** Where the header's "Resolve dispute" takes the reader (FD-23). */
+const RESOLVE_ID = 'resolve-dispute'
 
 function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onResolved: () => void }): JSX.Element {
   const [outcome, setOutcome] = useState<'resolved_adjusted' | 'resolved_no_change'>('resolved_no_change')
@@ -39,6 +36,7 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
       const body: ResolveCBMDisputeInput = { status: outcome, resolution_notes: notes.trim() }
       if (outcome === 'resolved_adjusted') body.corrected_cbm = correctedCbm
       await disputeApi.resolve(dispute.id, body)
+      toast.success('Dispute resolved')
       onResolved()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not resolve the dispute. Please try again.')
@@ -48,16 +46,17 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
   }
 
   return (
-    <Card padding={24}>
+    <div id={RESOLVE_ID} tabIndex={-1} className={styles.resolveAnchor}>
+    <Card padding="large">
       <SectionHead title="Resolve" sub="Decide whether the billed CBM stands or needs correcting." />
       <div style={{ height: 12 }} />
       {error && (
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 'var(--space-3)' }}>
           <Banner variant="error" title="Could not resolve">{error}</Banner>
         </div>
       )}
       <div className={styles.outcome}>
-        <Button variant={outcome === 'resolved_no_change' ? 'success' : 'secondary'} onClick={() => setOutcome('resolved_no_change')}>
+        <Button variant={outcome === 'resolved_no_change' ? 'primary' : 'secondary'} onClick={() => setOutcome('resolved_no_change')}>
           No change: CBM stands
         </Button>
         <Button variant={outcome === 'resolved_adjusted' ? 'primary' : 'secondary'} onClick={() => setOutcome('resolved_adjusted')}>
@@ -65,15 +64,29 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
         </Button>
       </div>
       {outcome === 'resolved_adjusted' && (
-        <Field
-          label="Corrected CBM"
-          name="corrected_cbm"
-          type="number"
-          required
-          placeholder={`Billed: ${dispute.billed_cbm ?? '—'}`}
-          value={correctedCbm}
-          onChange={(e) => setCorrectedCbm(e.target.value)}
-        />
+        <>
+          <Field
+            label="Corrected CBM"
+            name="corrected_cbm"
+            type="number"
+            required
+            placeholder={`Billed: ${formatCbm(dispute.billed_cbm)}`}
+            value={correctedCbm}
+            onChange={(e) => setCorrectedCbm(e.target.value)}
+          />
+          {dispute.customer_measured_cbm && (
+            <div style={{ marginTop: 'var(--space-1)', marginBottom: 'var(--space-2)' }}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setCorrectedCbm(dispute.customer_measured_cbm ?? '')}
+              >
+                Use customer&apos;s {formatCbm(dispute.customer_measured_cbm)} CBM
+              </Button>
+            </div>
+          )}
+        </>
       )}
       <Field
         label="Resolution notes"
@@ -90,6 +103,7 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
         </Button>
       </div>
     </Card>
+    </div>
   )
 }
 
@@ -104,7 +118,6 @@ function ResolvePanel({ dispute, onResolved }: { dispute: DisputeDetailData; onR
 export function DisputeDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
-  useTopBarSlot({ subtitle: 'Judge the measurement, then resolve.' })
 
   const { data: dispute, isLoading, error } = useQuery({
     queryKey: disputeKeys.detail(id ?? ''),
@@ -115,11 +128,12 @@ export function DisputeDetail(): JSX.Element {
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(dispute?.container_number)
 
-  if (isLoading) return <div style={{ padding: 32, color: 'var(--color-ink-3)' }}>Loading dispute…</div>
+  if (isLoading) return <PageSkeleton kind="detail" label="Loading dispute" />
 
   if (error || !dispute) {
     return (
       <div className={styles.page}>
+        <PageHeader title="CBM dispute" />
         <Banner variant="error" title="Couldn't open this dispute">
           {error instanceof ApiError && error.status === 404 ? 'Dispute not found.' : 'Please try again.'}
         </Banner>
@@ -129,57 +143,128 @@ export function DisputeDetail(): JSX.Element {
 
   const terminal = isTerminalDisputeStatus(dispute.status)
   const totalLineCbm = dispute.lines.reduce((sum, line) => sum + Number(line.cbm), 0)
+  const billedNum = dispute.billed_cbm != null ? Number(dispute.billed_cbm) : null
+  const claimedNum = dispute.customer_measured_cbm != null ? Number(dispute.customer_measured_cbm) : null
+  const varianceCbm =
+    billedNum != null && claimedNum != null && Number.isFinite(billedNum) && Number.isFinite(claimedNum)
+      ? claimedNum - billedNum
+      : null
+  const variancePct =
+    varianceCbm != null && billedNum && billedNum > 0
+      ? (varianceCbm / billedNum) * 100
+      : null
 
   return (
-    <div className={styles.page}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <Badge variant={terminal ? 'success' : dispute.status === 'escalated_china' ? 'error' : 'warning'}>
-          {STATUS_LABEL[dispute.status] ?? dispute.status}
-        </Badge>
-      </div>
-
-      <Card padding={24}>
-        <SectionHead
-          title={`${dispute.customer_name ?? 'Customer'} · ${dispute.container_number ?? 'container'}`}
-          sub="What the customer claims against what was billed"
+    <DetailPage
+      header={
+        <PageHeader
+          title={
+            dispute.container_number ? `CBM dispute on ${dispute.container_number}` : 'CBM dispute'
+          }
+          status={<StatusBadge kind="dispute" status={dispute.status} />}
+          meta={[
+            dispute.customer_name,
+            dispute.invoice_number,
+            `Filed ${formatDate(dispute.submitted_at)}`,
+          ]}
+          // The next step (FD-23): jumps straight to the resolve panel in the aside.
+          primary={
+            !terminal && (
+              <Button
+                variant="primary"
+                icon="check"
+                onClick={() => {
+                  const panel = document.getElementById(RESOLVE_ID)
+                  panel?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  panel?.querySelector<HTMLElement>('input, textarea, select, button')?.focus({ preventScroll: true })
+                }}
+              >
+                {nextActionLabel('dispute', 'acknowledged')}
+              </Button>
+            )
+          }
         />
+      }
+      aside={
+        terminal ? (
+          <Banner variant="success" title="This dispute is resolved">
+            {dispute.resolution_notes ?? 'No further action is needed.'}
+          </Banner>
+        ) : (
+          <ResolvePanel
+            dispute={dispute}
+            onResolved={() => {
+              // The central rule for PATCH /v1/billing/disputes/ refreshes the lists; this page's own read is
+              // keyed separately, so refresh it too.
+              void qc.invalidateQueries({ queryKey: disputeKeys.detail(dispute.id) })
+            }}
+          />
+        )
+      }
+    >
+      <Card padding="large">
+        <SectionHead title="Measurement" sub="What the customer claims against what was billed" />
         <div style={{ height: 16 }} />
         <div className={styles.compare}>
           <div className={styles.fact}>
             <span className={styles.factLabel}>Billed CBM</span>
-            <span className={styles.factValue}>{dispute.billed_cbm ?? '—'}</span>
+            <span className={styles.factValue}>{formatCbm(dispute.billed_cbm)}</span>
           </div>
           <div className={styles.fact}>
             <span className={styles.factLabel}>Customer measured</span>
-            <span className={styles.factValue}>{dispute.customer_measured_cbm ?? '—'}</span>
+            <span className={styles.factValue}>{formatCbm(dispute.customer_measured_cbm)}</span>
           </div>
+          {varianceCbm !== null && (
+            <div className={styles.fact}>
+              <span className={styles.factLabel}>Variance</span>
+              <span
+                className={styles.factValue}
+                style={{
+                  color:
+                    varianceCbm < 0
+                      ? 'var(--color-error)'
+                      : varianceCbm > 0
+                        ? 'var(--color-info)'
+                        : 'var(--color-ink)',
+                }}
+              >
+                {varianceCbm > 0 ? '+' : ''}
+                {formatCbm(varianceCbm)}
+                {variancePct !== null ? ` (${variancePct > 0 ? '+' : ''}${variancePct.toFixed(1)}%)` : ''}
+              </span>
+            </div>
+          )}
           <div className={styles.fact}>
             <span className={styles.factLabel}>Disputed CBM</span>
-            <span className={styles.factValue}>{dispute.original_cbm ?? '—'}</span>
+            <span className={styles.factValue}>{formatCbm(dispute.original_cbm)}</span>
           </div>
           {dispute.corrected_cbm && (
             <div className={styles.fact}>
               <span className={styles.factLabel}>Corrected CBM</span>
-              <span className={styles.factValue}>{dispute.corrected_cbm}</span>
+              <span className={styles.factValue}>{formatCbm(dispute.corrected_cbm)}</span>
             </div>
           )}
         </div>
         {dispute.reason && (
           <>
             <div style={{ height: 16 }} />
-            <p className={styles.reason}><strong>Customer&apos;s reason:</strong> {dispute.reason}</p>
+            <p className={styles.reason}>
+              <strong>Customer&apos;s reason:</strong> {dispute.reason}
+            </p>
           </>
         )}
         {dispute.resolution_notes && (
-          <p className={styles.reason} style={{ marginTop: 8 }}><strong>Resolution:</strong> {dispute.resolution_notes}</p>
+          <p className={styles.reason} style={{ marginTop: 'var(--space-2)' }}>
+            <strong>Resolution:</strong> {dispute.resolution_notes}
+          </p>
         )}
       </Card>
 
-      <Card padding={0}>
-        <div style={{ padding: '18px 20px' }}>
+      <Card padding="none">
+        <div style={{ padding: 'var(--space-5) var(--space-5)' }}>
           <SectionHead
             title="Packing-list lines"
-            sub={`${dispute.lines.length} line${dispute.lines.length === 1 ? '' : 's'} · ${totalLineCbm.toFixed(3)} CBM in total`}
+            sub={`${dispute.lines.length} line${dispute.lines.length === 1 ? '' : 's'} · ${formatCbm(totalLineCbm)} CBM in total`}
           />
         </div>
         <Table
@@ -187,42 +272,37 @@ export function DisputeDetail(): JSX.Element {
           cardBreakpoint={640}
           columns={[
             { title: 'List' },
-            { title: 'Tag' },
+            { title: 'Tag', type: 'reference' },
             { title: 'Description' },
-            { title: 'Qty', align: 'right' },
+            { title: 'Qty', type: 'number' },
             { title: 'L × W × H (cm)' },
-            { title: 'CBM', align: 'right' },
+            { title: 'Volume (CBM)', type: 'number' },
           ]}
           rows={dispute.lines.map((line) => ({
             cells: [
               <Mono key="ref">{line.reference ?? '—'}</Mono>,
               <Mono key="tag">{line.carton_tag}</Mono>,
               <span key="desc">{line.description}</span>,
-              <span key="qty">{line.quantity}{line.package_unit ? ` ${line.package_unit}` : ''}</span>,
+              <span key="qty">
+                {line.quantity}
+                {line.package_unit ? ` ${line.package_unit}` : ''}
+              </span>,
               <Mono key="dims">
-                {line.length_cm && line.width_cm && line.height_cm ? `${line.length_cm} × ${line.width_cm} × ${line.height_cm}` : '—'}
+                {line.length_cm && line.width_cm && line.height_cm
+                  ? `${line.length_cm} × ${line.width_cm} × ${line.height_cm}`
+                  : '—'}
               </Mono>,
               <Mono key="cbm">{line.cbm}</Mono>,
             ],
           }))}
-          emptyState={<span>No approved packing-list lines for this customer on this container.</span>}
+          emptyState={
+            <EmptyState
+              compact
+              title="No approved packing-list lines for this customer on this container"
+            />
+          }
         />
       </Card>
-
-      {terminal ? (
-        <Banner variant="success" title="This dispute is resolved">
-          {dispute.resolution_notes ?? 'No further action is needed.'}
-        </Banner>
-      ) : (
-        <ResolvePanel
-          dispute={dispute}
-          onResolved={() => {
-            // The central rule for PATCH /v1/billing/disputes/ refreshes the lists; this page's own read is
-            // keyed separately, so refresh it too.
-            void qc.invalidateQueries({ queryKey: disputeKeys.detail(dispute.id) })
-          }}
-        />
-      )}
-    </div>
+    </DetailPage>
   )
 }

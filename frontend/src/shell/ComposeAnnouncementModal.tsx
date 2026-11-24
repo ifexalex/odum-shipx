@@ -4,6 +4,7 @@ import { useSession } from '../auth/useSession'
 import { Banner, Button, Chip, Field, Modal } from '../design/components'
 import { announcementsApi, type AnnouncementAudience } from '../api/announcements'
 import { announcementKeys, customerNotifKeys, staffNotifKeys } from '../api/keys'
+import { toast } from '../design/toast'
 
 export interface ComposeAnnouncementModalProps {
   open: boolean
@@ -36,7 +37,8 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
 
   const send = useMutation({
     mutationFn: () => announcementsApi.send({ title: title.trim(), body: body.trim() || undefined, audience }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      toast.success(result.status === 'pending' ? 'Announcement sent for approval' : 'Announcement sent', title.trim())
       // The sender is themself a staff member — their own bell should pick
       // up an "all_staff" announcement immediately, same as anyone else's.
       // A staff submission doesn't create a notification yet (it's pending
@@ -57,8 +59,8 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="New announcement" width={480}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <Modal open={open} onClose={handleClose} title="New announcement" size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {send.isError && (
           <Banner variant="error" title="Couldn't send announcement">
             {send.error instanceof Error ? send.error.message : 'Something went wrong.'}
@@ -80,9 +82,9 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
           onChange={(e) => setBody(e.target.value)}
           placeholder="Optional details…"
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-ink-2)' }}>Send to</span>
-          <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--color-ink-2)' }}>Send to</span>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             {!isStaffRequest && (
               <Chip active={audience === 'all_staff'} onClick={() => setAudience('all_staff')}>
                 All staff
@@ -93,12 +95,12 @@ export function ComposeAnnouncementModal({ open, onClose }: ComposeAnnouncementM
             </Chip>
           </div>
           {isStaffRequest && (
-            <span style={{ fontSize: 12, color: 'var(--color-ink-4)' }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)' }}>
               Customer announcements need tenant admin approval before they're sent.
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
           <Button variant="secondary" onClick={handleClose}>
             Cancel
           </Button>

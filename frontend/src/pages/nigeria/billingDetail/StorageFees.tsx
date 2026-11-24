@@ -48,7 +48,7 @@ export function StorageFeeBanner({
   const totalAccrued = storageFees.reduce((s, r) => s + Number(r.fee_amount_ngn), 0)
 
   const waiveBtn = canWaive ? (
-    <Action variant="danger-outline" size="sm" loading={waiving} onClick={onWaive}>
+    <Action variant="danger-ghost" size="sm" loading={waiving} onClick={onWaive}>
       Waive fees
     </Action>
   ) : undefined
@@ -106,19 +106,19 @@ export function StorageFeeBanner({
 export function StorageFeeLog({ fees }: { fees: StorageFeeEntry[] }): JSX.Element | null {
   if (fees.length === 0) return null
   return (
-    <Card padding={0}>
+    <Card padding="none">
       <Table
         dense
         columns={[
           { title: 'Day' },
-          { title: 'Date' },
-          { title: 'Cartons', align: 'right' },
-          { title: 'Rate', align: 'right' },
-          { title: 'Fee', align: 'right' },
+          { title: 'Date', type: 'date' },
+          { title: 'Cartons', type: 'number' },
+          { title: 'Daily rate (₦)', type: 'money' },
+          { title: 'Fee (₦)', type: 'money' },
         ]}
         rows={fees.map((f) => ({
           cells: [
-            <span key="day" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
+            <span key="day" style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
               Day {f.day_number}
             </span>,
             <Mono key="date" color="var(--color-ink-2)">

@@ -2,8 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { useLocation, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { refundsApi, type AccountsReviewInput, type ApproveRefundInput, type Refund, type RefundStatus } from '../../api/refunds'
-import { refundKeys } from '../../api/keys'
+import { carryoverApi } from '../../api/billing'
+import { refundsApi, type AccountsReviewInput, type ApproveRefundInput, type Refund } from '../../api/refunds'
+import { billingKeys, refundKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import {
   approvalLevelLabel,
@@ -15,50 +16,21 @@ import {
   refundTypeLabel,
 } from '../../api/refundsRules'
 import { useSession } from '../../auth/useSession'
-import {
-  Action,
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Field,
-  Icon,
-  Kvp,
-  Mono,
-  StatCard,
-  DialogGuard,
-  type BadgeVariant,
-} from '../../design/components'
+import { Action, Banner, Button, Card, Field, Kvp, LinesSkeleton, Modal, Mono, StatCard, StatusBadge, RadioGroup, Stepper, PageSkeleton, ErrorState } from '../../design/components'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './RefundDetail.module.css'
 import { formatDate, formatNgn } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { PageHeader } from '../../shell/PageHeader'
+import { RecordLink } from '../../shell/RecordLink'
+import { toast } from '../../design/toast'
+import { Section } from '../../shell/Section'
+import { DetailPage } from '../../shell/DetailPage'
+import { nextActionLabel } from '../../design/nextAction'
 
 // ---------------------------------------------------------------------------
 // Status helpers
 // ---------------------------------------------------------------------------
-
-const STATUS_VARIANT: Record<RefundStatus, BadgeVariant> = {
-  pending_review: 'warning',
-  accounts_reviewed: 'warning',
-  pending_approval: 'warning',
-  approved: 'warning',
-  rejected: 'error',
-  processed: 'success',
-  applied_as_credit: 'success',
-}
-
-function statusLabel(s: RefundStatus): string {
-  switch (s) {
-    case 'pending_review': return 'Pending review'
-    case 'accounts_reviewed': return 'Accounts reviewed'
-    case 'pending_approval': return 'Pending approval'
-    case 'approved': return 'Approved'
-    case 'rejected': return 'Rejected'
-    case 'processed': return 'Processed'
-    case 'applied_as_credit': return 'Applied as credit'
-  }
-}
 
 // ---------------------------------------------------------------------------
 // RefundStepper
@@ -94,37 +66,14 @@ function buildSteps(refund: Refund): { steps: StepDef[]; activeIndex: number; is
 
 function RefundStepper({ refund }: { refund: Refund }): JSX.Element {
   const { steps, activeIndex, isRejected } = buildSteps(refund)
-  const isTerminal = isTerminalRefundStatus(refund.status) && !isRejected
-
   return (
-    <div className={styles.stepperWrap} data-scroll-strip="">
-      <div className={styles.stepper}>
-        {steps.map((step, i) => {
-          const done = isTerminal ? i <= activeIndex : i < activeIndex
-          const isCurrent = i === activeIndex
-          const rejected = isRejected && isCurrent
-
-          return (
-            <div
-              key={step.label}
-              className={[
-                styles.step,
-                done ? styles.stepDone : '',
-                isCurrent && !rejected ? styles.stepActive : '',
-                rejected ? styles.stepRejected : '',
-              ].join(' ')}
-            >
-              <div className={styles.stepDot}>
-                {done && <Icon name="check" size={12} color="#fff" />}
-                {rejected && <Icon name="x" size={12} color="#fff" />}
-              </div>
-              <span className={styles.stepLabel}>{step.label}</span>
-              {step.sub && <span className={styles.approvalNote}>{step.sub}</span>}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <Stepper
+      steps={steps.map((step) => ({ key: step.label, label: step.label, sub: step.sub }))}
+      current={activeIndex}
+      failed={isRejected}
+      complete={isTerminalRefundStatus(refund.status) && !isRejected}
+      label="Refund progress"
+    />
   )
 }
 
@@ -144,12 +93,29 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const carryoversQ = useQuery({
+    queryKey: billingKeys.carryovers({ status: 'outstanding', customer_id: refund.customer_id ?? undefined }),
+    queryFn: () =>
+      carryoverApi.list({
+        status: 'outstanding',
+        ...(refund.customer_id ? { customer_id: refund.customer_id } : {}),
+      }),
+    enabled: Boolean(refund.customer_id),
+    staleTime: STALE_30S,
+  })
+  const outstandingCarryovers = carryoversQ.data?.data ?? []
+  const outstandingCarryoverTotal = outstandingCarryovers.reduce(
+    (sum, c) => sum + Number(c.amount_ngn ?? 0),
+    0,
+  )
+
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
     try {
       const body: AccountsReviewInput = { debt_check_passed: passed, debt_check_notes: notes }
       const updated = await refundsApi.review(refund.id, body)
+      toast.success('Accounts review saved')
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not complete review.')
@@ -159,34 +125,13 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Accounts review</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
-        <Banner variant="info">
-          Check customer debt records (unpaid billing, outstanding carryovers) before advancing this refund.
-        </Banner>
-        <div>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer', marginBottom: 8 }}>
-            <input type="radio" checked={passed} onChange={() => setPassed(true)} />
-            <span>Debt check passed — advance to manager approval</span>
-          </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-            <input type="radio" checked={!passed} onChange={() => setPassed(false)} />
-            <span>Debt check failed — reject (offset debt)</span>
-          </label>
-        </div>
-        <Field
-          label="Review notes"
-          name="debt_check_notes"
-          required
-          multiline
-          placeholder={passed ? 'e.g. No outstanding debt found' : 'e.g. Outstanding balance of ₦12,000 on container ACME-001'}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-        <div className={styles.modalActions}>
+    <Modal
+      open
+      onClose={onCancel}
+      title="Accounts review"
+      size="sm"
+      footer={
+        <>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
           <Button
             variant={passed ? 'primary' : 'danger'}
@@ -196,9 +141,54 @@ function AccountsReviewModal({ refund, onCancel, onSuccess }: AccountsReviewModa
           >
             {passed ? 'Advance to approval' : 'Reject — debt offset'}
           </Button>
-        </div>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
+        {refund.customer_id ? (
+          carryoversQ.isLoading ? (
+            <LinesSkeleton label="Checking customer carryover balances" />
+          ) : outstandingCarryovers.length > 0 ? (
+            <Banner variant="warning" title={`Customer has ${formatNgn(outstandingCarryoverTotal)} in outstanding carryovers`}>
+              {outstandingCarryovers.length} unpaid carryover {outstandingCarryovers.length === 1 ? 'entry' : 'entries'} on file.{' '}
+              <RecordLink to={`/admin/customers/${refund.customer_id}`}>Review customer account</RecordLink>
+            </Banner>
+          ) : (
+            <Banner variant="info" title="No outstanding carryovers found">
+              Also check open invoices on{' '}
+              <RecordLink to={`/admin/customers/${refund.customer_id}`}>
+                {refund.customer_name ?? 'the customer account'}
+              </RecordLink>{' '}
+              before advancing this refund.
+            </Banner>
+          )
+        ) : (
+          <Banner variant="info">
+            Check customer debt records (unpaid billing, outstanding carryovers) before advancing this refund.
+          </Banner>
+        )}
+        <RadioGroup
+          label="Debt check"
+          name="debt_check"
+          value={passed ? 'passed' : 'failed'}
+          onChange={(v) => setPassed(v === 'passed')}
+          options={[
+            { value: 'passed', label: 'Debt check passed', hint: 'Advance to manager approval.' },
+            { value: 'failed', label: 'Debt check failed', hint: 'Reject, to offset the debt.' },
+          ]}
+        />
+        <Field
+          label="Review notes"
+          name="debt_check_notes"
+          required
+          multiline
+          placeholder={passed ? 'e.g. No outstanding debt found' : 'e.g. Outstanding balance of ₦12,000 on container ACME-001'}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -223,6 +213,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
   const enteredAmount = Number(amountApproved)
   const requestedAmount = Number(refund.amount_requested_ngn)
   const isPartial = enteredAmount > 0 && enteredAmount < requestedAmount
+  const exceedsRequested = enteredAmount > requestedAmount
 
   // Threshold from backend config. May be null (config read failed) or undefined
   // (refund arrived via route state from the list, which omits `threshold`) — in
@@ -239,6 +230,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
     try {
       const body: ApproveRefundInput = { amount_approved_ngn: amountApproved, approval_level: approvalLevel }
       const updated = await refundsApi.approve(refund.id, body)
+      toast.success('Refund approved')
       onSuccess(updated)
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
@@ -256,26 +248,44 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
   const meterColor = exceedsThreshold ? 'var(--color-error)' : 'var(--color-success)'
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Approve refund</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Approve refund"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={submitting}
+            disabled={enteredAmount <= 0 || hof_blocked || exceedsThreshold}
+            onClick={() => void handleSubmit()}
+          >
+            Confirm approval
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
 
         {hof_blocked && (
-          <div className={styles.modalBanner}>
-            <Banner variant="error">
-              This refund type requires head-of-finance (tenant admin) approval. You cannot approve it as staff.
-            </Banner>
-          </div>
+          <Banner variant="error">
+            This refund type requires head-of-finance (tenant admin) approval. You cannot approve it as staff.
+          </Banner>
         )}
 
         {isPartial && (
-          <div className={styles.modalBanner}>
-            <Banner variant="info">
-              Partial approval: {formatNgn(enteredAmount)} of {formatNgn(requestedAmount)} requested.
-            </Banner>
-          </div>
+          <Banner variant="info">
+            Partial approval: {formatNgn(enteredAmount)} of {formatNgn(requestedAmount)} requested.
+          </Banner>
+        )}
+
+        {exceedsRequested && (
+          <Banner variant="warning" title="Amount exceeds request">
+            Approving {formatNgn(enteredAmount)} is more than the {formatNgn(requestedAmount)} requested. Double-check the figure before confirming.
+          </Banner>
         )}
 
         <Field
@@ -307,7 +317,7 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
                   {formatNgn(enteredAmount)} exceeds staff limit of {formatNgn(staffLimitNgn)} (${staffLimitUsd} USD)
                 </span>
               ) : (
-                <span style={{ color: 'var(--color-text-muted)' }}>
+                <span style={{ color: 'var(--color-ink-4)' }}>
                   {formatNgn(enteredAmount)} of {formatNgn(staffLimitNgn)} staff limit (${staffLimitUsd} USD)
                 </span>
               )}
@@ -319,20 +329,8 @@ function ApproveModal({ refund, role, onCancel, onSuccess }: ApproveModalProps):
             )}
           </div>
         )}
-
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button
-            variant="success"
-            loading={submitting}
-            disabled={enteredAmount <= 0 || hof_blocked || exceedsThreshold}
-            onClick={() => void handleSubmit()}
-          >
-            Confirm approval
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -356,6 +354,7 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
     setError(null)
     try {
       const updated = await refundsApi.reject(refundId, reason)
+      toast.success('Refund rejected')
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reject refund.')
@@ -365,11 +364,22 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Reject refund request</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Reject refund request"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="danger" loading={submitting} disabled={!reason.trim()} onClick={() => void handleSubmit()}>
+            Confirm rejection
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
         <Field
           label="Rejection reason"
           name="rejection_reason"
@@ -379,14 +389,8 @@ function RejectModal({ onCancel, onSuccess, refundId }: RejectModalProps): JSX.E
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="danger" loading={submitting} disabled={!reason.trim()} onClick={() => void handleSubmit()}>
-            Confirm rejection
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -402,11 +406,11 @@ export function RefundDetail(): JSX.Element {
 
   const qc = useQueryClient()
   const stateRefund = (location.state as { refund?: Refund } | null)?.refund ?? null
-  const { data: refund = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: refund = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: refundKeys.detail(id ?? ''),
     queryFn: () => refundsApi.get(id!),
     enabled: !!id,
-    ...(stateRefund ? { initialData: stateRefund } : {}),
+    ...(stateRefund ? { placeholderData: stateRefund } : {}),
     staleTime: STALE_30S,
   })
   // Names this record in the breadcrumb once loaded (FD-46).
@@ -426,12 +430,13 @@ export function RefundDetail(): JSX.Element {
   const [showReject, setShowReject] = useState(false)
 
 
-  if (loading && !refund) return <div className={styles.loadingState}>Loading refund…</div>
+  if (loading && !refund) return <PageSkeleton kind="detail" label="Loading refund" />
   if (error && !refund) {
     return (
-      <div className={styles.loadingState}>
-        <Banner variant="error" title="Couldn't load this refund">{error ?? 'Not found.'}</Banner>
-      </div>
+      <>
+        <PageHeader title="Refund" />
+        <ErrorState title="Couldn't load this refund" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
   if (!refund) return <></>
@@ -442,50 +447,43 @@ export function RefundDetail(): JSX.Element {
   const showRejectBtn = canRejectRefund(refund, r)
 
   return (
-    <div>
-      {/* Hero */}
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="card" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{refundTypeLabel(refund.refund_type)}</h1>
-              <Badge variant={STATUS_VARIANT[refund.status]}>{statusLabel(refund.status)}</Badge>
-            </div>
-            <div className={styles.heroMeta}>
-              <span>Requested {formatDate(refund.created_at)}</span>
-              {refund.approval_level && (
-                <span> · {approvalLevelLabel(refund.approval_level)}</span>
-              )}
-            </div>
-          </div>
-        </div>
-        {!isTerminalRefundStatus(refund.status) && (
-          <div className={styles.heroActions}>
-            {showReviewBtn && (
+    <DetailPage
+      header={
+        <PageHeader
+          title={refundTypeLabel(refund.refund_type)}
+          status={<StatusBadge kind="refund" status={refund.status} />}
+          meta={[
+            refund.customer_name && refund.customer_id && (
+              <RecordLink to={`/admin/customers/${refund.customer_id}`}>
+                {refund.customer_name}
+              </RecordLink>
+            ),
+            `Requested ${formatDate(refund.created_at)}`,
+            refund.approval_level && approvalLevelLabel(refund.approval_level),
+          ]}
+          primary={
+            isTerminalRefundStatus(refund.status) ? null : showReviewBtn ? (
               <Action variant="primary" icon="check" onClick={() => setShowReview(true)}>
-                Accounts review
+                {nextActionLabel('refund', 'pending_review')}
               </Action>
-            )}
-            {showApproveBtn && (
-              <Action variant="success" icon="check" onClick={() => setShowApprove(true)}>
-                Approve
+            ) : showApproveBtn ? (
+              <Action variant="primary" icon="check" onClick={() => setShowApprove(true)}>
+                {nextActionLabel('refund', 'pending_approval')}
               </Action>
-            )}
-            {showRejectBtn && (
-              <Action variant="danger-outline" icon="x" onClick={() => setShowReject(true)}>
-                Reject
-              </Action>
-            )}
-          </div>
-        )}
-      </div>
-
+            ) : null
+          }
+          more={
+            !isTerminalRefundStatus(refund.status) && showRejectBtn
+              ? [{ label: 'Reject refund', icon: 'x', tone: 'danger', onSelect: () => setShowReject(true) }]
+              : []
+          }
+          moreLabel="More refund actions"
+        />
+      }
+    >
       {/* Status stepper */}
       <div className={styles.section}>
-        <Card padding={20}>
+        <Card padding="default">
           <SectionHead title="Approval progress" />
           <RefundStepper refund={refund} />
         </Card>
@@ -494,7 +492,9 @@ export function RefundDetail(): JSX.Element {
       {/* Rejection detail */}
       {refund.status === 'rejected' && refund.rejection_reason && (
         <div className={styles.section}>
-          <Banner variant="error" title="Rejection reason">{refund.rejection_reason}</Banner>
+          <Banner variant="error" title="Rejection reason">
+            {refund.rejection_reason}
+          </Banner>
         </div>
       )}
 
@@ -517,7 +517,6 @@ export function RefundDetail(): JSX.Element {
           label="Approved"
           value={refund.amount_approved_ngn ? formatNgn(refund.amount_approved_ngn) : '—'}
         />
-        <StatCard label="Payout method" value={customerChoiceLabel(refund.customer_choice)} />
         {/* A credit is spent only as far as each invoice needs it, so part of one can still be unused. */}
         {refund.customer_choice === 'credit_next_shipment' && refund.amount_approved_ngn && (
           <StatCard
@@ -528,26 +527,69 @@ export function RefundDetail(): JSX.Element {
       </div>
 
       {/* Details card */}
-      <div className={styles.section}>
-        <SectionHead title="Request details" />
-        <Card padding={20}>
-          <Kvp label="Refund type" value={refundTypeLabel(refund.refund_type)} />
-          {refund.reason && <Kvp label="Reason" value={refund.reason} />}
-          {refund.customer_id && <Kvp label="Customer ID" value={<Mono>{refund.customer_id}</Mono>} />}
-          {refund.billing_id && <Kvp label="Linked billing" value={<Mono>{refund.billing_id}</Mono>} />}
-          {refund.damage_claim_id && (
-            <Kvp label="Linked claim" value={<Mono>{refund.damage_claim_id}</Mono>} />
-          )}
-          <Kvp label="Customer preference" value={customerChoiceLabel(refund.customer_choice)} divider={false} />
-        </Card>
-      </div>
+      <Section title="Request details">
+        <Kvp label="Refund type" value={refundTypeLabel(refund.refund_type)} />
+        {refund.reason && <Kvp label="Reason" value={refund.reason} />}
+        {refund.customer_id && (
+          <Kvp
+            label="Customer"
+            value={
+              <RecordLink to={`/admin/customers/${refund.customer_id}`}>
+                {refund.customer_name ?? 'Customer'}
+              </RecordLink>
+            }
+          />
+        )}
+        {refund.billing_id && (
+          <Kvp
+            label="Invoice"
+            value={
+              <RecordLink to={`/billing/${refund.billing_id}`}>
+                {refund.invoice_number ?? 'Invoice'}
+              </RecordLink>
+            }
+          />
+        )}
+        {refund.damage_claim_id && (
+          <Kvp
+            label="Damage claim"
+            value={
+              <RecordLink to={`/claims/${refund.damage_claim_id}`}>
+                {refund.claim_reference ?? 'Claim'}
+              </RecordLink>
+            }
+          />
+        )}
+        <Kvp
+          label="Customer preference"
+          value={customerChoiceLabel(refund.customer_choice)}
+          divider={Boolean(refund.bank_details)}
+        />
+        {refund.bank_details && (
+          <>
+            <Kvp label="Bank" value={refund.bank_details.bank_name ?? '—'} />
+            <Kvp
+              label="Account number"
+              value={<Mono>{refund.bank_details.account_number ?? '—'}</Mono>}
+            />
+            <Kvp
+              label="Account name"
+              value={refund.bank_details.account_name ?? '—'}
+              divider={false}
+            />
+          </>
+        )}
+      </Section>
 
       {/* Modals */}
       {showReview && (
         <AccountsReviewModal
           refund={refund}
           onCancel={() => setShowReview(false)}
-          onSuccess={(updated) => { setShowReview(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowReview(false)
+            applyUpdated(updated)
+          }}
         />
       )}
       {showApprove && (
@@ -555,16 +597,22 @@ export function RefundDetail(): JSX.Element {
           refund={refund}
           role={role}
           onCancel={() => setShowApprove(false)}
-          onSuccess={(updated) => { setShowApprove(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowApprove(false)
+            applyUpdated(updated)
+          }}
         />
       )}
       {showReject && (
         <RejectModal
           refundId={refund.id}
           onCancel={() => setShowReject(false)}
-          onSuccess={(updated) => { setShowReject(false); applyUpdated(updated) }}
+          onSuccess={(updated) => {
+            setShowReject(false)
+            applyUpdated(updated)
+          }}
         />
       )}
-    </div>
+    </DetailPage>
   )
 }

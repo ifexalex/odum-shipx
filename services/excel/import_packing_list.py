@@ -33,7 +33,10 @@ def parse_packing_list_xlsx(
     items_by_group: {(customer_id, received_date): [item_dict, ...]}
     Each item_dict has keys matching packing_list_item columns (no carton_tag/tracking_code yet).
     """
-    wb = openpyxl.load_workbook(file_buffer, data_only=True)
+    try:
+        wb = openpyxl.load_workbook(file_buffer, data_only=True)
+    except Exception as exc:
+        raise ValidationError("Invalid or corrupted .xlsx workbook", field_errors={"file": "Unreadable .xlsx file"}) from exc
     ws = wb.active
 
     # 1. Validate header row (case-insensitive)
@@ -48,7 +51,7 @@ def parse_packing_list_xlsx(
     items_by_group: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
     total_rows = 0
 
-    for row_idx in range(2, ws.max_row + 1):
+    for row_idx in range(2, min(ws.max_row, 20_000) + 1):
         # Skip completely empty rows
         row_values = [ws.cell(row=row_idx, column=c).value for c in range(1, 9)]
         if all(v is None or str(v).strip() == "" for v in row_values):

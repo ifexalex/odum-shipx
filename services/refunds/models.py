@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -15,6 +15,8 @@ class RefundType(StrEnum):
     overpayment = "overpayment"
     cbm_correction = "cbm_correction"
     damage_or_loss = "damage_or_loss"
+    missing_item = "missing_item"
+    seized_item = "seized_item"
 
 
 class RefundStatus(StrEnum):
@@ -38,6 +40,15 @@ class CustomerChoice(StrEnum):
 
 
 class CreateRefundRequest(BaseModel):
+    """A refund request. A refund to a bank account carries the account it is paid into.
+
+    ``account_number`` and ``account_name`` are PII: stored encrypted (``shared.encryption``), never logged, and
+    masked in the audit log. A credit for the next shipment pays nothing out, so it takes no bank details (they are
+    refused rather than stored for no purpose).
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     customer_id: str
     billing_id: str | None = None
     damage_claim_id: str | None = None
@@ -45,6 +56,19 @@ class CreateRefundRequest(BaseModel):
     amount_requested_ngn: Decimal = Field(gt=Decimal("0"))
     customer_choice: CustomerChoice | None = None
     notes: str | None = None
+    bank_name: str | None = Field(default=None, min_length=2, max_length=100)
+    #: A Nigerian bank account number (NUBAN) is 10 digits.
+    account_number: str | None = Field(default=None, pattern=r"^\d{10}$")
+    account_name: str | None = Field(default=None, min_length=2, max_length=255)
+
+    @model_validator(mode="after")
+    def _bank_details_match_the_choice(self) -> "CreateRefundRequest":
+        details = (self.bank_name, self.account_number, self.account_name)
+        if self.customer_choice == CustomerChoice.immediate_refund and not all(details):
+            raise ValueError("A refund to a bank account needs bank_name, account_number and account_name.")
+        if self.customer_choice != CustomerChoice.immediate_refund and any(details):
+            raise ValueError("Bank details are only taken for a refund to a bank account.")
+        return self
 
 
 class AccountsReviewRequest(BaseModel):

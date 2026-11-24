@@ -1,29 +1,70 @@
-import {  type JSX } from 'react'
+import { type JSX } from 'react'
 import { BULK_CONFIRM_THRESHOLD } from '../../api/packingList'
-import {  Banner, Button, Card, Modal } from '../../design/components'
+import { Banner, Button, Card, Modal, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import styles from './CreatePackingList.module.css'
+import { CREATE_CONTAINER_FOR_PACKING_LIST } from './createPackingList/Step1'
 import { WizardSteps } from './createPackingList/WizardSteps'
 import { Step1 } from './createPackingList/Step1'
 import { Step2 } from './createPackingList/Step2'
 import { Step3 } from './createPackingList/Step3'
 import { useCreatePackingListForm } from './createPackingList/useCreatePackingListForm'
+import { formatCbm, formatKg, formatTime } from '../../lib/format'
 
 export function CreatePackingList(): JSX.Element {
   const form = useCreatePackingListForm()
   const { isEdit, step, pendingSave, setPendingSave, submitting, editReady, error, totals, bulkLines, handleSave } = form
+  const { tabDraft, hasUnsavedInput, restoredDraft, setRestoredDraft, startOver } = form
 
   return (
     <div className={styles.wrap}>
+      {/* Ask before leaving with unsaved input (FD-54). A new list's input is kept in the tab, so leaving loses nothing
+          until the tab closes; creating the container it needs is a round trip, not a departure. */}
+      <UnsavedChangesGuard
+        when={hasUnsavedInput && !submitting}
+        allow={(pathname) => pathname === CREATE_CONTAINER_FOR_PACKING_LIST.split('?')[0]}
+        title="Leave this packing list?"
+        undo={isEdit ? false : 'It stays in this tab, so you can come back and finish it.'}
+      >
+        {isEdit
+          ? 'Your changes to this draft have not been saved.'
+          : 'It has not been saved to ShipX yet. Save a draft to keep it for good.'}
+      </UnsavedChangesGuard>
       <PageHeader
-        eyebrow="China-side · packing"
         title={isEdit ? 'Edit draft packing list' : 'Create packing list'}
-        subtitle="Capture carton-level details for a customer's cargo. Submit for approval when complete."
+        meta="Capture carton-level details for a customer's cargo. Submit for approval when complete."
+        // Says the input is safe while the list is not yet saved to the server (FD-25).
+        status={
+          tabDraft.savedAt && (
+            <span className={styles.draftSaved} role="status">
+              Draft saved in this tab · {formatTime(tabDraft.savedAt)}
+            </span>
+          )
+        }
       />
 
+      {restoredDraft && (
+        <div className={styles.banner}>
+          <Banner
+            variant="info"
+            title="Picked up where you left off"
+            dismissible
+            onDismiss={() => setRestoredDraft(false)}
+            action={
+              <Button variant="ghost" size="sm" onClick={startOver}>
+                Start over
+              </Button>
+            }
+          >
+            This packing list was not saved yet, so this tab kept what you had entered.
+          </Banner>
+        </div>
+      )}
+
       {!editReady ? (
-        <Card padding={32}>
-          <span className={styles.fieldHelper}>Loading draft…</span>
+        <Card padding="large">
+          <LinesSkeleton label="Loading draft" />
         </Card>
       ) : (
       <>
@@ -49,7 +90,7 @@ export function CreatePackingList(): JSX.Element {
         open={pendingSave !== null}
         onClose={() => setPendingSave(null)}
         title={`Create ${totals.cartons} packages?`}
-        width={520}
+        size="sm"
         footer={
           <>
             <Button variant="ghost" onClick={() => setPendingSave(null)}>
@@ -79,7 +120,7 @@ export function CreatePackingList(): JSX.Element {
                 <>
                   {' — '}
                   {item.length_cm}×{item.width_cm}×{item.height_cm} cm
-                  {item.weight_actual_kg != null && `, ${item.weight_actual_kg} kg each`}
+                  {item.weight_actual_kg != null && `, ${formatKg(item.weight_actual_kg)} kg each`}
                 </>
               )}
             </li>
@@ -87,7 +128,7 @@ export function CreatePackingList(): JSX.Element {
         </ul>
         <p>
           Totals for this packing list: <strong>{totals.cartons}</strong> packages,{' '}
-          <strong>{totals.cbm.toFixed(2)} CBM</strong>, <strong>{totals.weight.toFixed(1)} kg</strong>.
+          <strong>{formatCbm(totals.cbm)} CBM</strong>, <strong>{formatKg(totals.weight)} kg</strong>.
         </p>
         <Banner variant="warning">
           Only use a quantity when the packages are genuinely identical. CBM drives billing, so one wrong

@@ -75,7 +75,9 @@ def process_message(
             }
         ]
     }
-    handler(event, {})
+    result = handler(event, {})
+    if isinstance(result, dict) and result.get("batchItemFailures"):
+        raise RuntimeError(f"Handler reported batchItemFailures for message {message_id}: {result['batchItemFailures']}")
 
 
 def run_worker(queue_key: str, max_wait_seconds: int = 5) -> None:  # pragma: no cover - needs live SDK

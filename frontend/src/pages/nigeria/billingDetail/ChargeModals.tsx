@@ -2,9 +2,10 @@ import { useMemo, useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { billingApi, type Billing, type Carryover } from '../../../api/billing'
 import { useChargeTypes } from '../../../hooks/useConfig'
-import { Banner, Button, Field, DialogGuard } from '../../../design/components'
+import { Banner, Button, Field, DialogGuard, LinesSkeleton, Select } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatNgn } from '../../../lib/format'
+import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
 // CancelBillingModal
@@ -15,6 +16,10 @@ export interface CancelBillingModalProps {
   onSuccess: (updated: Billing) => void
   billingId: string
   error: string | null
+  /** Customer credit this invoice used (`-adjustments_ngn`): cancelling gives it back. */
+  creditsNgn?: string | number
+  /** Earlier balances this invoice carried over: cancelling makes them outstanding again for the next invoice. */
+  carryoverNgn?: string | number
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +74,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
         charge_type: configured ? 'service_charge' : 'other',
         charge_type_id: configured?.id,
       })
+      toast.success('Charge added', billing.invoice_number ?? undefined)
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not add charge.')
@@ -96,25 +102,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
         )}
 
         <div>
-          <label
-            style={{
-              fontWeight: 600,
-              fontSize: '0.875rem',
-              display: 'block',
-              marginBottom: 6,
-            }}
-          >
-            Charge type <span style={{ color: 'var(--color-error)' }}>*</span>
-          </label>
-          <select
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              borderRadius: 8,
-              border: '1px solid var(--color-line)',
-              background: 'var(--color-surface)',
-              fontSize: '0.875rem',
-            }}
+          <Select label="Charge type"
             value={selectedType}
             onChange={(e) => handleTypeChange(e.target.value)}
           >
@@ -124,7 +112,7 @@ export function AddChargeModal({ billing, onCancel, onSuccess }: AddChargeModalP
                 {t.name} — default {formatNgn(t.amount_ngn)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <Field
@@ -179,6 +167,8 @@ export function CancelBillingModal({
   onSuccess,
   billingId,
   error,
+  creditsNgn = 0,
+  carryoverNgn = 0,
 }: CancelBillingModalProps): JSX.Element {
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -189,6 +179,7 @@ export function CancelBillingModal({
     setLocalError(null)
     try {
       const updated = await billingApi.cancel(billingId, { cancel_reason: reason })
+      toast.success('Invoice cancelled')
       onSuccess(updated)
     } catch (err) {
       setLocalError(err instanceof ApiError ? err.message : 'Could not cancel billing.')
@@ -213,6 +204,16 @@ export function CancelBillingModal({
           <div className={styles.modalBanner}>
             <Banner variant="error" title="Action failed">
               {displayError}
+            </Banner>
+          </div>
+        )}
+        {(Number(creditsNgn) > 0 || Number(carryoverNgn) > 0) && (
+          <div className={styles.modalBanner}>
+            <Banner variant="info" title="What cancelling gives back">
+              {Number(creditsNgn) > 0 && <>{formatNgn(creditsNgn)} of credit goes back to the customer. </>}
+              {Number(carryoverNgn) > 0 && (
+                <>{formatNgn(carryoverNgn)} carried over from earlier invoices is owed again, on their next invoice.</>
+              )}
             </Banner>
           </div>
         )}
@@ -250,6 +251,7 @@ export function CancelBillingModal({
 export interface ApplyCarryoverModalProps {
   billing: Billing
   carryovers: Carryover[]
+  loading?: boolean
   onCancel: () => void
   onSuccess: () => void
 }
@@ -257,6 +259,7 @@ export interface ApplyCarryoverModalProps {
 export function ApplyCarryoverModal({
   billing,
   carryovers,
+  loading = false,
   onCancel,
   onSuccess,
 }: ApplyCarryoverModalProps): JSX.Element {
@@ -265,12 +268,16 @@ export function ApplyCarryoverModal({
   const [error, setError] = useState<string | null>(null)
 
   const outstanding = carryovers.filter((c) => c.status === 'outstanding')
+  const selected = outstanding.find((c) => c.id === selectedId) ?? null
+  const currentTotal = Number(billing.total_due_ngn ?? 0)
+  const newTotal = selected ? currentTotal + Number(selected.amount_ngn) : currentTotal
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
     try {
       await billingApi.applyCarryover(billing.id, selectedId)
+      toast.success('Carryover balance applied', billing.invoice_number ?? undefined)
       onSuccess()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not apply carryover.')
@@ -288,7 +295,7 @@ export function ApplyCarryoverModal({
         role="dialog"
         aria-modal="true"
       >
-        <h3 className={styles.modalTitle}>Apply carryover credit</h3>
+        <h3 className={styles.modalTitle}>Apply carryover balance</h3>
         {error && (
           <div className={styles.modalBanner}>
             <Banner variant="error" title="Action failed">
@@ -296,27 +303,33 @@ export function ApplyCarryoverModal({
             </Banner>
           </div>
         )}
-        {outstanding.length === 0 ? (
-          <p className={styles.emptyNote}>No outstanding carryover credits for this customer.</p>
+        {loading ? (
+          <LinesSkeleton label="Loading outstanding carryover balances" />
+        ) : outstanding.length === 0 ? (
+          <p className={styles.emptyNote}>No outstanding carryover balances for this customer.</p>
         ) : (
-          <div className={styles.selectField}>
-            <label className={styles.selectLabel}>
-              Carryover to apply <span className={styles.required}>*</span>
-            </label>
-            <select
-              className={styles.select}
-              value={selectedId}
-              onChange={(e) => setSelectedId(e.target.value)}
-            >
-              <option value="">Select a carryover…</option>
-              {outstanding.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {formatNgn(c.amount_ngn)} — from{' '}
-                  {c.source_container_number ?? c.source_billing_id}
-                </option>
-              ))}
-            </select>
-          </div>
+          <>
+            <div className={styles.selectField}>
+              <Select label="Unpaid carryover balance to add"
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+              >
+                <option value="">Select a carryover…</option>
+                {outstanding.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    +{formatNgn(c.amount_ngn)} — from{' '}
+                    {c.source_container_number ?? 'An earlier invoice'}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {selected && (
+              <Banner variant="info" title="Updated invoice total">
+                Adding {formatNgn(selected.amount_ngn)} brings total due from {formatNgn(currentTotal)} to{' '}
+                <strong>{formatNgn(newTotal)}</strong>.
+              </Banner>
+            )}
+          </>
         )}
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>
@@ -325,10 +338,10 @@ export function ApplyCarryoverModal({
           <Button
             variant="primary"
             loading={submitting}
-            disabled={!selectedId || outstanding.length === 0 || submitting}
+            disabled={loading || !selectedId || outstanding.length === 0 || submitting}
             onClick={() => void handleSubmit()}
           >
-            Apply credit
+            Apply balance
           </Button>
         </div>
       </div>

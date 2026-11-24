@@ -1,29 +1,24 @@
 import { type JSX } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import type { Claim, ClaimEvidenceFile, DamageClaimStatus } from '../../api/claims'
+import { presignedUploadApi, type Claim, type ClaimEvidenceFile, type DamageClaimStatus } from '../../api/claims'
+import { claimKeys } from '../../api/keys'
+import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import {
-  CLAIM_STATUS_ORDER,
-  CUSTOMER_CLAIM_STATUS_LABELS,
   customerInspectionLabel,
   customerRefundLabel,
   customerResolutionLabel,
 } from '../../api/claimsRules'
-import { Badge, Banner, Card, Kvp, Mono, type BadgeVariant } from '../../design/components'
+import { Banner, Card, Kvp, Mono, StatusBadge, Stepper, PageSkeleton } from '../../design/components'
+import { toast } from '../../design/toast'
 import { useClaim } from '../../hooks/useClaims'
 import { formatCount, formatDate, formatNgn } from '../../lib/format'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
-
-const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed: 'warning',
-  under_inspection: 'warning',
-  inspection_complete: 'warning',
-  pending_resolution: 'warning',
-  resolved: 'success',
-  closed: 'neutral',
-}
+import { claimProgress, claimSteps } from '../../design/steps'
+import { DetailPage } from '../../shell/DetailPage'
 
 /** What the customer is waiting for, by where the claim is. */
 function waitingNote(status: DamageClaimStatus): string | null {
@@ -46,44 +41,19 @@ function fileSize(bytes: number | null): string {
 }
 
 function ProgressSteps({ status }: { status: DamageClaimStatus }): JSX.Element {
-  const current = CLAIM_STATUS_ORDER.indexOf(status)
-  return (
-    <ol aria-label="Claim progress" style={{ display: 'flex', gap: 8, listStyle: 'none', padding: 0, margin: '0 0 4px', flexWrap: 'wrap' }}>
-      {CLAIM_STATUS_ORDER.map((step, index) => {
-        const done = index < current
-        const here = index === current
-        return (
-          <li
-            key={step}
-            aria-current={here ? 'step' : undefined}
-            style={{
-              fontSize: '0.8125rem',
-              padding: '4px 10px',
-              borderRadius: 999,
-              border: '1px solid var(--color-border)',
-              background: here ? 'var(--color-primary-soft)' : 'transparent',
-              color: here ? 'var(--color-primary-deep)' : done ? 'var(--color-ink-2)' : 'var(--color-ink-4)',
-              fontWeight: here ? 700 : 500,
-            }}
-          >
-            {done ? '✓ ' : ''}
-            {CUSTOMER_CLAIM_STATUS_LABELS[step]}
-          </li>
-        )
-      })}
-    </ol>
-  )
+  const progress = claimProgress(status)
+  return <Stepper steps={claimSteps('customer')} current={progress.current} complete={progress.complete} label="Claim progress" />
 }
 
 function EvidenceList({ files }: { files: ClaimEvidenceFile[] }): JSX.Element {
-  if (files.length === 0) return <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No files were attached to this claim.</p>
+  if (files.length === 0) return <p style={{ margin: 0, color: 'var(--color-ink-4)' }}>No files were attached to this claim.</p>
   return (
-    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
       {files.map((file) => (
-        <li key={file.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <li key={file.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
           <span>
             {file.file_name}
-            {file.file_size_bytes !== null && <span style={{ color: 'var(--color-text-muted)' }}> · {fileSize(file.file_size_bytes)}</span>}
+            {file.file_size_bytes !== null && <span style={{ color: 'var(--color-ink-4)' }}> · {fileSize(file.file_size_bytes)}</span>}
           </span>
           {file.download_url ? (
             // The link is short-lived and points at private storage: no referrer, and no access to this page.
@@ -91,7 +61,7 @@ function EvidenceList({ files }: { files: ClaimEvidenceFile[] }): JSX.Element {
               Open
             </a>
           ) : (
-            <span style={{ color: 'var(--color-text-muted)' }}>Unavailable</span>
+            <span style={{ color: 'var(--color-ink-4)' }}>Unavailable</span>
           )}
         </li>
       ))}
@@ -114,8 +84,8 @@ function Outcome({ claim }: { claim: Claim }): JSX.Element | null {
   }
 
   return (
-    <Card padding={24}>
-      <h2 style={{ margin: '0 0 12px', fontSize: '1rem' }}>Outcome</h2>
+    <Card padding="large">
+      <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>Outcome</h2>
       <Kvp label="Decision" value={customerResolutionLabel(resolution)} />
       {resolution.amount_ngn !== null && resolution.resolution_type !== 'discount' && resolution.resolution_type !== 'no_action' && (
         <Kvp label="Amount" value={<Mono>{formatNgn(resolution.amount_ngn)}</Mono>} />
@@ -141,16 +111,18 @@ function Outcome({ claim }: { claim: Claim }): JSX.Element | null {
  */
 export function MyClaimDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
+  const qc = useQueryClient()
   const { data: claim, isLoading, error } = useClaim(id ?? '')
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(claim?.reference)
 
-  if (isLoading) return <div style={{ padding: 32, color: 'var(--color-text-muted)' }}>Loading your claim…</div>
+  if (isLoading) return <PageSkeleton kind="detail" label="Loading your claim" />
 
   if (error || !claim) {
     const missing = error instanceof ApiError && error.status === 404
     return (
       <div className={styles.page}>
+        <PageHeader title="Claim" />
         <Banner variant="error">
           {missing || !error ? 'Claim not found.' : 'Could not load this claim. Please try again.'}
         </Banner>
@@ -159,32 +131,53 @@ export function MyClaimDetail(): JSX.Element {
   }
 
   return (
-    <div className={styles.page}>
-      <PageHeader title={`Claim ${claim.reference ?? ''}`.trim()} subtitle={`Filed ${formatDate(claim.created_at)}`} />
-
-      <div className={styles.banner} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <Badge variant={STATUS_VARIANT[claim.status]}>{CUSTOMER_CLAIM_STATUS_LABELS[claim.status]}</Badge>
+    <DetailPage
+      header={
+        <PageHeader
+          title={`Claim ${claim.reference ?? ''}`.trim()}
+          meta={`Filed ${formatDate(claim.created_at)}`}
+        />
+      }
+    >
+      <div
+        className={styles.banner}
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}
+      >
+        <StatusBadge kind="claim" status={claim.status} audience="customer" />
       </div>
       <ProgressSteps status={claim.status} />
 
-      <div style={{ height: 16 }} />
       <Outcome claim={claim} />
 
-      <div style={{ height: 16 }} />
-      <Card padding={24}>
-        <h2 style={{ margin: '0 0 12px', fontSize: '1rem' }}>Your claim</h2>
+      <Card padding="large">
+        <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>Your claim</h2>
         <Kvp label="Container" value={<Mono>{claim.container_number ?? '—'}</Mono>} />
-        {claim.cartons_affected.length > 0 && <Kvp label="Cartons affected" value={<Mono>{claim.cartons_affected.join(', ')}</Mono>} />}
-        <Kvp label="What you told us" value={claim.description ?? '—'} />
+        {claim.cartons_affected.length > 0 && (
+          <Kvp label="Cartons affected" value={<Mono>{claim.cartons_affected.join(', ')}</Mono>} />
+        )}
+        <Kvp optional label="What you told us" value={claim.description} />
         <Kvp label="How it was checked" value={customerInspectionLabel(claim.inspection_method)} />
       </Card>
 
-      <div style={{ height: 16 }} />
-      <Card padding={24}>
-        <h2 style={{ margin: '0 0 12px', fontSize: '1rem' }}>Evidence you provided</h2>
+      <Card padding="large">
+        <h2 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-lg)' }}>
+          Evidence you provided
+        </h2>
         <EvidenceList files={claim.evidence ?? []} />
+        {claim.status !== 'resolved' && claim.status !== 'closed' && (
+          <div className={styles.evidenceAdd}>
+            <h3 className={styles.evidenceAddTitle}>Add more photos or videos</h3>
+            <EvidenceUploader
+              getPresignedUrl={(f) => presignedUploadApi.getUrl(claim.id, f.name, f.type, f.size)}
+              confirmUpload={(evidenceId) => presignedUploadApi.confirm(claim.id, evidenceId)}
+              onUploaded={() => {
+                toast.success('Evidence uploaded')
+                void qc.invalidateQueries({ queryKey: claimKeys.all })
+              }}
+            />
+          </div>
+        )}
       </Card>
-
-    </div>
+    </DetailPage>
   )
 }

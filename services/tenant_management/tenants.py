@@ -123,15 +123,28 @@ def create_tenant(
     """
     cognito = get_identity_provider()
 
+    # 0a. Enforce platform max_tenants cap (active + suspended tenants).
+    settings = repo.get_platform_settings()
+    max_tenants = settings.get("max_tenants")
+    if isinstance(max_tenants, int) and max_tenants > 0 and repo.count_non_offboarded_tenants() >= max_tenants:
+        raise BusinessRuleViolationError(
+            f"Platform tenant limit ({max_tenants}) has been reached",
+            rule_id="MAX_TENANTS_REACHED",
+        )
+
     # 0. Idempotency guard for lead-driven provisioning: if this onboarding
-    # request was already provisioned, do not create a second tenant (the
-    # provision button can be clicked again, or a transient 500 can leave the
-    # client unsure). Return a conflict so the caller refreshes rather than
-    # duplicating the tenant.
+    # request does not exist, was rejected, or was already provisioned, fail fast.
     if req.onboarding_request_id:
         existing_request = repo.get_onboarding_request(req.onboarding_request_id)
-        if existing_request and (existing_request.get("status") == "provisioned" or existing_request.get("tenant_id")):
+        if not existing_request:
+            raise ResourceNotFoundError("onboarding_request", req.onboarding_request_id)
+        if existing_request.get("status") == "provisioned" or existing_request.get("tenant_id"):
             raise DuplicateResourceError("onboarding_request", req.onboarding_request_id)
+        if existing_request.get("status") == "rejected":
+            raise BusinessRuleViolationError(
+                "Cannot provision a rejected onboarding request",
+                rule_id="ONBOARDING_REQUEST_REJECTED",
+            )
 
     # 0b. The initial admin's email must not already belong to a ShipX user.
     # `tenant_user.id` IS the IdP subject (oid), so one identity belongs to exactly
@@ -200,6 +213,7 @@ def create_tenant(
     )
     if admin_user is None:
         raise RuntimeError("create_tenant_user returned None unexpectedly")
+    repo.ensure_primary_user_role(tenant_id, str(admin_user["id"]), "tenant_admin")
 
     # 3b. Send the initial admin a ShipX activation link to set their password
     # (created with a random IdP password + no login). This is their first-login
@@ -382,6 +396,21 @@ def update_onboarding_request_status(
     existing = repo.get_onboarding_request(request_id)
     if not existing:
         raise ResourceNotFoundError("onboarding_request", request_id)
+    if existing.get("status") == "provisioned":
+        raise BusinessRuleViolationError(
+            "Provisioned onboarding requests cannot change status",
+            rule_id="INVALID_STATUS_TRANSITION",
+        )
+    if req.status.value == "provisioned":
+        raise BusinessRuleViolationError(
+            "Onboarding requests can only transition to 'provisioned' via tenant creation",
+            rule_id="INVALID_STATUS_TRANSITION",
+        )
+    if req.status.value == "rejected" and not (req.rejection_reason or "").strip():
+        raise BusinessRuleViolationError(
+            "rejection_reason is required when rejecting an onboarding request",
+            rule_id="REJECTION_REASON_REQUIRED",
+        )
     updated = repo.update_onboarding_request(
         request_id,
         {
@@ -432,15 +461,21 @@ def update_tenant(
     actor_id: str,
     ip_address: str | None = None,
 ) -> dict[str, Any]:
+    from .branding_logo import keep_server_owned
+
     existing = get_tenant(tenant_id)
     if existing["status"] == "offboarded":
         raise TenantOffboardedError(tenant_id)
     updates = req.model_dump(exclude_none=True)
     if not updates:
         return existing
+    if "branding_config" in updates and isinstance(updates["branding_config"], dict):
+        updates["branding_config"] = keep_server_owned(tenant_id, updates["branding_config"])
     updated = repo.update_tenant(tenant_id, updates)
     if updated is None:
         raise RuntimeError("update_tenant returned None unexpectedly")
+    if "branding_config" in updates and isinstance(updates["branding_config"], dict):
+        repo.upsert_config(tenant_id, "branding_config", updates["branding_config"], updated_by=None)
     try:
         repo.insert_platform_audit(
             action="TENANT_UPDATED",
@@ -480,9 +515,17 @@ def offboard_tenant(
     except Exception as exc:
         logger.warning("Cache eviction failed for tenant %s: %s", tenant_id, exc)
 
+    # End any active impersonation sessions for this tenant.
+    try:
+        from . import impersonation
+
+        impersonation.end_all_sessions_for_tenant(tenant_id, end_reason="tenant_offboarded")
+    except Exception as exc:
+        logger.warning("Impersonation session termination failed for tenant %s: %s", tenant_id, exc)
+
     # Art. 32 — revoke all active Cognito sessions so existing access tokens
     # and refresh tokens cannot be used to obtain new tokens after offboarding.
-    # Best-effort: a Cognito outage must not roll back the offboarding itself.
+    # Best-effort per user so one IdP error never skips remaining users.
     try:
         from shared.providers import get_identity_provider
 
@@ -490,7 +533,14 @@ def offboard_tenant(
         for user in repo.list_users(tenant_id):
             email: str = user.get("email", "")
             if email:
-                cognito.global_sign_out(email)
+                try:
+                    cognito.global_sign_out(email)
+                except Exception as user_exc:
+                    logger.warning(
+                        "Cognito session revocation failed for user in tenant %s: %s",
+                        tenant_id,
+                        user_exc,
+                    )
     except Exception as exc:
         logger.warning("Cognito session revocation failed for tenant %s: %s", tenant_id, exc)
 
@@ -527,6 +577,14 @@ def suspend_tenant(
         _tenant_status_cache.delete(tenant_id)
     except Exception as exc:
         logger.warning("Cache eviction failed for tenant %s: %s", tenant_id, exc)
+
+    # End any active impersonation sessions targeting this tenant.
+    try:
+        from . import impersonation
+
+        impersonation.end_all_sessions_for_tenant(tenant_id, end_reason="tenant_suspended")
+    except Exception as exc:
+        logger.warning("Impersonation session termination failed for tenant %s: %s", tenant_id, exc)
 
     try:
         publish_event(

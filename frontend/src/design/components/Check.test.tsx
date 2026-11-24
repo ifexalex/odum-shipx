@@ -5,20 +5,20 @@ import { Check } from './Check'
 
 describe('Check', () => {
   it('reports aria-checked=mixed when partial', () => {
-    render(<Check partial />)
+    render(<Check label="Pick" partial />)
     expect(screen.getByRole('checkbox')).toHaveAttribute('aria-checked', 'mixed')
   })
 
   it('calls onChange with the toggled value on click', async () => {
     const onChange = vi.fn()
-    render(<Check checked={false} onChange={onChange} />)
+    render(<Check label="Pick" checked={false} onChange={onChange} />)
     await userEvent.click(screen.getByRole('checkbox'))
     expect(onChange).toHaveBeenCalledWith(true)
   })
 
   it('toggles via the keyboard', async () => {
     const onChange = vi.fn()
-    render(<Check checked onChange={onChange} />)
+    render(<Check label="Pick" checked onChange={onChange} />)
     const checkbox = screen.getByRole('checkbox')
     checkbox.focus()
     await userEvent.keyboard('{Enter}')
@@ -27,7 +27,7 @@ describe('Check', () => {
 
   it('does not call onChange when disabled', async () => {
     const onChange = vi.fn()
-    render(<Check disabled onChange={onChange} />)
+    render(<Check label="Pick" disabled onChange={onChange} />)
     await userEvent.click(screen.getByRole('checkbox'))
     expect(onChange).not.toHaveBeenCalled()
   })

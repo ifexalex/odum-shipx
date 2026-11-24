@@ -488,7 +488,11 @@ class TestPaymentConfirmIdempotency:
         ):
             result = handler.lambda_handler(self._event("idem-key-001"), None)
 
-        mock_check.assert_called_once_with("idem-key-001", TENANT_ID)
+        mock_check.assert_called_once()
+        assert mock_check.call_args[0] == ("idem-key-001", TENANT_ID)
+        assert mock_check.call_args.kwargs["actor_id"] == "user-1"
+        assert mock_check.call_args.kwargs["method"] == "POST"
+        assert mock_check.call_args.kwargs["path"] == "/v1/payments/billing-001/confirm"
         mock_service.confirm_payment.assert_not_called()
         assert result == cached_response
 

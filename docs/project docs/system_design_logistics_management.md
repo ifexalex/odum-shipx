@@ -24,6 +24,7 @@ Read this before the rest: the design below dates from March 2026, and the produ
 - **Dollar rate:** live Bybit P2P USD→NGN base plus a per-tenant markup (`shared/fx_rate.py`), frozen per invoice.
 - **Payments:** Paystack checkout per tenant (own encrypted key; webhook and direct verify; NGN only, BE-08) and bank-transfer payment claims with evidence.
 - **Multiple warehouses per tenant**; release notes carry a one-time pickup code (ADR-008).
+- **The frontend runs on a React Router data router** (one catch-all route over the existing `<Routes>`), so forms can hold navigation while they have unsaved input (ADR-009).
 - **Customers** self-register, are invited, imported or created by staff; the customer portal covers shipments, invoices, payments, claims, refunds and release notes.
 - **Metering and plan quotas** are enforced (429); tiers Starter, Business, Enterprise.
 - **Tenant subdomains and white-label custom domains** (migration 023); public lead form for new shipping companies; offboarding produces a data export before deletion (BE-10).

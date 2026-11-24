@@ -1,19 +1,11 @@
 import { useRef, useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import { billingApi, type Billing, type RecordPaymentInput } from '../../../api/billing'
-import {
-  Action,
-  Badge,
-  Banner,
-  Button,
-  Field,
-  Icon,
-  Mono,
-  DialogGuard,
-} from '../../../design/components'
+import { PAYMENT_METHODS, paymentMethodLabel } from '../../../lib/paymentMethods'
+import { Action, Banner, Button, DialogGuard, Field, Icon, Mono, StatusBadge, Select } from '../../../design/components'
 import styles from '../BillingDetail.module.css'
 import { formatNgn } from '../../../lib/format'
-import { STATUS_VARIANT, statusLabel } from './status'
+import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
 // RecordPaymentModal
@@ -24,8 +16,6 @@ export interface RecordPaymentModalProps {
   onCancel: () => void
   onSuccess: (updated: { new_payment_status: string }) => void
 }
-
-const PAYMENT_METHODS = ['bank_transfer', 'cash', 'online', 'card', 'other']
 
 export function RecordPaymentModal({
   billing,
@@ -54,6 +44,7 @@ export function RecordPaymentModal({
       if (method) body.payment_method = method
       if (reference) body.payment_reference = reference
       const result = await billingApi.recordPayment(billing.id, body, idempotencyKey.current)
+      toast.success('Payment recorded', billing.invoice_number ?? undefined)
       onSuccess(result)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not record payment.')
@@ -109,9 +100,7 @@ export function RecordPaymentModal({
             </span>
             <span>
               Status{' '}
-              <Badge variant={STATUS_VARIANT[billing.payment_status]}>
-                {statusLabel(billing.payment_status)}
-              </Badge>
+              <StatusBadge kind="invoice" status={billing.payment_status} />
             </span>
           </div>
           <div className={styles.paySummary}>
@@ -159,21 +148,17 @@ export function RecordPaymentModal({
           onChange={(e) => setAmount(e.target.value)}
         />
         <div className={styles.selectField}>
-          <label className={styles.selectLabel}>
-            Payment method <span className={styles.optional}>Optional</span>
-          </label>
-          <select
-            className={styles.select}
+          <Select label="Payment method" optional
             value={method}
             onChange={(e) => setMethod(e.target.value)}
           >
             <option value="">Select method…</option>
             {PAYMENT_METHODS.map((m) => (
               <option key={m} value={m}>
-                {m.replace('_', ' ')}
+                {paymentMethodLabel(m)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <Field
           label="Reference"

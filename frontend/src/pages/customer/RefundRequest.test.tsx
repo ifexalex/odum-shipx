@@ -53,6 +53,12 @@ function renderPage() {
 
 beforeEach(() => vi.clearAllMocks())
 
+async function fillBank(number = '0123456789'): Promise<void> {
+  await userEvent.type(screen.getByRole('textbox', { name: /^Bank/ }), 'Zenith Bank')
+  await userEvent.type(screen.getByLabelText(/Account number/), number)
+  await userEvent.type(screen.getByLabelText(/Account name/), 'Ngozi Okonkwo')
+}
+
 describe('RefundRequest', () => {
   it('cannot be sent without a positive amount', async () => {
     renderPage()
@@ -102,8 +108,9 @@ describe('RefundRequest', () => {
       .mockResolvedValueOnce({} as Awaited<ReturnType<typeof refundsApi.create>>)
     renderPage()
     await userEvent.type(screen.getByLabelText(/Amount requested/), '5000')
+    await fillBank()
     await userEvent.click(screen.getByRole('button', { name: 'Submit request' }))
-    expect(await screen.findByText('Try again shortly.')).toBeInTheDocument()
+    expect(await screen.findByText("We couldn't reach the server. Check your connection and try again.")).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Submit request' }))
 
     const keys = vi.mocked(refundsApi.create).mock.calls.map((call) => call[1])
@@ -114,5 +121,42 @@ describe('RefundRequest', () => {
   it('says a credit only covers what the next invoice needs and keeps the rest', () => {
     renderPage()
     expect(screen.getByText(/anything left over stays as credit/)).toBeInTheDocument()
+  })
+
+  it('sends the bank account a bank refund is paid into', async () => {
+    vi.mocked(refundsApi.create).mockResolvedValue({} as Awaited<ReturnType<typeof refundsApi.create>>)
+    renderPage()
+    await userEvent.type(screen.getByLabelText(/Amount requested/), '25000')
+    await fillBank()
+    await userEvent.click(screen.getByRole('button', { name: 'Submit request' }))
+
+    const [body] = vi.mocked(refundsApi.create).mock.calls[0]!
+    expect(body).toMatchObject({
+      customer_choice: 'immediate_refund',
+      bank_name: 'Zenith Bank',
+      account_number: '0123456789',
+      account_name: 'Ngozi Okonkwo',
+    })
+  })
+
+  it('does not send a bank refund without a 10-digit account number', async () => {
+    renderPage()
+    await userEvent.type(screen.getByLabelText(/Amount requested/), '25000')
+    await fillBank('01234')
+    await userEvent.click(screen.getByRole('button', { name: 'Submit request' }))
+    expect(screen.getByText('Enter your 10-digit account number.')).toBeInTheDocument()
+    expect(refundsApi.create).not.toHaveBeenCalled()
+  })
+
+  it('takes digits only in the account number', async () => {
+    renderPage()
+    await userEvent.type(screen.getByLabelText(/Account number/), '01-23 45abc6789')
+    expect(screen.getByLabelText(/Account number/)).toHaveValue('0123456789')
+  })
+
+  it('asks for no bank details for a credit', async () => {
+    renderPage()
+    await userEvent.click(screen.getByLabelText(/Credit on next shipment/))
+    expect(screen.queryByLabelText(/Account number/)).not.toBeInTheDocument()
   })
 })

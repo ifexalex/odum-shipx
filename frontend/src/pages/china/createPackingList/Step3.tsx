@@ -9,6 +9,7 @@ import { Banner, Button, Card, Kvp, Mono } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../CreatePackingList.module.css'
 import type { PackingListForm } from './useCreatePackingListForm'
+import { formatCbm, formatKg, formatNgn } from '../../../lib/format'
 
 /** Step 3: review, then save as a draft or submit for approval. */
 export function Step3({ form }: { form: PackingListForm }): JSX.Element {
@@ -24,6 +25,8 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
     selectedCustomer,
     selectedContainer,
     totals,
+    shippingUsd,
+    shippingNgn,
     qtyOf,
     requestSave,
   } = form
@@ -37,7 +40,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
           />
           <div className={styles.spacerSm} />
           <Banner variant="success" title="All items look valid">
-            {/* "carton(s)" was hardcoded, so a list of bales or sacks
+            {/* The word "cartons" was hardcoded, so a list of bales or sacks
                   described itself as cartons on the very screen meant for
                   checking it. */}
             {formatPackageMix(buildPackageMix(items))} captured · all dimensions present · CBM
@@ -46,7 +49,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
         </Card>
         <div className={styles.spacerSm} />
         {/* Document preview — how this packing list will look when printed */}
-        <Card padding={0}>
+        <Card padding="none">
           <div className={styles.previewHeader}>
             <SectionHead
               title="Document preview"
@@ -163,7 +166,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                       ].join(' ')}
                     >
                       {item.weight_dispatch_kg != null
-                        ? (item.weight_dispatch_kg * qty).toFixed(1)
+                        ? formatKg(item.weight_dispatch_kg * qty)
                         : '—'}
                     </span>
                     <span
@@ -174,7 +177,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                       ].join(' ')}
                     >
                       {item.weight_actual_kg != null
-                        ? (item.weight_actual_kg * qty).toFixed(1)
+                        ? formatKg(item.weight_actual_kg * qty)
                         : '—'}
                     </span>
                     <span
@@ -199,7 +202,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                       {/* Line total, not per package: the row stands for
                             `qty` packages and this is the figure that is
                             billed. */}
-                      {cbm != null ? (applyMinCbm(cbm, minCbm) * qty).toFixed(3) : '—'}
+                      {cbm != null ? formatCbm(applyMinCbm(cbm, minCbm) * qty) : '—'}
                     </span>
                     <span
                       className={[
@@ -219,11 +222,11 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
               <div className={styles.previewTotals}>
                 <span>{formatPackageMix(buildPackageMix(items))}</span>
                 <span>·</span>
-                <span>{totals.weightDispatch.toFixed(1)} kg disp.</span>
+                <span>{formatKg(totals.weightDispatch)} kg disp.</span>
                 <span>·</span>
-                <span>{totals.weight.toFixed(1)} kg act.</span>
+                <span>{formatKg(totals.weight)} kg act.</span>
                 <span>·</span>
-                <span className={styles.previewCbm}>{totals.cbm.toFixed(3)} CBM</span>
+                <span className={styles.previewCbm}>{formatCbm(totals.cbm)} CBM</span>
                 <span>·</span>
                 <span>${totals.declaredUsd.toFixed(0)}</span>
               </div>
@@ -239,17 +242,31 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
             label="Container"
             value={<Mono>{selectedContainer?.container_number ?? '—'}</Mono>}
           />
-          <Kvp label="Cartons" value={<Mono>{totals.cartons}</Mono>} />
-          <Kvp label="Total weight" value={<Mono>{totals.weight.toFixed(1)} kg</Mono>} />
+          <Kvp label="Packages" value={<Mono>{formatPackageMix(buildPackageMix(items))}</Mono>} />
+          <Kvp label="Total weight" value={<Mono>{formatKg(totals.weight)} kg</Mono>} />
           <Kvp
             label="Total CBM"
-            value={<Mono color="var(--color-success)">{totals.cbm.toFixed(3)}</Mono>}
+            value={<Mono color="var(--color-success)">{formatCbm(totals.cbm)}</Mono>}
           />
           <Kvp
             label="Declared value"
             value={<Mono>${totals.declaredUsd.toFixed(0)} USD</Mono>}
-            divider={false}
+            divider={shippingUsd != null || shippingNgn != null}
           />
+          {shippingUsd != null && (
+            <Kvp
+              label="Est. shipping (USD)"
+              value={<Mono>${shippingUsd.toFixed(2)}</Mono>}
+              divider={shippingNgn != null}
+            />
+          )}
+          {shippingNgn != null && (
+            <Kvp
+              label="Est. shipping (NGN)"
+              value={<Mono>{formatNgn(shippingNgn)}</Mono>}
+              divider={false}
+            />
+          )}
         </Card>
       </div>
 
@@ -262,7 +279,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
             Save draft
           </Button>
           <Button
-            variant="accent"
+            variant="primary"
             icon="check"
             loading={submitting}
             onClick={() => void requestSave(true)}

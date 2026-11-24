@@ -46,7 +46,7 @@ export function TenantBlockedScreen({ kind }: { kind: TenantBlockedKind }): JSX.
         <p className={styles.hint}>{copy.hint}</p>
         <div className={styles.actions}>
           <a href="mailto:support@shipx.co" className={styles.mailLink}>
-            <Button variant="accent" size="lg" icon="mail">
+            <Button variant="primary" size="lg" icon="mail" mutates={false}>
               Contact support
             </Button>
           </a>

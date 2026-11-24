@@ -24,9 +24,9 @@ from services.excel._tables import Column, build_csv, build_xlsx
 from services.excel.export_lists import BILLING_LIST_COLUMNS, CONTAINER_LIST_COLUMNS
 from services.excel.models import ContainerListExportQuery, ListExportQuery
 from services.tracking import repository as tracking_repo
-from shared.exceptions import BusinessRuleViolationError, ValidationError
+from shared.exceptions import BusinessRuleViolationError, ResourceNotFoundError, ValidationError
 from shared.http_routing import resolve_service
-from shared.list_filters import billing_filter, container_filter
+from shared.list_filters import billing_filter, container_filter, overdue_condition
 from shared.tenant_context import TenantContext, UserRole
 
 TENANT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -74,6 +74,16 @@ class TestSharedFilters:
             "created_before": "2026-02-01",
             "q": "%50%_x%",
         }
+
+    def test_billing_overdue_is_the_stats_own_definition(self):
+        """The list's `overdue` filter (FD-18) is the fragment the billing stats count with, aliased to `b`."""
+        clause, params = billing_filter("t1", {"overdue": True})
+        assert clause == f"b.tenant_id = %(tenant_id)s AND ({overdue_condition('b')})"
+        assert params == {"tenant_id": "t1"}
+        assert overdue_condition("b") == (
+            "b.status NOT IN ('paid', 'waived', 'cancelled') AND b.balance_ngn > 0 AND b.billed_at < now() - interval '30 days'"
+        )
+        assert billing_filter("t1", {"overdue": False})[0] == "b.tenant_id = %(tenant_id)s"
 
     def test_container_filter_with_nothing_set_is_only_the_tenant(self):
         assert container_filter("t1", {}) == ("c.tenant_id = %(tenant_id)s", {"tenant_id": "t1"})
@@ -304,6 +314,10 @@ class TestListExportQuery:
             "created_before": "2026-02-01",
         }
         assert (q.format, q.sort, q.direction) == ("xlsx", "billed_at", "desc")
+
+    def test_the_overdue_list_exports_as_overdue(self):
+        assert ListExportQuery(overdue="true").filters() == {"overdue": True}
+        assert ListExportQuery(overdue="false").filters() == {}
 
     def test_only_what_is_set_becomes_a_filter(self):
         assert ListExportQuery().filters() == {}
@@ -554,3 +568,96 @@ class TestRouting:
     @pytest.mark.parametrize("path", ["/v1/billing/export", "/v1/containers/export"])
     def test_the_list_exports_are_served_by_the_excel_service_not_the_record_routes(self, path):
         assert resolve_service(path) == "excel"
+
+
+# ---------------------------------------------------------------------------
+# A container's tracking events (the tracking tab's Export button, found unwired 2026-11-17)
+# ---------------------------------------------------------------------------
+
+
+def _event_row(**kw):
+    return {
+        "created_at": datetime(2026, 11, 3, 9, 30, tzinfo=UTC),
+        "from_status": "loading",
+        "to_status": "in_transit",
+        "actor_name": "Ada Obi",
+        "actor_role": "china_office_staff",
+        "notes": "Sailed on time",
+        **kw,
+    }
+
+
+class TestContainerEventExport:
+    def _export(self, events, fmt="csv"):
+        with (
+            patch.object(service.repo, "get_container_by_id", return_value={"id": "k1", "container_number": "MSCU1"}),
+            patch.object(tracking_repo, "get_container_events", return_value=events) as query,
+        ):
+            result = service.export_container_events(TENANT, "k1", fmt=fmt, actor_id="u1", actor_role="china_office_staff")
+        return result, query
+
+    def test_csv_has_one_readable_row_per_event(self, stored):
+        result, query = self._export([_event_row()])
+        query.assert_called_once_with(TENANT, "k1")
+        rows = list(csv.reader(io.StringIO(stored["content"].decode("utf-8-sig"))))
+        assert rows[0] == ["Time (UTC)", "From", "To", "Updated By", "Role", "Notes"]
+        assert rows[1] == ["2026-11-03 09:30", "Loading", "In transit", "Ada Obi", "China office staff", "Sailed on time"]
+        assert result["row_count"] == 1 and "_tracking_MSCU1_" in stored["filename"]
+
+    def test_xlsx_is_a_workbook(self, stored):
+        self._export([_event_row()], fmt="xlsx")
+        sheet = openpyxl.load_workbook(BytesIO(stored["content"])).active
+        assert sheet.title == "Tracking MSCU1"
+        assert sheet.cell(2, 3).value == "In transit"
+
+    def test_a_note_cannot_run_as_a_formula(self, stored):
+        self._export([_event_row(notes='=HYPERLINK("http://x")')])
+        assert b"'=HYPERLINK" in stored["content"]
+
+    def test_an_event_without_an_actor_or_a_from_status(self, stored):
+        self._export([_event_row(from_status=None, actor_name=None, actor_role=None, notes=None)])
+        rows = list(csv.reader(io.StringIO(stored["content"].decode("utf-8-sig"))))
+        assert rows[1] == ["2026-11-03 09:30", "", "In transit", "", "", ""]
+
+    def test_the_export_is_audited_on_the_container(self, stored):
+        self._export([_event_row()])
+        kwargs = stored["audit"].call_args.kwargs
+        assert (kwargs["entity_type"], kwargs["entity_id"], kwargs["action"]) == ("container", "k1", "EXPORT")
+        assert kwargs["after_state"]["scope"] == "tracking_events"
+
+    def test_another_tenants_container_is_a_404(self, stored):
+        with patch.object(service.repo, "get_container_by_id", return_value=None), pytest.raises(ResourceNotFoundError):
+            service.export_container_events(TENANT, "k1", fmt="csv", actor_id="u1", actor_role="china_office_staff")
+        assert "content" not in stored
+
+
+class TestContainerEventExportRoute:
+    def _call(self, role, **query):
+        ctx = TenantContext(tenant_id=TENANT, user_id="user-1", role=role)
+        with (
+            patch.object(handler, "get_tenant_context", return_value=ctx),
+            patch.object(handler, "record_usage"),
+            patch.object(service, "export_container_events", return_value={"download_url": "u"}) as export,
+        ):
+            response = handler.lambda_handler(_event("/v1/containers/k1/events/export", **query), None)
+        return response, export
+
+    def test_routes_to_the_excel_service(self):
+        assert resolve_service("/v1/containers/k1/events/export") == "excel"
+
+    @pytest.mark.parametrize(
+        "role",
+        [UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CHINA_OFFICE_STAFF, UserRole.WAREHOUSE_ATTENDANT],
+    )
+    def test_everyone_who_reads_the_events_can_export_them(self, role):
+        response, export = self._call(role, format="csv")
+        assert response["statusCode"] == 200
+        assert export.call_args.kwargs["fmt"] == "csv"
+
+    def test_a_customer_cannot(self):
+        response, export = self._call(UserRole.CUSTOMER)
+        assert response["statusCode"] == 403 and not export.called
+
+    def test_pdf_is_not_offered(self):
+        response, export = self._call(UserRole.TENANT_ADMIN, format="pdf")
+        assert response["statusCode"] == 422 and not export.called

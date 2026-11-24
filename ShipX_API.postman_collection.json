@@ -1058,6 +1058,136 @@
           }
         },
         {
+          "name": "Logo — Presign Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/config/logo/upload-url",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "config",
+                "logo",
+                "upload-url"
+              ]
+            },
+            "description": "FD-29. tenant_admin. PNG, JPEG or WebP (no SVG: it can carry script), at most 5 MB (size_bytes required). Returns file_key under {tenant_id}/branding/logo/ plus upload_url, upload_method, upload_headers. PUT the file there, then call Set Logo. 201.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"acme-logo.png\",\n  \"content_type\": \"image/png\",\n  \"size_bytes\": 20480\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Logo — Set",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/config/logo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "config",
+                "logo"
+              ]
+            },
+            "description": "FD-29. tenant_admin. Use the uploaded file as the logo. The key must be one of this tenant's logo uploads (422 otherwise); the stored file is confirmed (UPLOAD_NOT_FOUND / FILE_TOO_LARGE, oversize deleted). Replaces and deletes the previous logo. Returns branding_config with logo_url (presigned, 1 h); logo_key is never returned.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file_key\": \"{{logo_file_key}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Logo — Remove",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/config/logo",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "config",
+                "logo"
+              ]
+            },
+            "description": "FD-29. tenant_admin. Stop using a logo; the file is deleted and documents fall back to the initials tile. Returns branding_config."
+          }
+        },
+        {
           "name": "Get Dollar Rate",
           "request": {
             "method": "GET",
@@ -2308,7 +2438,197 @@
                 }
               ]
             },
-            "description": "Public endpoint — no auth required. Customer looks up shipment by tracking code + phone number.\n\nThe phone is normalised to E.164 before matching (fixed 2026-11-02). Customer phones are stored E.164 and this previously compared ONE exact string, so a local-format number never matched. Note this very request used phone=08012345678 — it would have returned 404 against a customer stored as +2348012345678. Both the normalised and the raw form are now accepted."
+            "description": "Public endpoint — no auth required. Customer looks up shipment by tracking code + phone number.\n\nThe phone is normalised to E.164 before matching (fixed 2026-11-02). Customer phones are stored E.164 and this previously compared ONE exact string, so a local-format number never matched. Note this very request used phone=08012345678 — it would have returned 404 against a customer stored as +2348012345678. Both the normalised and the raw form are now accepted.\n\nResponse (FD-28): tracking_code, current_stage, company_name, brand_color (the tenant's #rrggbb brand colour or null), stage_history, estimated_stages."
+          }
+        },
+        {
+          "name": "List Container Documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/documents",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "documents"
+              ]
+            },
+            "description": "GET /v1/containers/{id}/documents — china_office_staff, nigeria_office_staff, tenant_admin. Confirmed documents only."
+          }
+        },
+        {
+          "name": "Get Document Upload URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"bill_of_lading.pdf\",\n  \"content_type\": \"application/pdf\",\n  \"document_type\": \"bill_of_lading\",\n  \"size_bytes\": 204800\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/documents/presigned-url",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "documents",
+                "presigned-url"
+              ]
+            },
+            "description": "POST /v1/containers/{id}/documents/presigned-url — china_office_staff, nigeria_office_staff, tenant_admin. Returns document_id and s3_key."
+          }
+        },
+        {
+          "name": "Confirm Document Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/documents/{{document_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "documents",
+                "{{document_id}}",
+                "confirm"
+              ]
+            },
+            "description": "POST /v1/containers/{id}/documents/{doc-id}/confirm — china_office_staff, nigeria_office_staff, tenant_admin. Call after the PUT to storage. Reads the stored size: over 5 MB → file and row deleted, 422 FILE_TOO_LARGE; nothing uploaded → 422 UPLOAD_NOT_FOUND. Unconfirmed uploads are never listed (migration 069)."
+          }
+        },
+        {
+          "name": "Get Document Download URL",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/documents/{{document_id}}/download",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "documents",
+                "{{document_id}}",
+                "download"
+              ]
+            },
+            "description": "GET /v1/containers/{id}/documents/{doc-id}/download — 5-minute attachment link. An unconfirmed document is a 404."
+          }
+        },
+        {
+          "name": "Export Tracking Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "china_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/containers/{{container_id}}/events/export?format=xlsx",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "containers",
+                "{{container_id}}",
+                "events",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "xlsx"
+                }
+              ]
+            },
+            "description": "GET /v1/containers/{id}/events/export?format=xlsx|csv — tenant_admin, nigeria/china office staff, warehouse_attendant. The tracking tab's event log; returns {filename, download_url, row_count}. PDF → 422."
           }
         }
       ]
@@ -2894,6 +3214,87 @@
               ]
             }
           }
+        },
+        {
+          "name": "Get Evidence Upload URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"carton_photo.jpg\",\n  \"content_type\": \"image/jpeg\",\n  \"size_bytes\": 204800,\n  \"label\": \"Carton 12\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/evidence",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "evidence"
+              ]
+            },
+            "description": "POST /v1/manifests/{id}/evidence — china_office_staff, nigeria_office_staff. Presigned PUT for a verification photo/doc; returns evidence_id and file_key."
+          }
+        },
+        {
+          "name": "Confirm Evidence Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/evidence/{{evidence_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "evidence",
+                "{{evidence_id}}",
+                "confirm"
+              ]
+            },
+            "description": "POST /v1/manifests/{id}/evidence/{evidence_id}/confirm — china_office_staff, nigeria_office_staff. Call after the PUT to storage. Reads the stored size: over 5 MB → file and row deleted, 422 FILE_TOO_LARGE; nothing uploaded → 422 UPLOAD_NOT_FOUND. Unconfirmed uploads are never listed (migration 069)."
+          }
         }
       ]
     },
@@ -2952,6 +3353,12 @@
                   "key": "q",
                   "value": "",
                   "description": "Free-text search: invoice number, customer name, or container number",
+                  "disabled": true
+                },
+                {
+                  "key": "overdue",
+                  "value": "true",
+                  "description": "Only invoices owed for over 30 days (the list's Overdue stat, FD-18)",
                   "disabled": true
                 }
               ]
@@ -4435,6 +4842,41 @@
             },
             "description": "POST /v1/uploads/presigned-url — generate an S3 presigned PUT URL for uploading claim evidence photos"
           }
+        },
+        {
+          "name": "Confirm Evidence Upload",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/claims/{{claim_id}}/evidence/{{evidence_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "claims",
+                "{{claim_id}}",
+                "evidence",
+                "{{evidence_id}}",
+                "confirm"
+              ]
+            },
+            "description": "POST /v1/claims/{id}/evidence/{evidence_id}/confirm — customer (own claim), nigeria_office_staff. Call after the PUT to storage. Reads the stored size: over 5 MB → file and row deleted, 422 FILE_TOO_LARGE; nothing uploaded → 422 UPLOAD_NOT_FOUND. Unconfirmed uploads are never listed (migration 069)."
+          }
         }
       ]
     },
@@ -5069,7 +5511,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"damage_claim_id\": \"{{claim_id}}\",\n  \"refund_type\": \"damage_or_loss\",\n  \"amount_requested_ngn\": 132000.00,\n  \"customer_choice\": \"immediate_refund\",\n  \"notes\": \"Refund for water-damaged electronics per resolved claim\"\n}"
+              "raw": "{\n  \"customer_id\": \"{{customer_id}}\",\n  \"damage_claim_id\": \"{{claim_id}}\",\n  \"refund_type\": \"damage_or_loss\",\n  \"amount_requested_ngn\": 132000.0,\n  \"customer_choice\": \"immediate_refund\",\n  \"notes\": \"Refund for water-damaged electronics per resolved claim\",\n  \"bank_name\": \"Zenith Bank\",\n  \"account_number\": \"0123456789\",\n  \"account_name\": \"Test Customer\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/v1/refunds",
@@ -5163,7 +5605,7 @@
                 "{{refund_id}}"
               ]
             },
-            "description": "One refund request. A customer reads only their own, and gets a customer view: `reason` only when they raised the request themselves (a refund raised from a claim decision carries staff's internal reason, which is not theirs to read), `rejection_reason` always, and null for `approval_level`, `debt_check_passed`, `debt_check_notes` and `threshold`. `credit_applied_ngn` (2026-11-17): for a refund taken as credit, how much of it invoices have used so far; the rest is still the customer's."
+            "description": "One refund request. A customer reads only their own, and gets a customer view: `reason` only when they raised the request themselves (a refund raised from a claim decision carries staff's internal reason, which is not theirs to read), `rejection_reason` always, and null for `approval_level`, `debt_check_passed`, `debt_check_notes` and `threshold`. `credit_applied_ngn` (2026-11-17): for a refund taken as credit, how much of it invoices have used so far; the rest is still the customer's. `customer_name`, `invoice_number`, `claim_reference` (2026-11-20, FD-17): what `customer_id`, `billing_id` and `damage_claim_id` are called, null when the link is absent; detail read only."
           }
         },
         {
@@ -5517,6 +5959,72 @@
           }
         },
         {
+          "name": "Invoice PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/{{billing_id}}/pdf",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "{{billing_id}}",
+                "pdf"
+              ]
+            },
+            "description": "FD-39 (2026-11-21). The branded invoice: line items, totals, how to pay. nigeria_office_staff, tenant_admin, customer (own only; 404 otherwise). Returns {filename, download_url (5 min, Content-Disposition inline), expires_in_seconds}. Replaces /export?format=pdf, which is now 422."
+          }
+        },
+        {
+          "name": "Manifest PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "nigeria_office_staff"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/manifests/{{manifest_id}}/pdf",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "manifests",
+                "{{manifest_id}}",
+                "pdf"
+              ]
+            },
+            "description": "FD-39 (2026-11-21). The branded manifest: vessel, voyage, one row per customer with totals, verification. Staff who can export manifests. 5-minute link."
+          }
+        },
+        {
           "name": "Export Container Billing (XLSX)",
           "request": {
             "method": "GET",
@@ -5650,7 +6158,54 @@
                 }
               ]
             },
-            "description": "Every invoice matching the invoice list's filters and sort, not just the loaded page. tenant_admin only (owner decision 2026-11-17; every other role is 403). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 matches is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`."
+            "description": "Every invoice matching the invoice list's filters and sort, not just the loaded page. tenant_admin only (owner decision 2026-11-17; every other role is 403). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 matches is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`.\n\n2026-11-21 (FD-39): format=pdf is no longer accepted (422); use the record's /pdf route."
+          }
+        },
+        {
+          "name": "Export report billing by container (xlsx/csv)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/billing/report/export?created_after=2026-01-01&created_before=2026-03-31&format=xlsx",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "report",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "created_after",
+                  "value": "2026-01-01"
+                },
+                {
+                  "key": "created_before",
+                  "value": "2026-03-31"
+                },
+                {
+                  "key": "format",
+                  "value": "xlsx"
+                }
+              ]
+            },
+            "description": "The reports page's \"CBM & billing by container\" table for the period: one row per container (customers, CBM, billed, collected, outstanding, average CBM rate and dollar rate), largest billed first, every container (the page lists the top 200). tenant_admin only; every other role is 403. Both dates optional (YYYY-MM-DD, on billing created_at). `format` is xlsx (default) or csv; pdf is 422. More than 10,000 containers is 422 EXPORT_TOO_LARGE. Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`.\n\n2026-11-21 (FD-39): format=pdf is no longer accepted (422); use the record's /pdf route."
           }
         },
         {

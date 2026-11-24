@@ -24,6 +24,7 @@ vi.mock('../../api/billing', async (importOriginal) => {
     billingApi: {
       ...original.billingApi,
       verifyPayment: vi.fn(),
+      receiptPdf: vi.fn(async () => undefined),
       get: vi.fn(async () => ({ invoice_number: 'ACM-INV-0001' })),
     },
   }
@@ -56,7 +57,7 @@ describe('PaymentSuccess', () => {
     renderPage()
 
     expect(screen.getByText('Confirming your payment…')).toBeInTheDocument()
-    expect(await screen.findByText('Payment successful!')).toBeInTheDocument()
+    expect(await screen.findByText('Payment successful')).toBeInTheDocument()
     expect(billingApi.verifyPayment).toHaveBeenCalledWith('b1', 'b1.abc123')
   })
 
@@ -64,7 +65,7 @@ describe('PaymentSuccess', () => {
     vi.mocked(billingApi.verifyPayment).mockResolvedValue({ gateway_status: 'success' })
     renderPage('?trxref=b1.xyz789')
 
-    await screen.findByText('Payment successful!')
+    await screen.findByText('Payment successful')
     expect(billingApi.verifyPayment).toHaveBeenCalledWith('b1', 'b1.xyz789')
   })
 
@@ -108,10 +109,32 @@ describe('PaymentSuccess', () => {
   it('"View invoice" navigates to the billing detail page', async () => {
     vi.mocked(billingApi.verifyPayment).mockResolvedValue({ gateway_status: 'success' })
     renderPage()
-    await screen.findByText('Payment successful!')
+    await screen.findByText('Payment successful')
 
     await userEvent.click(screen.getByRole('button', { name: 'View invoice' }))
 
     expect(await screen.findByText('billing detail page')).toBeInTheDocument()
+  })
+
+  it('offers the receipt for the payment it confirmed (FD-43)', async () => {
+    vi.mocked(billingApi.verifyPayment).mockResolvedValue({ gateway_status: 'success' })
+    vi.mocked(billingApi.get).mockResolvedValue({
+      invoice_number: 'ACM-INV-0001',
+      payments: [
+        { id: 'pay-old', amount_ngn: '5000', payment_method: 'bank_transfer', payment_reference: 'TRF-1', confirmed_at: '2026-11-01' },
+        { id: 'pay-now', amount_ngn: '20000', payment_method: 'paystack', payment_reference: 'b1.abc123', confirmed_at: '2026-11-21' },
+      ],
+    } as never)
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Download receipt' }))
+    expect(billingApi.receiptPdf).toHaveBeenCalledWith('pay-now')
+  })
+
+  it('shows no receipt button when the payment is not on the invoice yet', async () => {
+    vi.mocked(billingApi.verifyPayment).mockResolvedValue({ gateway_status: 'success' })
+    vi.mocked(billingApi.get).mockResolvedValue({ invoice_number: 'ACM-INV-0001', payments: [] } as never)
+    renderPage()
+    await screen.findByText('Payment successful')
+    expect(screen.queryByRole('button', { name: 'Download receipt' })).toBeNull()
   })
 })

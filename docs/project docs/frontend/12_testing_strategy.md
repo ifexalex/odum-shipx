@@ -89,3 +89,36 @@ If the Storybook/component-catalog route from Task 03 exists, a lightweight scre
 - [ ] Every shared component (Task 03) has a test — partially done; key components tested, not 100% coverage. Full coverage deferred.
 - [ ] MSW-backed contract tests for API client — deferred; `vi.stubGlobal` approach is adequate, MSW adds infra overhead without current blocker
 - [x] Playwright e2e runs in CI — **done (2026-07-10)**: `frontend-ci.yml` has an `e2e-smoke` job (built artifact via preview, verified locally) and an `e2e-local-stack` job (boots `make up` + migrate/seed + Flask + Vite dev in local-auth mode, runs the `flows/**` project with `PW_E2E=local-stack`). Reports uploaded on failure.
+
+## Status registry guard (FD-08, 2026-11-19)
+
+`src/design/statusRegistry.test.ts` (22): registry coverage of every API status union, label hygiene, unknown-status fallback, and a source scan that fails on any page/shell status map. 11 page tests updated to the registry's words.
+
+## Button rules (FD-07, 2026-11-19)
+
+`src/design/buttonRules.test.ts` (4): no raw `<button>` in pages, accent only on paying/sign-in screens, no typed arrow ending a label. `Action.test.tsx` (+2) covers read-only on plain Buttons and IconButtons and no blocking without a session; `Button.test.tsx` (+2), `IconButton.test.tsx` (2). Page tests updated for links (auth footers, work queue rows, audit log) and the disabled-button form of read-only (`readonly-impersonation.test.tsx`). Phone audit after the height change: every page fits at 375/360/320.
+
+## Form rules and named controls (FD-11, FD-50, 2026-11-19)
+
+`src/design/formRules.test.ts` (4) and `src/design/components/FieldFamily.test.tsx` (13). Page tests updated: date-range tests open the filter popover before typing a custom date and expect the button to read "Since …"; selectors by label text instead of DOM structure (rates, brand colour, collected-by); the `Account` language choice is a named radio group. The phone audit doubles as the FD-50 automated pass: it lists every unnamed control per route and fails on any.
+
+## Toasts (FD-21, 2026-11-19)
+
+`src/test/setup.ts` resets the toast store and mounts `ToastRegion` before every test. `ToastRegion.test.tsx` (4) and `src/design/toastRules.test.ts` (2) — the second found two pages that changed data silently (the announcement composer; the audit-log read was a false positive and is listed as a read).
+
+## Tables (FD-13, 2026-11-20)
+
+`src/design/tableRules.test.ts` (4) and 6 new cases in `Table.test.tsx`. Page tests that clicked "View" now click the row's first cell (`within(row).getAllByRole('button')[0]`) or its text. A count whose numbers sit in `<strong>` is matched with a function on `textContent`; `getByText` reads only an element's own text nodes.
+
+## Cards and text (FD-10, 2026-11-20)
+
+`src/design/cardRules.test.ts` (4). The browser check `scripts/text-breaks.mjs` (see `LOCAL_TESTING.md`) was proved by injecting each defect with `TEXT_BREAKS_INJECT_CSS`: a border back on a table inside a card, a 40 px stat label, an ellipsis on a sublabel. Its first run also caught a bug in itself (a red test border read as transparent because `rgb(255, 0, 0)` ends in ", 0)").
+
+## Stepper (FD-09, 2026-11-20)
+
+`Stepper.test.tsx` (6) stubs `getBoundingClientRect` to drive the compact form, as `Table.test.tsx` does for cards. `src/design/stepperRules.test.ts` (2). `MyClaimDetail.test.tsx` now finds each step's list item and checks its `aria-current` and its "done" text.
+
+## Component catalog coverage (step 2 gate, 2026-11-20)
+
+`src/design/catalogCoverage.test.ts` (2): every component exported from `src/design/components/index.ts` renders in `ComponentCatalog.tsx`, and the theme switch is there. The catalog itself was checked in a browser in light and dark (full-page screenshots, no console errors).
+

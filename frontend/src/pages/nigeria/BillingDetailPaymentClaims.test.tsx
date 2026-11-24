@@ -94,6 +94,7 @@ describe('BillingDetail — staff payment-claim review', () => {
 
     await screen.findByText('Payment claims')
     await userEvent.click(screen.getByRole('button', { name: /^confirm$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^confirm payment$/i }))
 
     await waitFor(() => expect(paymentClaimApi.confirm).toHaveBeenCalledWith('claim1'))
   })

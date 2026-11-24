@@ -5,6 +5,7 @@ import { Icon } from '../design/components'
 import { useGlobalSearch } from '../hooks/useGlobalSearch'
 import styles from './GlobalSearch.module.css'
 import { SEARCH_KIND_LABELS, searchResultPath, type SearchAudience } from './searchRoutes'
+import { statusLabel, type StatusKind } from '../design/status'
 
 export interface GlobalSearchProps {
   /** Which portal the viewer is in: decides where a result opens and how the box is drawn. */
@@ -12,7 +13,17 @@ export interface GlobalSearchProps {
   placeholder: string
 }
 
-function humanize(status: string): string {
+// A result's status in the registry's words (FD-08): a shipment is a packing list.
+const RESULT_STATUS_KIND: Partial<Record<string, StatusKind>> = {
+  container: 'container',
+  shipment: 'packingList',
+  invoice: 'invoice',
+  release_note: 'releaseNote',
+}
+
+function resultStatus(kind: string, status: string, audience: SearchAudience): string {
+  const registryKind = RESULT_STATUS_KIND[kind]
+  if (registryKind) return statusLabel(registryKind, status, audience === 'customer' ? 'customer' : 'staff')
   const text = status.replace(/_/g, ' ')
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
@@ -196,7 +207,7 @@ export function GlobalSearch({ audience, placeholder }: GlobalSearchProps): JSX.
                       <span className={styles.title}>{result.title}</span>
                       {result.subtitle && <span className={styles.subtitle}>{result.subtitle}</span>}
                     </span>
-                    {result.status && <span className={styles.status}>{humanize(result.status)}</span>}
+                    {result.status && <span className={styles.status}>{resultStatus(result.kind, result.status, audience)}</span>}
                   </li>
                 ))}
               </ul>

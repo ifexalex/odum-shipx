@@ -5,11 +5,13 @@ import { configKeys } from '../../api/keys'
 import { configApi, type CbmRateConfig, type CbmRateCurrency, type CbmRateMode } from '../../api/tenantManagement'
 import { useCbmRate } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
-import { Banner, Button, Card, Kvp, Mono } from '../../design/components'
+import { Banner, Button, Card, Kvp, Mono, Field, PageSkeleton } from '../../design/components'
 import { RateHistoryTable } from './DollarRateConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './admin.module.css'
+import { formatAmount } from '../../lib/format'
+import { toast } from '../../design/toast'
 
 function symbol(currency: CbmRateCurrency): string {
   return currency === 'ngn' ? '₦' : '$'
@@ -36,7 +38,6 @@ export function CbmRateConfig(): JSX.Element {
   const [minCbm, setMinCbm] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   function fillForm(data: CbmRateConfig): void {
     setCurrency(data.currency)
@@ -54,7 +55,6 @@ export function CbmRateConfig(): JSX.Element {
   async function handleSave(): Promise<void> {
     setSaving(true)
     setSaveError(null)
-    setSuccess(false)
     try {
       const updated = await configApi.updateCbmRate({
         currency,
@@ -70,7 +70,7 @@ export function CbmRateConfig(): JSX.Element {
       // Show the saved value at once; the write also invalidates every config query (api/cacheInvalidation.ts).
       qc.setQueryData(configKeys.cbm(), updated)
       fillForm(updated)
-      setSuccess(true)
+      toast.success('CBM rate updated', 'New invoices use it.')
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not update CBM rate.')
     } finally {
@@ -84,15 +84,19 @@ export function CbmRateConfig(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title="CBM Rate" subtitle="Freight charge per cubic metre, applied to customer billing." />
+      <PageHeader
+        title="CBM rate"
+        meta="Freight charge per cubic metre, applied to customer billing."
+      />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
-      {success && <div className={styles.banner}><Banner variant="success">CBM rate updated successfully.</Banner></div>}
+
+      {loading && !error && <PageSkeleton kind="form" label="Loading CBM rate" />}
 
       {!loading && current && (
         <>
           <SectionHead title="Current rate" />
-          <Card padding={20}>
+          <Card padding="default">
             <Kvp label="Currency" value={<Mono>{current.currency.toUpperCase()}</Mono>} />
             <Kvp label="Mode" value={<Mono>{current.rate_mode === 'flat' ? 'Single rate' : 'By package type'}</Mono>} />
             <Kvp label="Rate" value={<Mono color="var(--color-primary)">{formatRateLine(current)}</Mono>} divider={false} />
@@ -101,10 +105,10 @@ export function CbmRateConfig(): JSX.Element {
           <SectionHead title="Update rate" />
           <div className={styles.formCard}>
             <div>
-              <label style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                 Currency
               </label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                 <Button variant={currency === 'usd' ? 'primary' : 'ghost'} onClick={() => setCurrency('usd')}>
                   Dollar ($)
                 </Button>
@@ -115,10 +119,10 @@ export function CbmRateConfig(): JSX.Element {
             </div>
 
             <div>
-              <label style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', marginBottom: 6 }}>
+              <label style={{ fontWeight: 600, fontSize: 'var(--text-md)', display: 'block', marginBottom: 'var(--space-2)' }}>
                 Rate by
               </label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                 <Button variant={rateMode === 'flat' ? 'primary' : 'ghost'} onClick={() => setRateMode('flat')}>
                   Single rate
                 </Button>
@@ -129,23 +133,19 @@ export function CbmRateConfig(): JSX.Element {
             </div>
 
             {rateMode === 'flat' ? (
-              <div>
-                <label style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', marginBottom: 6 }}>
-                  {`Rate (${symbol(currency)} per CBM)`} <span style={{ color: 'var(--color-error)' }}>*</span>
-                </label>
-                <input
-                  type="number"
-                  value={cartonRate}
-                  onChange={(e) => setCartonRate(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: '1rem' }}
+              <Field
+                label={`Rate (${symbol(currency)} per CBM)`}
+                name="carton_rate"
+                type="number"
+                value={cartonRate}
+                onChange={(e) => setCartonRate(e.target.value)}
                   placeholder="e.g. 45"
                   min="0.01"
                   step="0.01"
                 />
-              </div>
             ) : (
               <>
-                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: 0 }}>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-4)', margin: 0 }}>
                   Any other package type (pallets, mixed, unspecified) bills at the carton rate.
                 </p>
                 {([
@@ -153,42 +153,61 @@ export function CbmRateConfig(): JSX.Element {
                   ['Bags', bagRate, setBagRate],
                   ['Bales', baleRate, setBaleRate],
                 ] as const).map(([label, value, setValue]) => (
-                  <div key={label}>
-                    <label style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', marginBottom: 6 }}>
-                      {`${label} (${symbol(currency)} per CBM)`} <span style={{ color: 'var(--color-error)' }}>*</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={value}
-                      onChange={(e) => setValue(e.target.value)}
-                      style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: '1rem' }}
+                  <Field
+                    key={label}
+                    label={`${label} (${symbol(currency)} per CBM)`}
+                    name={`${label.toLowerCase()}_rate`}
+                    type="number"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
                       placeholder="e.g. 45"
                       min="0.01"
                       step="0.01"
                     />
-                  </div>
                 ))}
               </>
             )}
 
-            <div>
-              <label style={{ fontWeight: 600, fontSize: '0.875rem', display: 'block', marginBottom: 6 }}>
-                Minimum CBM per item
-              </label>
-              <input
-                type="number"
-                value={minCbm}
-                onChange={(e) => setMinCbm(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontSize: '1rem' }}
+            <Field
+              label="Minimum CBM per item"
+              name="min_cbm"
+              type="number"
+              value={minCbm}
+              onChange={(e) => setMinCbm(e.target.value)}
                 placeholder="e.g. 0.1"
                 min="0.01"
                 step="0.01"
-                aria-label="Minimum CBM per item"
-              />
-              <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: '6px 0 0' }}>
-                A line item measuring below this is billed at this floor (handling minimum). Applied when a packing list is saved.
-              </p>
-            </div>
+              helper="A line item measuring below this is billed at this floor (handling minimum). Applied when a packing list is saved."
+            />
+
+            {canSubmit && (
+              <div
+                style={{
+                  padding: 'var(--space-3)',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-surface-muted)',
+                  border: '1px solid var(--color-line-soft)',
+                  fontSize: 'var(--text-sm)',
+                  color: 'var(--color-ink-2)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--space-2)',
+                }}
+              >
+                <span>
+                  1 CBM {rateMode === 'per_package_type' ? '(cartons)' : ''} bills at{' '}
+                  <Mono color="var(--color-primary)">{symbol(currency)}{formatAmount(Number(cartonRate))}</Mono>
+                </span>
+                {Number(minCbm) > 0 && (
+                  <span>
+                    Minimum floor ({minCbm} CBM):{' '}
+                    <Mono>{symbol(currency)}{formatAmount(Number(cartonRate) * Number(minCbm))}</Mono>
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className={styles.formActions}>
               <Button variant="primary" loading={saving} disabled={!canSubmit} onClick={() => void handleSave()}>
@@ -196,7 +215,12 @@ export function CbmRateConfig(): JSX.Element {
               </Button>
             </div>
           </div>
-          <RateHistoryTable rateType="cbm_rate" valueKey="carton_rate" prefix={symbol(currency)} />
+          <RateHistoryTable
+            rateType="cbm_rate"
+            valueKey="carton_rate"
+            prefix={symbol(current.currency)}
+            currencyKey="currency"
+          />
         </>
       )}
     </div>

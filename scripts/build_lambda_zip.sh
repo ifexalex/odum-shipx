@@ -41,6 +41,9 @@ uv pip install \
 echo ""
 echo "--- Copying source code ---"
 cp -r "$PROJECT_ROOT/services/." "$PKG_DIR/"
+# Also as the `services` package, so cross-service imports (`from services.billing …`) resolve; handlers stay at the
+# root (`tracking.handler.lambda_handler`). Same layout as the CI zips.
+cp -r "$PROJECT_ROOT/services" "$PKG_DIR/services"
 cp -r "$PROJECT_ROOT/shared/."   "$PKG_DIR/shared/"
 
 # 4. Remove unnecessary bloat from the ZIP

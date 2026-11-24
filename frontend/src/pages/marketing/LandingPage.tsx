@@ -197,8 +197,8 @@ const ROLES: RoleCard[] = [
 const STEPS = [
   {
     n: 1,
-    title: 'Create your account',
-    body: 'Sign up your company, upload your logo, and set your USD→NGN and CBM rates. Your branded portal is ready instantly.',
+    title: 'Request access',
+    body: 'Tell us about your operation. Once we have set up your workspace, upload your logo and set your USD→NGN and CBM rates.',
   },
   {
     n: 2,
@@ -240,11 +240,11 @@ export function LandingPage(): JSX.Element {
       tier: 'Starter',
       sub: 'For solo operators getting off spreadsheets.',
       amount: '₦180k',
-      cadence: 'billed monthly · 30-day free trial',
+      cadence: 'billed monthly',
       perks: ['Up to 10 staff users', '20 containers / month', '5 GB document storage', 'SMS + WhatsApp + email alerts'],
       cta: (
-        <CtaLink to="/register" variant="secondary" full>
-          Start free trial
+        <CtaLink to="/get-started" variant="secondary" full>
+          Request access
         </CtaLink>
       ),
     },
@@ -252,7 +252,7 @@ export function LandingPage(): JSX.Element {
       tier: 'Professional',
       sub: 'For established forwarders running steady volume.',
       amount: '₦480k',
-      cadence: 'billed monthly · 30-day free trial',
+      cadence: 'billed monthly',
       perks: [
         'Up to 50 staff users',
         '200 containers / month',
@@ -262,8 +262,8 @@ export function LandingPage(): JSX.Element {
       ],
       featured: true,
       cta: (
-        <CtaLink to="/register" variant="primary" full>
-          Start free trial
+        <CtaLink to="/get-started" variant="primary" full>
+          Request access
         </CtaLink>
       ),
     },
@@ -296,9 +296,9 @@ export function LandingPage(): JSX.Element {
             <Link to="/login" className={styles.signIn}>
               Sign in
             </Link>
-            <CtaAnchor href="#pricing" variant="accent" small>
-              Start free trial
-            </CtaAnchor>
+            <CtaLink to="/get-started" variant="accent" small>
+              Request access
+            </CtaLink>
           </div>
         </div>
       </header>
@@ -317,13 +317,14 @@ export function LandingPage(): JSX.Element {
             lists, billing, customs, claims and customer tracking. One login for your whole team.
           </p>
           <div className={styles.heroCta}>
-            <CtaLink to="/register" variant="accent">
-              Start your 30-day trial
+            {/* A request our team reviews, not a self-serve trial (FD-30): the copy promises what /get-started does. */}
+            <CtaLink to="/get-started" variant="accent">
+              Request access
             </CtaLink>
             <CtaAnchor href="#how" variant="ghost">
               See how it works
             </CtaAnchor>
-            <span className={styles.heroNote}>No card required · onboard in a day</span>
+            <span className={styles.heroNote}>We review every request and set up your workspace with you.</span>
           </div>
           <div className={styles.heroStats}>
             <div className={styles.stat}>
@@ -491,7 +492,7 @@ export function LandingPage(): JSX.Element {
           <div className={styles.secHead} data-reveal="">
             <div className={styles.secTag}>How it works</div>
             <h2>Live in a day, not a quarter.</h2>
-            <p>No lengthy implementation. Sign up, set your rates, invite your team, and start moving cargo.</p>
+            <p>No lengthy implementation. Request access, set your rates, invite your team, and start moving cargo.</p>
           </div>
           <div className={styles.features}>
             {STEPS.map((s) => (
@@ -546,12 +547,12 @@ export function LandingPage(): JSX.Element {
           <div className={styles.ctaBand} data-reveal="">
             <h2>Lead every shipment. Guangzhou to Lagos.</h2>
             <p>
-              Join the forwarders running their entire China–Nigeria operation on Shipx. Start free — your branded
-              portal is ready in minutes.
+              Join the forwarders running their entire China–Nigeria operation on Shipx. Tell us about your operation
+              and we will set up your branded portal with you.
             </p>
             <div className={`${styles.heroCta} ${styles.ctaCenter}`}>
-              <CtaLink to="/register" variant="accent">
-                Start your 30-day trial
+              <CtaLink to="/get-started" variant="accent">
+                Request access
               </CtaLink>
               <CtaAnchor href="mailto:sales@shipx.co" variant="ghost">
                 Book a demo

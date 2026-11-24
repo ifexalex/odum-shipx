@@ -7,10 +7,11 @@ import {
   canResolveDispute,
   isTerminalDisputeStatus,
 } from '../../../api/billingRules'
-import { Action, Badge, Banner, Button, Field, Mono, DialogGuard } from '../../../design/components'
+import { Action, Banner, Button, DialogGuard, Field, Mono, StatusBadge } from '../../../design/components'
+import { RecordLink } from '../../../shell/RecordLink'
 import styles from '../BillingDetail.module.css'
-import { formatDate } from '../../../lib/format'
-import { disputeStatusLabel, disputeVariant } from './status'
+import { formatCbm, formatDate } from '../../../lib/format'
+import { toast } from '../../../design/toast'
 
 // ---------------------------------------------------------------------------
 // DisputeSLA
@@ -75,16 +76,16 @@ export function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
   ]
 
   return (
-    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
       {stages.map((stage) => {
         const cd = stage.done ? null : _slaCountdown(stage.deadline)
         const color = stage.done
-          ? 'var(--color-text-muted)'
+          ? 'var(--color-ink-4)'
           : cd?.overdue
             ? 'var(--color-error)'
             : cd?.urgent
               ? 'var(--color-warning)'
-              : 'var(--color-text-muted)'
+              : 'var(--color-ink-4)'
 
         return (
           <div
@@ -92,8 +93,8 @@ export function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              fontSize: '0.75rem',
+              gap: 'var(--space-2)',
+              fontSize: 'var(--text-xs)',
               color,
             }}
           >
@@ -105,7 +106,7 @@ export function DisputeSLA({ dispute }: DisputeSLAProps): JSX.Element | null {
             ) : stage.deadline ? (
               <span>Due {formatDate(stage.deadline)}</span>
             ) : (
-              <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+              <span style={{ color: 'var(--color-ink-4)' }}>—</span>
             )}
           </div>
         )
@@ -144,6 +145,7 @@ export function ResolveDisputeModal({
       const body: ResolveCBMDisputeInput = { status: outcome, resolution_notes: notes }
       if (outcome === 'resolved_adjusted' && correctedCbm) body.corrected_cbm = correctedCbm
       const updated = await disputeApi.resolve(dispute.id, body)
+      toast.success('Dispute resolved')
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not resolve dispute.')
@@ -176,7 +178,7 @@ export function ResolveDisputeModal({
         )}
         <div className={styles.outcomeToggle}>
           <Button
-            variant={outcome === 'resolved_no_change' ? 'success' : 'secondary'}
+            variant={outcome === 'resolved_no_change' ? 'primary' : 'secondary'}
             onClick={() => setOutcome('resolved_no_change')}
           >
             No change — CBM stands
@@ -194,7 +196,7 @@ export function ResolveDisputeModal({
             name="corrected_cbm"
             required
             type="number"
-            placeholder={`Original: ${dispute.original_cbm ?? '—'}`}
+            placeholder={`Original: ${formatCbm(dispute.original_cbm)}`}
             value={correctedCbm}
             onChange={(e) => setCorrectedCbm(e.target.value)}
           />
@@ -248,6 +250,7 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
     setError(null)
     try {
       const updated = await disputeApi.acknowledge(dispute.id)
+      toast.success('Dispute acknowledged')
       onUpdated(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not acknowledge dispute.')
@@ -262,6 +265,7 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
     setError(null)
     try {
       const updated = await disputeApi.reject(dispute.id, rejectingReason)
+      toast.success('Dispute rejected')
       onUpdated(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reject dispute.')
@@ -277,24 +281,29 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
       <div className={styles.disputeHeader}>
         <div className={styles.disputeMeta}>
           <span className={styles.disputeLabel}>CBM dispute</span>
-          <Badge variant={disputeVariant(dispute.status)}>
-            {disputeStatusLabel(dispute.status)}
-          </Badge>
+          <StatusBadge kind="dispute" status={dispute.status} />
           {!isTerminalDisputeStatus(dispute.status) && <DisputeSLA dispute={dispute} />}
         </div>
         <div className={styles.disputeNumbers}>
           {dispute.original_cbm && (
             <span>
-              Original CBM: <Mono>{dispute.original_cbm}</Mono>
+              Original CBM: <Mono>{formatCbm(dispute.original_cbm)}</Mono>
+            </span>
+          )}
+          {dispute.customer_measured_cbm && (
+            <span>
+              Customer claimed: <Mono>{formatCbm(dispute.customer_measured_cbm)}</Mono>
             </span>
           )}
           {dispute.corrected_cbm && (
             <span>
-              Corrected: <Mono>{dispute.corrected_cbm}</Mono>
+              Corrected: <Mono>{formatCbm(dispute.corrected_cbm)}</Mono>
             </span>
           )}
         </div>
       </div>
+
+      {dispute.reason && <p className={styles.disputeReason}>{dispute.reason}</p>}
 
       {error && (
         <div className={styles.disputeError}>
@@ -302,56 +311,62 @@ export function DisputeCard({ dispute, role, onUpdated }: DisputeCardProps): JSX
         </div>
       )}
 
-      {!isTerminalDisputeStatus(dispute.status) && (
-        <div className={styles.disputeActions}>
-          {canAcknowledgeDispute(dispute, r) && (
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={acknowledging}
-              onClick={() => void handleAcknowledge()}
-            >
-              Acknowledge
-            </Button>
-          )}
-          {canResolveDispute(dispute, r) && (
-            <Button variant="primary" size="sm" onClick={() => setShowResolve(true)}>
-              Resolve
-            </Button>
-          )}
-          {canRejectDispute(dispute, r) && rejectingReason === null && (
-            <Button variant="ghost" size="sm" onClick={() => setRejectingReason('')}>
-              Reject
-            </Button>
-          )}
-          {rejectingReason !== null && (
-            <div className={styles.inlineReject}>
-              <Field
-                label="Reject reason"
-                name="reject_reason"
-                required
-                value={rejectingReason}
-                onChange={(e) => setRejectingReason(e.target.value)}
-                placeholder="Why is this dispute being rejected?"
-              />
-              <div className={styles.inlineRejectActions}>
-                <Button variant="ghost" size="sm" onClick={() => setRejectingReason(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  loading={rejecting}
-                  disabled={!rejectingReason.trim()}
-                  onClick={() => void handleReject()}
-                >
-                  Confirm reject
-                </Button>
+      <div className={styles.disputeFooter}>
+        <RecordLink to={`/billing/disputes/${dispute.id}`}>
+          View measurement breakdown
+        </RecordLink>
+
+        {!isTerminalDisputeStatus(dispute.status) && (
+          <div className={styles.disputeActions}>
+            {canAcknowledgeDispute(dispute, r) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                loading={acknowledging}
+                onClick={() => void handleAcknowledge()}
+              >
+                Acknowledge
+              </Button>
+            )}
+            {canResolveDispute(dispute, r) && (
+              <Button variant="primary" size="sm" onClick={() => setShowResolve(true)}>
+                Resolve
+              </Button>
+            )}
+            {canRejectDispute(dispute, r) && rejectingReason === null && (
+              <Button variant="danger-ghost" size="sm" onClick={() => setRejectingReason('')}>
+                Reject
+              </Button>
+            )}
+            {rejectingReason !== null && (
+              <div className={styles.inlineReject}>
+                <Field
+                  label="Reject reason"
+                  name="reject_reason"
+                  required
+                  value={rejectingReason}
+                  onChange={(e) => setRejectingReason(e.target.value)}
+                  placeholder="Why is this dispute being rejected?"
+                />
+                <div className={styles.inlineRejectActions}>
+                  <Button variant="ghost" size="sm" onClick={() => setRejectingReason(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    loading={rejecting}
+                    disabled={!rejectingReason.trim()}
+                    onClick={() => void handleReject()}
+                  >
+                    Confirm reject
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
 
       {showResolve && (
         <ResolveDisputeModal

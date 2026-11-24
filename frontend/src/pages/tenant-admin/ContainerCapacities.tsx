@@ -12,9 +12,10 @@ import { ApiError } from '../../api/client'
 import { containerCapacitiesApi, type ContainerCapacity } from '../../api/tenantManagement'
 import { containerCapacityKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
+import { Badge, Banner, Button, Card, Field, Mono, Table, DialogGuard, EmptyState, LinesSkeleton, ConfirmDialog } from '../../design/components'
 import styles from './admin.module.css'
+import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 interface CapacityModalProps {
   /** null → create; a preset → edit. Defaults only allow editing recommended. */
@@ -58,12 +59,14 @@ function CapacityModal({ existing, onCancel, onSuccess }: CapacityModalProps): J
             ? { name: name.trim(), capacity_cbm: capacityNum }
             : {}),
         })
+        toast.success('Capacity updated')
       } else {
         await containerCapacitiesApi.create({
           name: name.trim(),
           capacity_cbm: capacityNum,
           ...(recommendedNum !== null ? { recommended_cbm: recommendedNum } : {}),
         })
+        toast.success('Capacity added')
       }
       onSuccess()
     } catch (err) {
@@ -153,6 +156,8 @@ export function ContainerCapacities(): JSX.Element {
     existing: null,
   })
   const [removingId, setRemovingId] = useState<string | null>(null)
+  // The preset waiting on a confirmation before it is removed (FD-24).
+  const [confirming, setConfirming] = useState<{ id: string; name: string } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   // containerCapacityKeys.list() is the slot CreateContainer.tsx already reads,
@@ -179,6 +184,7 @@ export function ContainerCapacities(): JSX.Element {
     setActionError(null)
     try {
       await containerCapacitiesApi.remove(id)
+      toast.success('Capacity removed')
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Could not remove capacity.')
     } finally {
@@ -186,18 +192,23 @@ export function ContainerCapacities(): JSX.Element {
     }
   }
 
-  useTopBarSlot({
-    subtitle:
-      'Capacity presets for new containers — pick one when creating a container to drive its utilization bar.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setModal({ open: true, existing: null })}>
-        Add capacity
-      </Button>
-    ),
-  })
-
   return (
     <div>
+      <PageHeader
+        title="Container capacities"
+        meta={
+          'Capacity presets for new containers — pick one when creating a container to drive its utilization bar.'
+        }
+        primary={
+          <Button
+            variant="primary"
+            icon="plus"
+            onClick={() => setModal({ open: true, existing: null })}
+          >
+            Add capacity
+          </Button>
+        }
+      />
       {error && (
         <div className={styles.banner}>
           <Banner variant="error" title="Error">
@@ -206,18 +217,18 @@ export function ContainerCapacities(): JSX.Element {
         </div>
       )}
 
-      <Card padding={0}>
+      <Card padding="none">
         <Table
           columns={[
             { title: 'Name' },
-            { title: 'Capacity (CBM)', align: 'right' },
-            { title: 'Recommended (CBM)', align: 'right' },
+            { title: 'Capacity (CBM)', type: 'number' },
+            { title: 'Recommended (CBM)', type: 'number' },
             { title: 'Source' },
-            { title: '', width: '150px' },
+            { title: '', type: 'action', width: '150px' },
           ]}
           rows={capacities.map((c) => ({
             cells: [
-              <span key="name" style={{ fontWeight: 600, fontSize: 13 }}>
+              <span key="name" style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
                 {c.name}
               </span>,
               <Mono key="cap">{c.capacity_cbm}</Mono>,
@@ -225,7 +236,7 @@ export function ContainerCapacities(): JSX.Element {
               <Badge key="src" variant={c.is_custom ? 'info' : 'neutral'}>
                 {c.is_custom ? 'Custom' : 'Default'}
               </Badge>,
-              <span key="action" style={{ display: 'inline-flex', gap: 6 }}>
+              <span key="action" style={{ display: 'inline-flex', gap: 'var(--space-2)' }}>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -235,10 +246,10 @@ export function ContainerCapacities(): JSX.Element {
                 </Button>
                 {c.is_custom && (
                   <Button
-                    variant="ghost"
+                    variant="danger-ghost"
                     size="sm"
                     loading={removingId === c.id}
-                    onClick={() => void handleRemove(c.id)}
+                    onClick={() => setConfirming(c)}
                   >
                     Remove
                   </Button>
@@ -246,11 +257,7 @@ export function ContainerCapacities(): JSX.Element {
               </span>,
             ],
           }))}
-          emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
-              {loading ? 'Loading capacities…' : 'No capacities configured.'}
-            </span>
-          }
+          emptyState={loading ? <LinesSkeleton label="Loading capacities" /> : <EmptyState compact title="No capacities configured" />}
         />
       </Card>
 
@@ -261,6 +268,22 @@ export function ContainerCapacities(): JSX.Element {
           onSuccess={() => setModal({ open: false, existing: null })}
         />
       )}
+      <ConfirmDialog
+        open={confirming !== null}
+        title={`Remove ${confirming?.name ?? 'this capacity'}?`}
+        confirmLabel="Remove capacity"
+        undo="Containers already set up keep their capacity. You can add the preset again later."
+        busy={removingId !== null}
+        error={actionError}
+        onConfirm={async () => {
+          if (!confirming) return
+          await handleRemove(confirming.id)
+          setConfirming(null)
+        }}
+        onCancel={() => setConfirming(null)}
+      >
+        It will no longer be offered when a container is created.
+      </ConfirmDialog>
     </div>
   )
 }

@@ -1,29 +1,22 @@
-import { useState, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState, type JSX } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
 import { packingListApi, type BulkActionResult, type PackingListStatus } from '../../api/packingList'
 import { canApproveOrReject, explainBulkFailure, formatPackageMix, groupBulkFailures, isSelfApproval } from '../../api/packingListRules'
 import { useSession } from '../../auth/useSession'
 import { usePackingListList } from '../../hooks/usePackingLists'
-import { useTopBarSlot } from '../../shell/TopBarContext'
-import { Badge, Banner, Button, Card, Chip, Field, Icon, Mono, Table, ViewLink, ListFooter, DialogGuard, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Chip, DialogGuard, Field, ListFooter, Mono, StatusBadge, Table, Pressable, SearchField, EmptyState } from '../../design/components'
 import styles from './PackingListList.module.css'
-import { formatDate } from '../../lib/format'
+import { formatDate, plural } from '../../lib/format'
 import { useStatusParam } from '../../lib/useStatusParam'
+import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
+import { PageHeader } from '../../shell/PageHeader'
 
 const STATUS_FILTERS: PackingListStatus[] = ['draft', 'pending_approval', 'approved', 'rejected']
-
-const STATUS_VARIANT: Record<PackingListStatus, BadgeVariant> = {
-  draft: 'neutral',
-  pending_approval: 'warning',
-  approved: 'success',
-  rejected: 'error',
-}
-
-function statusLabel(status: PackingListStatus): string {
-  return status === 'pending_approval' ? 'Pending approval' : status[0]!.toUpperCase() + status.slice(1)
-}
 
 interface BulkRejectModalProps {
   count: number
@@ -39,7 +32,7 @@ function BulkRejectModal({ count, onCancel, onConfirm, submitting, error }: Bulk
     <div className={styles.modalOverlay} onClick={onCancel}>
       <DialogGuard onClose={onCancel} />
       <div className={styles.modalPanel} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Reject {count} packing list(s)</h3>
+        <h3 className={styles.modalTitle}>Reject {plural(count, 'packing list')}</h3>
         {error && (
           <div className={styles.banner}>
             <Banner variant="error" title="Action failed">{error}</Banner>
@@ -85,7 +78,7 @@ function BulkResultPanel({
   const groups = groupBulkFailures(result.failed)
   return (
     <div className={styles.resultWrap}>
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.resultHead}>
           <span>
             {result.succeeded.length} succeeded · {result.failed.length} failed
@@ -106,9 +99,9 @@ function BulkResultPanel({
               <div className={styles.failureHelp}>{help}</div>
               <div className={styles.failureList}>
                 {group.ids.map((id) => (
-                  <span key={id} className={styles.failureChip}>
+                  <Link key={id} to={`/packing-lists/${id}`} className={styles.failureChip}>
                     {labelFor(id)}
-                  </span>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -127,11 +120,18 @@ export function PackingListList(): JSX.Element {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useStatusParam<PackingListStatus>(PACKING_LIST_STATUSES)
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
   const [bulkResult, setBulkResult] = useState<BulkActionResult | null>(null)
+
+  useEffect(() => {
+    const trimmed = search.trim()
+    const timer = setTimeout(() => setDebouncedSearch(trimmed), trimmed ? 300 : 0)
+    return () => clearTimeout(timer)
+  }, [search])
 
   const canApprove = session?.role === 'china_office_staff' || session?.role === 'tenant_admin'
 
@@ -140,7 +140,7 @@ export function PackingListList(): JSX.Element {
     hasMore, loadMore, isFetchingMore, refetch, totalCount,
   } = usePackingListList({
     ...(statusFilter ? { status: statusFilter } : {}),
-    ...(search ? { q: search } : {}),
+    ...(debouncedSearch ? { q: debouncedSearch } : {}),
   })
   const error = actionError ?? (listError ? listError.message : null)
 
@@ -167,9 +167,10 @@ export function PackingListList(): JSX.Element {
   // before firing the request, so staff selected everything, clicked approve,
   // and got a wall of failures explaining what the UI already knew.
   const selectedPls = packingLists.filter((pl) => selected.has(pl.id))
-  const approvableCount = session
-    ? selectedPls.filter((pl) => canApproveOrReject(pl, session.role, session.userId)).length
-    : selectedPls.length
+  const approvablePls = session
+    ? selectedPls.filter((pl) => canApproveOrReject(pl, session.role, session.userId))
+    : selectedPls
+  const approvableCount = approvablePls.length
   const blockedByOwnership = session
     ? selectedPls.filter(
         (pl) => pl.status === 'pending_approval' && isSelfApproval(pl, session.userId),
@@ -180,22 +181,25 @@ export function PackingListList(): JSX.Element {
   // click, how much of their selection an action will actually touch, rather
   // than firing a request every non-draft row is guaranteed to fail
   // (wrong_status:pending_approval etc.).
-  const submittableCount = selectedPls.filter((pl) => pl.status === 'draft').length
+  const submittablePls = selectedPls.filter((pl) => pl.status === 'draft')
+  const submittableCount = submittablePls.length
 
-  // A UUID means nothing to staff — show the reference and customer they see
-  // in the table. Ids outside the current page fall back to a short suffix.
+  // A UUID means nothing to staff — show the reference and customer they see in the table (FD-17).
   function labelForPackingList(id: string): string {
     const pl = packingLists.find((candidate) => candidate.id === id)
-    if (!pl) return `#${id.slice(0, 8)}`
-    const reference = pl.reference ?? `#${id.slice(0, 8)}`
+    if (!pl) return 'A packing list not on this page'
+    const reference = pl.reference ?? 'Packing list'
     return pl.customer_name ? `${reference} · ${pl.customer_name}` : reference
   }
 
   async function handleBulkSubmit(): Promise<void> {
+    const ids = submittablePls.map((pl) => pl.id)
+    if (ids.length === 0) return
     setBulkSubmitting(true)
     setActionError(null)
     try {
-      const result = await packingListApi.bulkSubmit(Array.from(selected))
+      const result = await packingListApi.bulkSubmit(ids)
+      if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} submitted`)
       setBulkResult(result)
       await reload()
     } catch (err) {
@@ -206,10 +210,13 @@ export function PackingListList(): JSX.Element {
   }
 
   async function handleBulkApprove(): Promise<void> {
+    const ids = approvablePls.map((pl) => pl.id)
+    if (ids.length === 0) return
     setBulkSubmitting(true)
     setActionError(null)
     try {
-      const result = await packingListApi.bulkApprove(Array.from(selected))
+      const result = await packingListApi.bulkApprove(ids)
+      if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} approved`)
       setBulkResult(result)
       await reload()
     } catch (err) {
@@ -220,10 +227,13 @@ export function PackingListList(): JSX.Element {
   }
 
   async function handleBulkReject(comments: string): Promise<void> {
+    const ids = approvablePls.map((pl) => pl.id)
+    if (ids.length === 0) return
     setBulkSubmitting(true)
     setActionError(null)
     try {
-      const result = await packingListApi.bulkReject(Array.from(selected), comments)
+      const result = await packingListApi.bulkReject(ids, comments)
+      if (result.succeeded.length) toast.success(`${result.succeeded.length} packing list${result.succeeded.length === 1 ? '' : 's'} rejected`)
       setBulkResult(result)
       setShowRejectModal(false)
       await reload()
@@ -234,36 +244,148 @@ export function PackingListList(): JSX.Element {
     }
   }
 
-  // Prototype: action button lives in the TopBar (between search and bell).
-  useTopBarSlot({
-    actions: session?.role === 'china_office_staff' ? (
-      <Button variant="primary" icon="plus" onClick={() => navigate('/packing-lists/new')}>
-        Create packing list
-      </Button>
-    ) : null,
-  })
 
   return (
-    <div>
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Something went wrong">{error}</Banner>
-        </div>
-      )}
-
-      {bulkResult && (
-        <BulkResultPanel
-          result={bulkResult}
-          onDismiss={() => setBulkResult(null)}
-          labelFor={labelForPackingList}
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Packing lists"
+            primary={
+              session?.role === 'china_office_staff' && (
+                <Button
+                  variant="primary"
+                  icon="plus"
+                  onClick={() => navigate('/packing-lists/new')}
+                >
+                  Create packing list
+                </Button>
+              )
+            }
+            actions={
+              session?.role === 'china_office_staff' && (
+                <Button
+                  variant="secondary"
+                  icon="upload"
+                  onClick={() => navigate('/packing-lists/import')}
+                >
+                  Import from Excel
+                </Button>
+              )
+            }
+          />
+        }
+        notices={
+          <>
+            {bulkResult && (
+              <BulkResultPanel
+                result={bulkResult}
+                onDismiss={() => setBulkResult(null)}
+                labelFor={labelForPackingList}
+              />
+            )}
+            {error && (
+              <Banner variant="error" title="Something went wrong">
+                {error}
+              </Banner>
+            )}
+          </>
+        }
+        filters={
+          <FilterBar
+            label="Filter packing lists"
+            status={
+              <>
+                <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                  All
+                </Chip>
+                {STATUS_FILTERS.map((status) => (
+                  <Chip
+                    key={status}
+                    active={statusFilter === status}
+                    onClick={() => setStatusFilter(status)}
+                  >
+                    {statusLabel('packingList', status)}
+                  </Chip>
+                ))}
+              </>
+            }
+            search={
+              <>
+                <SearchField
+                  label="Search packing lists"
+                  placeholder="Reference, customer name, container…"
+                  value={search}
+                  onChange={setSearch}
+                />
+              </>
+            }
+          />
+        }
+        footer={
+          <ListFooter
+            shown={packingLists.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={isFetchingMore}
+            onLoadMore={loadMore}
+            noun={statusFilter ? 'packing lists in this status' : 'packing lists'}
+            nounOne={statusFilter ? 'packing list in this status' : 'packing list'}
+          />
+        }
+      >
+        <Table
+          selectable={canApprove}
+          columns={[
+            { title: 'Customer' },
+            { title: 'Container', type: 'reference' },
+            { title: 'Packages', type: 'number' },
+            { title: 'Volume (CBM)', type: 'number' },
+            { title: 'Status', type: 'status' },
+            { title: 'Submitted', type: 'date' },
+          ]}
+          rows={packingLists.map((pl) => ({
+            selected: selected.has(pl.id),
+            // pending_approval for bulk approve/reject, draft for bulk
+            // submit (bulk_submit_packing_lists is draft-only) — these are
+            // the only two bulk actions that exist, so any other status
+            // (approved/rejected) has no bulk action to select it for.
+            // A manifest import creates 68+ lists in draft specifically so
+            // they can be bulk-submitted in one pass; excluding draft here
+            // left "Submit for approval" permanently unreachable for the
+            // one case it exists for.
+            selectable: pl.status === 'pending_approval' || pl.status === 'draft',
+            onOpen: () => navigate(`/packing-lists/${pl.id}`),
+            cells: [
+              <span key="customer">{pl.customer_name ?? '—'}</span>,
+              <Mono key="container">{pl.container_number ?? pl.container_id}</Mono>,
+              <span key="cartons">{formatPackageMix(pl.package_mix)}</span>,
+              <Mono key="cbm">{formatCbm(pl.total_cbm)}</Mono>,
+              <StatusBadge key="status" kind="packingList" status={pl.status} />,
+              <span key="submitted" className={styles.submittedDate}>
+                {formatDate(pl.created_at, 'short')}, {pl.created_at.slice(11, 16)}
+              </span>,
+            ],
+          }))}
+          loading={loading}
+          emptyState={
+            !loading && packingLists.length === 0 ? (
+              <EmptyState compact title="No packing lists yet" />
+            ) : undefined
+          }
+          onSelectRow={(rowIndex, isSelected) => {
+            const pl = packingLists[rowIndex]
+            if (pl) toggleRow(pl.id, isSelected)
+          }}
+          onSelectAll={toggleAll}
         />
-      )}
+      </ListPage>
 
       {canApprove && selected.size > 0 && (
         <div className={styles.bulkBarWrap}>
           <div className={styles.bulkBar}>
             <span className={styles.bulkLabel}>
-              {selected.size} packing list(s) selected
+              {plural(selected.size, 'packing list')} selected
               {blockedByOwnership > 0 && (
                 <span className={styles.bulkHint}>
                   {blockedByOwnership === selected.size
@@ -273,19 +395,21 @@ export function PackingListList(): JSX.Element {
               )}
             </span>
             <div className={styles.bulkActions}>
-              <button type="button" className={styles.bulkClearBtn} onClick={() => setSelected(new Set())}>
+              <Pressable className={styles.bulkClearBtn} onClick={() => setSelected(new Set())}>
                 Clear
-              </button>
+              </Pressable>
               <Button
-                variant="danger-outline"
+                variant="danger-ghost"
                 size="sm"
                 icon="x"
+                loading={bulkSubmitting}
+                disabled={approvableCount === 0}
                 onClick={() => {
                   setActionError(null)
                   setShowRejectModal(true)
                 }}
               >
-                Bulk reject
+                Bulk reject · {approvableCount}
               </Button>
               <Button
                 variant="secondary"
@@ -298,7 +422,7 @@ export function PackingListList(): JSX.Element {
                 Submit for approval · {submittableCount}
               </Button>
               <Button
-                variant="success"
+                variant="primary"
                 size="sm"
                 icon="check"
                 loading={bulkSubmitting}
@@ -312,109 +436,15 @@ export function PackingListList(): JSX.Element {
         </div>
       )}
 
-      <Card padding={16}>
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
-              All
-            </Chip>
-            {STATUS_FILTERS.map((status) => (
-              <Chip key={status} active={statusFilter === status} onClick={() => setStatusFilter(status)}>
-                {statusLabel(status)}
-              </Chip>
-            ))}
-          </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              placeholder="Reference, customer name, container…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        {/* Without a total, a full page read as the whole result: searching a
-            container showed 50 rows and looked like "this container has 50
-            packing lists" when it had 68, the rest being one status filter
-            away. State the total explicitly. */}
-        {!loading && packingLists.length > 0 && (
-          <div className={styles.resultCount}>
-            Showing {packingLists.length}
-            {totalCount > packingLists.length && ` of ${totalCount}`} packing list
-            {totalCount === 1 ? '' : 's'}
-            {statusFilter && ' in this status'}
-          </div>
-        )}
-        <Card padding={0}>
-          <Table
-            selectable={canApprove}
-            columns={[
-              { title: 'Customer' },
-              { title: 'Container' },
-              { title: 'Packages' },
-              { title: 'CBM', align: 'right' },
-              { title: 'Status' },
-              { title: 'Submitted' },
-              { title: '', width: '40px' },
-            ]}
-            rows={packingLists.map((pl) => ({
-              selected: selected.has(pl.id),
-              // pending_approval for bulk approve/reject, draft for bulk
-              // submit (bulk_submit_packing_lists is draft-only) — these are
-              // the only two bulk actions that exist, so any other status
-              // (approved/rejected) has no bulk action to select it for.
-              // A manifest import creates 68+ lists in draft specifically so
-              // they can be bulk-submitted in one pass; excluding draft here
-              // left "Submit for approval" permanently unreachable for the
-              // one case it exists for.
-              selectable: pl.status === 'pending_approval' || pl.status === 'draft',
-              cells: [
-                <span key="customer">{pl.customer_name ?? '—'}</span>,
-                <Mono key="container">{pl.container_number ?? pl.container_id}</Mono>,
-                <span key="cartons">{formatPackageMix(pl.package_mix)}</span>,
-                <Mono key="cbm">{formatCbm(pl.total_cbm)}</Mono>,
-                <Badge key="status" variant={STATUS_VARIANT[pl.status]}>
-                  {statusLabel(pl.status)}
-                </Badge>,
-                <span key="submitted" className={styles.submittedDate}>
-                  {formatDate(pl.created_at, 'short')},{' '}
-                  {pl.created_at.slice(11, 16)}
-                </span>,
-                <ViewLink key="view" onClick={() => navigate(`/packing-lists/${pl.id}`)} />,
-              ],
-            }))}
-            loading={loading}
-            emptyState={!loading && packingLists.length === 0 ? <span>No packing lists yet.</span> : undefined}
-            onSelectRow={(rowIndex, isSelected) => {
-              const pl = packingLists[rowIndex]
-              if (pl) toggleRow(pl.id, isSelected)
-            }}
-            onSelectAll={toggleAll}
-          />
-        </Card>
-        <ListFooter
-        shown={packingLists.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="packing lists"
-      />
-      </div>
-
       {showRejectModal && (
         <BulkRejectModal
-          count={selected.size}
+          count={approvableCount}
           submitting={bulkSubmitting}
           error={error}
           onCancel={() => setShowRejectModal(false)}
           onConfirm={(comments) => void handleBulkReject(comments)}
         />
       )}
-    </div>
+    </>
   )
 }

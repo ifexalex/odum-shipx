@@ -1,0 +1,52 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* The header keeps its own bottom margin out of the gap. */
+.page > :first-child {
+  margin-bottom: 0;
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.notices:empty {
+  display: none;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.main,
+.aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+/* Below 1200 px the summary comes first, right under the header. */
+.withAside .aside {
+  order: -1;
+}
+
+@container sxapp (min-width: 1201px) {
+  .withAside {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+
+  .withAside .aside {
+    order: 0;
+    position: sticky;
+    top: 0;
+  }
+}

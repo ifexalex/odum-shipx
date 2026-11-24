@@ -91,6 +91,8 @@ class ListExportQuery(BaseModel):
     q: str | None = Field(default=None, max_length=100)
     created_after: str | None = None
     created_before: str | None = None
+    # Invoices only: owed for over 30 days (the list's "Overdue" stat). The container list has no such filter.
+    overdue: bool = False
     sort: str = Field(default="created_at", pattern=r"^[a-z_]{1,40}$")
     direction: Literal["asc", "desc"] = "desc"
 
@@ -122,7 +124,28 @@ class ListExportQuery(BaseModel):
             "q": self.q,
             "created_after": self.created_after,
             "created_before": self.created_before,
+            "overdue": self.overdue,
         }
+        return {key: value for key, value in raw.items() if value}
+
+
+class ReportExportQuery(BaseModel):
+    """The query string of the reports page's export: its period and the file format."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    format: Literal["xlsx", "csv"] = "xlsx"
+    created_after: str | None = None
+    created_before: str | None = None
+
+    @field_validator("created_after", "created_before", mode="before")
+    @classmethod
+    def _dates(cls, value: Any) -> Any:
+        return _iso_date_string(value)
+
+    def filters(self) -> dict[str, Any]:
+        """The period, with only the bounds that were set."""
+        raw = {"created_after": self.created_after, "created_before": self.created_before}
         return {key: value for key, value in raw.items() if value}
 
 

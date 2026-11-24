@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -52,6 +52,9 @@ function renderAt(path: string) {
   )
 }
 
+// The form's own submit: the page header also offers "Resolve dispute", which takes the reader to the form (FD-23).
+const resolveButton = (): HTMLElement => screen.getAllByRole('button', { name: 'Resolve dispute' }).at(-1)!
+
 describe('China staff and a CBM dispute (UX-01)', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -64,9 +67,10 @@ describe('China staff and a CBM dispute (UX-01)', () => {
     vi.mocked(disputeApi.resolve).mockResolvedValue({ ...DETAIL, status: 'resolved_adjusted' })
     renderAt('/billing/disputes')
 
-    // From the list: View goes to the dispute screen, not the invoice they cannot open.
-    await userEvent.click(await screen.findByRole('button', { name: /view/i }))
-    expect(await screen.findByText('Ngozi Okonkwo · MSKU1234567')).toBeInTheDocument()
+    // From the list: opening the row goes to the dispute screen, not the invoice they cannot open.
+    const disputeRow = (await screen.findByText('2.000')).closest('tr')!
+    await userEvent.click(within(disputeRow).getAllByRole('button')[0]!)
+    expect(await screen.findByRole('heading', { name: 'CBM dispute on MSKU1234567' })).toBeInTheDocument()
     expect(screen.queryByText('THE INVOICE PAGE')).toBeNull()
 
     // What they need to judge the measurement.
@@ -80,7 +84,7 @@ describe('China staff and a CBM dispute (UX-01)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Adjust CBM' }))
     await userEvent.type(screen.getByLabelText(/Corrected CBM/), '1.8')
     await userEvent.type(screen.getByLabelText(/Resolution notes/), 'Re-measured: smaller')
-    await userEvent.click(screen.getByRole('button', { name: 'Resolve dispute' }))
+    await userEvent.click(resolveButton())
 
     await waitFor(() =>
       expect(disputeApi.resolve).toHaveBeenCalledWith('d1', {
@@ -92,9 +96,9 @@ describe('China staff and a CBM dispute (UX-01)', () => {
   it('cannot resolve without notes, or an adjustment without a corrected CBM', async () => {
     vi.mocked(disputeApi.get).mockResolvedValue(DETAIL)
     renderAt('/billing/disputes/d1')
-    await screen.findByText('Ngozi Okonkwo · MSKU1234567')
+    await screen.findByRole('heading', { name: 'CBM dispute on MSKU1234567' })
 
-    const resolve = screen.getByRole('button', { name: 'Resolve dispute' })
+    const resolve = resolveButton()
     expect(resolve).toBeDisabled()
     await userEvent.type(screen.getByLabelText(/Resolution notes/), 'Looks right')
     expect(resolve).toBeEnabled()
@@ -106,10 +110,10 @@ describe('China staff and a CBM dispute (UX-01)', () => {
     vi.mocked(disputeApi.get).mockResolvedValue(DETAIL)
     vi.mocked(disputeApi.resolve).mockResolvedValue({ ...DETAIL, status: 'resolved_no_change' })
     renderAt('/billing/disputes/d1')
-    await screen.findByText('Ngozi Okonkwo · MSKU1234567')
+    await screen.findByRole('heading', { name: 'CBM dispute on MSKU1234567' })
 
     await userEvent.type(screen.getByLabelText(/Resolution notes/), 'Billed CBM is right')
-    await userEvent.click(screen.getByRole('button', { name: 'Resolve dispute' }))
+    await userEvent.click(resolveButton())
     await waitFor(() =>
       expect(disputeApi.resolve).toHaveBeenCalledWith('d1', { status: 'resolved_no_change', resolution_notes: 'Billed CBM is right' }),
     )
@@ -121,9 +125,9 @@ describe('China staff and a CBM dispute (UX-01)', () => {
       new ApiError({ type: 'x', title: 'x', status: 409, detail: 'Dispute was already resolved.', error_code: 'ILLEGAL_TRANSITION' }, null),
     )
     renderAt('/billing/disputes/d1')
-    await screen.findByText('Ngozi Okonkwo · MSKU1234567')
+    await screen.findByRole('heading', { name: 'CBM dispute on MSKU1234567' })
     await userEvent.type(screen.getByLabelText(/Resolution notes/), 'x')
-    await userEvent.click(screen.getByRole('button', { name: 'Resolve dispute' }))
+    await userEvent.click(resolveButton())
     expect(await screen.findByText('Dispute was already resolved.')).toBeInTheDocument()
   })
 

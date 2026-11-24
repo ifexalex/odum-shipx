@@ -1,28 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { TopBar } from './TopBar'
 
 describe('TopBar', () => {
-  it('renders the title and a breadcrumb whose crumbs link back up (FD-45)', () => {
-    render(
-      <MemoryRouter>
-        <TopBar
-          role="nigeria"
-          title="INV-0042"
-          breadcrumb={[{ label: 'Billing', to: '/billing' }, { label: 'INV-0042' }]}
-        />
-      </MemoryRouter>,
-    )
-    expect(screen.getByText('INV-0042', { selector: 'h1' })).toBeInTheDocument()
-    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' })
-    expect(nav.querySelectorAll('ol a[href="/billing"]')).toHaveLength(1)
-    expect(nav.querySelector('[aria-current="page"]')).toHaveTextContent('INV-0042')
-  })
-
-  it('shows no breadcrumb for an empty trail (a top-level page)', () => {
-    render(<TopBar role="nigeria" title="Containers" breadcrumb={[]} />)
+  it('holds only global controls: no page title, breadcrumb or page actions (FD-14)', () => {
+    render(<TopBar role="nigeria" user={{ name: 'Adaeze Eze', role: 'Staff' }} />)
+    expect(screen.queryByRole('heading')).toBeNull()
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).toBeNull()
   })
 
@@ -45,17 +29,46 @@ describe('TopBar', () => {
     expect(screen.getByRole('button', { name: /notifications/i }).parentElement).toContainElement(panel)
   })
 
-  it('renders the user menu and calls onUserMenuClick', async () => {
-    const onUserMenuClick = vi.fn()
+  it('opens the account menu: my profile, a switch to each other role, sign out (FD-15)', async () => {
+    const onProfile = vi.fn()
+    const onLogout = vi.fn()
+    const onRoleChange = vi.fn()
     render(
       <TopBar
         role="nigeria"
         user={{ name: 'Adaeze Eze', role: 'Nigeria Office Staff' }}
-        onUserMenuClick={onUserMenuClick}
+        onProfile={onProfile}
+        onLogout={onLogout}
+        roleOptions={[
+          { value: 'nigeria_office_staff', label: 'Nigeria Office Staff' },
+          { value: 'warehouse_attendant', label: 'Warehouse Attendant' },
+        ]}
+        activeRole="nigeria_office_staff"
+        onRoleChange={onRoleChange}
       />,
     )
-    await userEvent.click(screen.getByText('Adaeze Eze'))
-    expect(onUserMenuClick).toHaveBeenCalledOnce()
+    const account = screen.getByRole('button', { name: /Adaeze Eze/ })
+    expect(account).toHaveAttribute('aria-haspopup', 'menu')
+    await userEvent.click(account)
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'My profile',
+      'Work as Warehouse Attendant',
+      'Sign out',
+    ])
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Work as Warehouse Attendant' }))
+    expect(onRoleChange).toHaveBeenCalledWith('warehouse_attendant')
+    await userEvent.click(account)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
+    expect(onLogout).toHaveBeenCalledOnce()
+    await userEvent.click(account)
+    await userEvent.click(screen.getByRole('menuitem', { name: 'My profile' }))
+    expect(onProfile).toHaveBeenCalledOnce()
+  })
+
+  it('offers no role switch to a single-role user', async () => {
+    render(<TopBar role="nigeria" user={{ name: 'A', role: 'R' }} roleOptions={[{ value: 'x', label: 'X' }]} activeRole="x" onLogout={() => undefined} />)
+    await userEvent.click(screen.getByRole('button', { name: /^A/ }))
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Sign out'])
   })
 })
 
@@ -66,10 +79,10 @@ describe('TopBar search slot', () => {
     expect(screen.queryByRole('textbox')).toBeNull()
   })
 
-  it('renders whatever search control it is given, ahead of the actions', () => {
-    render(<TopBar role="nigeria" search={<input aria-label="Find" />} actions={<button type="button">Create</button>} />)
+  it('renders whatever search control it is given, ahead of the notifications', () => {
+    render(<TopBar role="nigeria" search={<input aria-label="Find" />} />)
     const find = screen.getByLabelText('Find')
-    const create = screen.getByRole('button', { name: 'Create' })
-    expect(find.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const bell = screen.getByRole('button', { name: 'Notifications' })
+    expect(find.compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })

@@ -10,15 +10,34 @@
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type NotificationTemplate } from '../../api/tenantManagement'
 import { configKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Banner, Button, Field } from '../../design/components'
+import { Banner, Button, Chip, EmptyState, Field, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
+import { Tabs } from '../../shell/Tabs'
 import styles from './admin.module.css'
 import { formatTime } from '../../lib/format'
+import waStyles from './NotificationTemplates.module.css'
+import { toast } from '../../design/toast'
+
+const CHANNEL_ORDER = ['sms', 'whatsapp', 'email'] as const
+const CHANNEL_LABELS: Record<string, string> = {
+  sms: 'SMS',
+  whatsapp: 'WhatsApp',
+  email: 'Email',
+}
+
+const COMMON_VARIABLES = [
+  'customer_name',
+  'container_number',
+  'invoice_number',
+  'amount_ngn',
+  'reference_number',
+  'tracking_url',
+] as const
 
 // ---------------------------------------------------------------------------
 // SMS counter
@@ -52,14 +71,19 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
   const [subject, setSubject] = useState(template.subject ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
 
-  const isSms = template.channel === 'sms' || template.channel === 'whatsapp'
+  const isSms = template.channel === 'sms'
+  const dirty = body !== template.template_body || subject !== (template.subject ?? '')
+
+  function insertVariable(variable: string): void {
+    const token = `{{${variable}}}`
+    setBody((prev) => (prev && !prev.endsWith(' ') && !prev.endsWith('\n') ? `${prev} ${token}` : `${prev}${token}`))
+  }
 
   async function handleSave(): Promise<void> {
+    if (!dirty || !body.trim()) return
     setSaving(true)
     setError(null)
-    setSaved(false)
     try {
       const updated = await configApi.upsertNotificationTemplate(
         template.event_type,
@@ -67,8 +91,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
         { template_body: body, subject: subject || undefined },
       )
       onSaved(updated)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 3000)
+      toast.success('Message template saved')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save template.')
     } finally {
@@ -81,11 +104,10 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
       <div className={styles.templateHeader}>
         <div>
           <span className={styles.templateEventType}>{template.event_type.replace(/_/g, ' ')}</span>
-          <span style={{ marginLeft: 8, fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }}>
-            {template.channel.toUpperCase()}
+          <span style={{ marginLeft: 'var(--space-2)', fontSize: 'var(--text-xs)', fontWeight: 700, padding: 'var(--space-0-5) var(--space-2)', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-muted)', color: 'var(--color-ink-4)' }}>
+            {CHANNEL_LABELS[template.channel] ?? template.channel.toUpperCase()}
           </span>
         </div>
-        {saved && <span style={{ fontSize: '0.8125rem', color: 'var(--color-success)' }}>✓ Saved</span>}
       </div>
 
       {error && <Banner variant="error">{error}</Banner>}
@@ -101,16 +123,12 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
       )}
 
       {template.channel === 'whatsapp' && body.trim() && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-ink-3)', marginBottom: 6 }}>WhatsApp preview</div>
-          <div style={{ background: '#e5ddd5', borderRadius: 10, padding: 14 }}>
-            <div style={{
-              background: '#dcf8c6', borderRadius: '8px 8px 8px 0', padding: '8px 12px',
-              maxWidth: 340, fontSize: 13, lineHeight: 1.45, color: '#111',
-              boxShadow: '0 1px 1px rgba(0,0,0,0.12)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            }}>
+        <div style={{ marginBottom: 'var(--space-3)' }}>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--color-ink-3)', marginBottom: 'var(--space-2)' }}>WhatsApp preview</div>
+          <div className={waStyles.waBackdrop}>
+            <div className={waStyles.waBubble}>
               {body}
-              <div style={{ fontSize: 10, color: '#667781', textAlign: 'right', marginTop: 4 }}>
+              <div className={waStyles.waMeta}>
                 {formatTime(new Date())} ✓✓
               </div>
             </div>
@@ -118,32 +136,48 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
         </div>
       )}
 
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <label style={{ fontWeight: 600, fontSize: '0.875rem' }}>Message body</label>
-          {isSms && <SmsCounter text={body} />}
-        </div>
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          style={{
-            width: '100%',
-            minHeight: 100,
-            padding: '8px 12px',
-            borderRadius: 8,
-            border: '1px solid var(--color-border)',
-            background: 'var(--color-surface)',
-            fontSize: '0.875rem',
-            fontFamily: 'inherit',
-            resize: 'vertical',
-            boxSizing: 'border-box',
-          }}
-          placeholder="Use {{variable}} for dynamic values e.g. {{customer_name}}, {{container_number}}"
-        />
+      <Field
+        label="Message body"
+        name={`template_body_${template.event_type}_${template.channel}`}
+        multiline
+        rows={5}
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="Use {{variable}} for dynamic values e.g. {{customer_name}}, {{container_number}}"
+        helper={isSms ? <SmsCounter text={body} /> : undefined}
+      />
+
+      <div className={waStyles.varRow}>
+        <span className={waStyles.varLabel}>Insert variable:</span>
+        {COMMON_VARIABLES.map((v) => (
+          <Chip key={v} onClick={() => insertVariable(v)}>
+            + {`{{${v}}}`}
+          </Chip>
+        ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button variant="primary" size="sm" loading={saving} disabled={!body.trim()} onClick={() => void handleSave()}>
+      <div className={waStyles.cardActions}>
+        {dirty && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={saving}
+            onClick={() => {
+              setBody(template.template_body)
+              setSubject(template.subject ?? '')
+              setError(null)
+            }}
+          >
+            Discard
+          </Button>
+        )}
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saving}
+          disabled={!dirty || !body.trim()}
+          onClick={() => void handleSave()}
+        >
           Save template
         </Button>
       </div>
@@ -157,6 +191,7 @@ function TemplateCard({ template, onSaved }: TemplateCardProps): JSX.Element {
 
 export function NotificationTemplates(): JSX.Element {
   const qc = useQueryClient()
+  const [selectedChannel, setSelectedChannel] = useState<string>('sms')
 
   const { data: templates = [], isLoading: loading, error: loadError } = useQuery({
     queryKey: configKeys.notifications(),
@@ -182,44 +217,62 @@ export function NotificationTemplates(): JSX.Element {
     )
   }
 
-  // Group by event type
-  const grouped = templates.reduce<Record<string, NotificationTemplate[]>>((acc, t) => {
-    const key = t.event_type
-    if (!acc[key]) acc[key] = []
-    acc[key].push(t)
-    return acc
-  }, {})
+  const channels = useMemo(() => {
+    const present = new Set(templates.map((t) => t.channel))
+    const ordered: string[] = CHANNEL_ORDER.filter((c) => present.has(c))
+    for (const c of present) {
+      if (!ordered.includes(c)) ordered.push(c)
+    }
+    return ordered
+  }, [templates])
+
+  const activeChannel = channels.includes(selectedChannel) ? selectedChannel : (channels[0] ?? 'sms')
+
+  const visibleTemplates = useMemo(
+    () => templates.filter((t) => t.channel === activeChannel),
+    [templates, activeChannel],
+  )
 
   return (
     <div>
       <PageHeader
-        title="Notification Templates"
-        subtitle="Customise SMS, WhatsApp, and Email messages sent to customers."
+        title="Notification templates"
+        meta="Customise SMS, WhatsApp, and Email messages sent to customers."
       />
 
       {error && <div className={styles.banner}><Banner variant="error">{error}</Banner></div>}
-      {loading && <p style={{ color: 'var(--color-text-muted)' }}>Loading templates…</p>}
+      {loading && <LinesSkeleton label="Loading templates" />}
 
       {!loading && templates.length === 0 && (
-        <p style={{ color: 'var(--color-text-muted)', marginTop: 24 }}>
-          No notification templates configured. They will appear here once seeded by the platform admin.
-        </p>
+        <EmptyState
+          title="No notification templates configured"
+          body="Templates will appear here once seeded by the platform admin."
+        />
       )}
 
-      {Object.entries(grouped).map(([eventType, tpls]) => (
-        <div key={eventType} className={styles.section}>
-          <p style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-            {eventType.replace(/_/g, ' ')}
-          </p>
-          {tpls.map((t) => (
+      {!loading && channels.length > 0 && (
+        <>
+          <div className={waStyles.tabsWrap}>
+            <Tabs
+              active={activeChannel}
+              onChange={setSelectedChannel}
+              items={channels.map((ch) => ({
+                key: ch,
+                label: CHANNEL_LABELS[ch] ?? ch.toUpperCase(),
+                count: templates.filter((t) => t.channel === ch).length,
+              }))}
+            />
+          </div>
+
+          {visibleTemplates.map((t) => (
             <TemplateCard
-              key={`${t.event_type}-${t.channel}`}
+              key={`${t.event_type}-${t.channel}-${t.template_body}-${t.subject ?? ''}`}
               template={t}
               onSaved={handleSaved}
             />
           ))}
-        </div>
-      ))}
+        </>
+      )}
     </div>
   )
 }

@@ -754,6 +754,38 @@ class TestGetShipmentByCodeAndPhone:
             result = service.get_shipment_by_code_and_phone("TK-001", "+234801")
 
         assert result["company_name"] == "Branded Logistics"
+        assert result["brand_color"] is None
+
+    @pytest.mark.parametrize(
+        ("configured", "returned"),
+        [
+            ("#1B5E20", "#1B5E20"),
+            ("#1b5e20", "#1b5e20"),
+            ("red", None),
+            ("#fff", None),
+            ("#1B5E20; background:url(x)", None),
+            (123, None),
+        ],
+    )
+    def test_brand_color_is_returned_only_as_a_plain_hex(self, configured, returned):
+        # FD-28: the public page puts this in a style, so anything but #rrggbb is dropped.
+        from services.tracking import service
+
+        row = {
+            "id": "ship-001",
+            "tracking_code": "TK-001",
+            "status": "received",
+            "company_name": "ACME",
+            "branding_config": {"primary_color": configured},
+        }
+
+        with (
+            patch.object(service.repo, "get_shipment_by_tracking_code_and_phone", return_value=row),
+            patch.object(service.repo, "get_tracking_events", return_value=[]),
+        ):
+            result = service.get_shipment_by_code_and_phone("TK-001", "+234801")
+
+        assert result["brand_color"] == returned
 
 
 # ---------------------------------------------------------------------------

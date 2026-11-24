@@ -69,12 +69,12 @@ for OLD_RULE in route-sms route-whatsapp route-email; do
     && echo "    Deleted old rule: ${OLD_RULE}" || true
 done
 
-# Metering rule (catches everything)
+# Metering rule (only UsageRecorded events)
 aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
   events put-rule \
   --name "route-metering" \
   --event-bus-name "logistics-events" \
-  --event-pattern '{"source":[{"prefix":"logistics."}]}' \
+  --event-pattern '{"source":[{"prefix":"logistics."}],"detail-type":["UsageRecorded"]}' \
   --state ENABLED > /dev/null 2>&1 && echo "    Created rule: route-metering"
 
 aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
@@ -140,6 +140,7 @@ CLIENT_ID=$(aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
   --user-pool-id "${POOL_ID}" \
   --client-name "logistics-local-client" \
   --no-generate-secret \
+  --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_USER_SRP_AUTH ALLOW_REFRESH_TOKEN_AUTH \
   --output text --query 'UserPoolClient.ClientId' | tr -d '[:space:]')
 echo "    Created app client: ${CLIENT_ID}"
 

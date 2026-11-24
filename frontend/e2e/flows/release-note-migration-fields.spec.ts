@@ -86,7 +86,7 @@ test.describe('release note — count-based generation with warehouse and docume
     await dialog.getByLabel(/physical document number/i).fill(PHYSICAL_DOC_NUMBER)
     await dialog.getByLabel(/packing list invoice numbers/i).fill(INVOICE_NUMBER)
 
-    const generateSubmit = dialog.getByRole('button', { name: /^generate$/i })
+    const generateSubmit = dialog.getByRole('button', { name: /^generate release note$/i })
     await expect(generateSubmit).toBeEnabled()
     await generateSubmit.click()
 
@@ -108,7 +108,7 @@ test.describe('release note — count-based generation with warehouse and docume
     const row = await findReleaseNoteRow(page)
     test.skip(!(await hasRows(row)), 'No release note found for this customer yet — run the generation test first')
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
@@ -131,7 +131,7 @@ test.describe('release note — count-based generation with warehouse and docume
     await expect(row).toHaveCount(1, { timeout: 10_000 }).catch(() => undefined)
     test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
 
     const pickupBtn = page.getByRole('button', { name: /^record pickup$/i })
@@ -171,43 +171,49 @@ test.describe('release note — count-based generation with warehouse and docume
     await expect(page.getByText(/picked up/i).first()).toBeVisible()
   })
 
-  test('print view shows the document number, invoice numbers and paper-form signature lines', async ({ page }) => {
+  test('Print opens the release note PDF in a new tab (FD-40: the PDF is the one document)', async ({ page, context }) => {
     const row = await findReleaseNoteRow(page)
     test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
-    await page.getByRole('button', { name: /print view/i }).click()
-    await expect(page).toHaveURL(/\/release-notes\/.*\/print/)
-
-    await expect(page.getByText('Release Note', { exact: true })).toBeVisible()
-    await expect(page.getByText(PHYSICAL_DOC_NUMBER)).toBeVisible()
-    await expect(page.getByText(INVOICE_NUMBER)).toBeVisible()
-    await expect(page.getByText(/Customer Service Officer.*signature/i)).toBeVisible()
-    await expect(page.getByText(/Accounting Officer.*signature/i)).toBeVisible()
-    await expect(page.getByText(/Warehouse Attendant.*signature/i)).toBeVisible()
-    await expect(page.getByText(/management will not be/i)).toBeVisible()
+    // The document's content (document number, invoice numbers, signature lines, terms) is checked where it is
+    // made: tests/unit/test_pdf_documents.py.
+    // Export is the single PDF action on the release-note detail header. Headless Chromium may detach a popup
+    // tab as soon as it converts an inline PDF into a download, so assert the 200 PDF response and URL directly.
+    const pdfResponse = page.waitForResponse(
+      (r) => /\/v1\/release-notes\/[^/]+\/pdf/.test(r.url()) && r.status() === 200,
+      { timeout: 10_000 },
+    )
+    const popupPromise = context.waitForEvent('page', { timeout: 5_000 }).catch(() => null)
+    await page.getByRole('button', { name: /^export$/i }).click()
+    const resp = await pdfResponse
+    const body = (await resp.json()) as { data?: { url?: string; download_url?: string } }
+    expect(body.data?.download_url ?? body.data?.url ?? '').toMatch(/release_note.*\.pdf/i)
+    const tab = await popupPromise
+    if (tab && !tab.isClosed()) await tab.close()
   })
 
-  test('PDF export opens a document from the release-note detail page', async ({ page }) => {
+  test('PDF export opens a document from the release-note detail page', async ({ page, context }) => {
     const row = await findReleaseNoteRow(page)
     test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
 
     // ExportButton is configured with a single format (pdf) on this page, so
     // its primary button (not a dropdown item) is labeled "Export" and
     // triggers the pdf export directly — see ExportButton.tsx's defaultFormat.
-    // apiDownloadFile opens the signed URL via window.open(url, '_blank'),
-    // but Chromium (acceptDownloads: 'accept' in this project's config) has
-    // no PDF viewer plugin available and so treats the navigation as a file
-    // download rather than a popup page — confirmed via trace inspection
-    // (BrowserContext "download" event, no "popup" page ever created).
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 10_000 }),
-      page.getByRole('button', { name: /^export$/i }).click(),
-    ])
-    expect(download.suggestedFilename()).toMatch(/release_note.*\.pdf$/i)
+    const pdfResponse = page.waitForResponse(
+      (r) => /\/v1\/release-notes\/[^/]+\/pdf/.test(r.url()) && r.status() === 200,
+      { timeout: 10_000 },
+    )
+    const popupPromise = context.waitForEvent('page', { timeout: 5_000 }).catch(() => null)
+    await page.getByRole('button', { name: /^export$/i }).click()
+    const resp = await pdfResponse
+    const body = (await resp.json()) as { data?: { url?: string; download_url?: string } }
+    expect(body.data?.download_url ?? body.data?.url ?? '').toMatch(/release_note.*\.pdf/i)
+    const tab = await popupPromise
+    if (tab && !tab.isClosed()) await tab.close()
   })
 })

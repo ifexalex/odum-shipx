@@ -78,9 +78,9 @@ describe('MyShipments — all active shipments render, not just the latest', () 
 
     renderPage()
 
-    // The outstanding total reaches the greeting, which it never could while
+    // The outstanding total reaches the header, which it never could while
     // the request 403'd.
-    expect(await screen.findByText(/outstanding balance to settle/)).toBeInTheDocument()
+    expect(await screen.findByText(/₦[\d,]+ outstanding/)).toBeInTheDocument()
     expect(billingApi.list).toHaveBeenCalled()
     expect(billingApi.listForCustomer).not.toHaveBeenCalled()
   })
@@ -113,5 +113,74 @@ describe('MyShipments — all active shipments render, not just the latest', () 
 
     expect(await screen.findByText('Active shipment')).toBeInTheDocument()
     expect(screen.queryByText(/Active shipments \(/)).toBeNull()
+  })
+})
+
+describe('MyShipments wording and emphasis (FD-27)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(useSession).mockReturnValue({ session: { userId: 'c1', name: 'Ify Ugwuoke' } } as never)
+  })
+
+  function withShipments(rows: ReturnType<typeof shipment>[], billing: unknown[] = []) {
+    vi.mocked(packingListApi.list).mockResolvedValue({
+      data: rows,
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: rows.length } },
+    } as never)
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: billing,
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: billing.length } },
+    } as never)
+  }
+
+  it('counts shipments by stage, not all as on the way', async () => {
+    withShipments([
+      shipment('pl1', 'PL-001', 'in_transit'),
+      shipment('pl2', 'PL-002', 'sealed'),
+      shipment('pl3', 'PL-003', 'loading'),
+      shipment('pl4', 'PL-004', 'at_warehouse'),
+      shipment('pl5', 'PL-005', 'at_warehouse'),
+    ])
+    renderPage()
+    expect(await screen.findByText('3 in transit, 2 ready for pickup')).toBeInTheDocument()
+  })
+
+  it('says Delayed, not a past expected date, for a shipment still at sea', async () => {
+    withShipments([{ ...shipment('pl1', 'PL-001', 'in_transit'), container_eta: '2026-01-09' } as never])
+    renderPage()
+    expect(await screen.findByText('Delayed')).toBeInTheDocument()
+    expect(screen.queryByText('Expected arrival')).toBeNull()
+  })
+
+  it('says Arrived once the container has reached Nigeria', async () => {
+    withShipments([{ ...shipment('pl1', 'PL-001', 'at_warehouse'), container_eta: '2026-01-09' } as never])
+    renderPage()
+    expect(await screen.findByText('Arrived')).toBeInTheDocument()
+    expect(screen.queryByText('Expected arrival')).toBeNull()
+  })
+
+  it('shows a future expected date as expected', async () => {
+    withShipments([{ ...shipment('pl1', 'PL-001', 'in_transit'), container_eta: '2999-01-09' } as never])
+    renderPage()
+    expect(await screen.findByText('Expected arrival')).toBeInTheDocument()
+  })
+
+  it('opens the shipment from the card, with one link and no separate button', async () => {
+    withShipments([shipment('pl1', 'PL-001', 'in_transit')])
+    renderPage()
+    const link = await screen.findByRole('link', { name: 'PL-001' })
+    expect(link).toHaveAttribute('href', '/my-shipments/pl1')
+    expect(screen.queryByRole('button', { name: /View details/ })).toBeNull()
+  })
+
+  it('sets the total in ink and only an amount owed in red', async () => {
+    withShipments([shipment('pl1', 'PL-001', 'in_transit')], [
+      { container_id: 'cont-pl1', total_due_ngn: '100000', outstanding_ngn: '40000' },
+    ])
+    renderPage()
+    const owed = await screen.findByText('₦40,000')
+    // jsdom does not resolve custom properties, so read the inline colour as written.
+    expect(owed.getAttribute('style')).toContain('var(--color-error)')
+    expect(screen.getByText('₦100,000').getAttribute('style')).toContain('var(--color-ink)')
   })
 })

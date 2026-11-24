@@ -148,12 +148,12 @@ resource "aws_cloudfront_response_headers_policy" "frontend" {
         # Only scripts from this origin and the Cognito hosted UI
         "default-src 'self'",
         "script-src 'self'",
-        # Styles: self + inline (Vite injects some at build time) + Google Fonts stylesheet
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        # Styles: self + inline (Vite injects some at build time)
+        "style-src 'self' 'unsafe-inline'",
         # Images from self and S3 (for tenant branding assets)
         "img-src 'self' data: https://*.amazonaws.com",
-        # Fonts from self + Google Fonts files (fonts.gstatic.com)
-        "font-src 'self' https://fonts.gstatic.com",
+        # Fonts are self-hosted (frontend/src/design/fonts.css, audit FD-06)
+        "font-src 'self'",
         # API calls: API Gateway + Cognito
         "connect-src 'self' https://${var.api_gateway_domain} https://${var.cognito_domain}",
         # No frames, objects, or base-tag overrides

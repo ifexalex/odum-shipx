@@ -20,7 +20,7 @@ def parse_positive_decimal(value: Any, field: str, row: int) -> tuple[Decimal | 
         return None, None
     try:
         d = Decimal(str(value).strip())
-        if d < 0:
+        if not d.is_finite() or d < 0:
             return None, {"row": row, "field": field, "value": str(value), "error": "Must be a positive number"}
         return d, None
     except InvalidOperation:
@@ -31,6 +31,8 @@ def parse_date(value: Any, row: int) -> tuple[date | None, dict[str, Any] | None
     """Parse a date cell value, defaulting to today when blank."""
     if value is None or str(value).strip() == "":
         return date.today(), None
+    if isinstance(value, datetime):
+        return value.date(), None
     if isinstance(value, date):
         return value, None
     raw = str(value).strip()

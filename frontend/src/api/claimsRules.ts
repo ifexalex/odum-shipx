@@ -69,15 +69,6 @@ export const CLAIM_STATUS_ORDER: Claim['status'][] = [
 // Customer-facing wording (the customer portal's claim pages)
 // ---------------------------------------------------------------------------
 
-export const CUSTOMER_CLAIM_STATUS_LABELS: Record<Claim['status'], string> = {
-  filed: 'Filed',
-  under_inspection: 'Under inspection',
-  inspection_complete: 'Inspection complete',
-  pending_resolution: 'Pending resolution',
-  resolved: 'Resolved',
-  closed: 'Closed',
-}
-
 /** How the claim was checked, in words for the customer. */
 export function customerInspectionLabel(method: Claim['inspection_method']): string {
   switch (method) {

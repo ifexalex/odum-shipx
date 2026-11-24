@@ -28,16 +28,100 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+# Gateway settings hold third-party API secrets and are only ever read through
+# GET /v1/platform/settings/gateways (which masks them). Never expose them raw
+# from GET /v1/platform/settings, and never let arbitrary keys bypass validation.
+_SECRET_PLATFORM_KEYS = frozenset({"sms_gateway", "whatsapp_gateway", "email_gateway"})
+_ALLOWED_GENERAL_SETTINGS = frozenset(
+    {
+        "max_tenants",
+        "maintenance_mode",
+        "platform_email_from",
+        "default_trial_days",
+        "support_email",
+        "platform_name",
+    }
+)
+
+
+def _strip_internal_and_secret_settings(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        k: v
+        for k, v in raw.items()
+        if k not in _SECRET_PLATFORM_KEYS and not k.startswith("quota_override:") and k != "plan_limits"
+    }
+
+
 def get_platform_settings() -> dict[str, Any]:
-    """Return all platform settings as a flat dict."""
-    return repo.get_platform_settings()
+    """Return general platform settings (excluding gateway secrets and internal quota tables)."""
+    return _strip_internal_and_secret_settings(repo.get_platform_settings())
 
 
-def update_platform_settings(settings: dict[str, Any], actor_id: str) -> dict[str, Any]:
-    """Upsert each key in the provided settings dict."""
+def update_platform_settings(
+    settings: dict[str, Any],
+    actor_id: str,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Validate, upsert, and audit allowlisted general platform settings."""
+    from shared.auth import evict_maintenance_cache
+    from shared.exceptions import ValidationError
+
+    unknown = sorted(set(settings) - _ALLOWED_GENERAL_SETTINGS)
+    if unknown:
+        raise ValidationError(
+            f"Unsupported or protected platform setting key(s): {', '.join(unknown)}",
+            field_errors={k: "Use the dedicated settings endpoint or provide an allowed general setting key." for k in unknown},
+        )
+
+    validated: dict[str, Any] = {}
     for key, value in settings.items():
+        if key == "max_tenants":
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValidationError("max_tenants must be a positive integer", field_errors={"max_tenants": "Must be >= 1"})
+            current_active = repo.count_non_offboarded_tenants()
+            if value < current_active:
+                raise BusinessRuleViolationError(
+                    f"max_tenants ({value}) cannot be lower than current active/suspended tenants ({current_active})",
+                    rule_id="MAX_TENANTS_BELOW_CURRENT",
+                )
+            validated[key] = value
+        elif key == "maintenance_mode":
+            if not isinstance(value, bool):
+                raise ValidationError(
+                    "maintenance_mode must be a boolean", field_errors={"maintenance_mode": "Must be true or false"}
+                )
+            validated[key] = value
+        elif key == "default_trial_days":
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 365:
+                raise ValidationError(
+                    "default_trial_days must be an integer between 0 and 365",
+                    field_errors={"default_trial_days": "Must be 0–365"},
+                )
+            validated[key] = value
+        else:
+            if not isinstance(value, str) or len(value.strip()) == 0 or len(value) > 255:
+                raise ValidationError(f"{key} must be a non-empty string", field_errors={key: "Must be a non-empty string"})
+            validated[key] = value.strip()
+
+    for key, value in validated.items():
         repo.upsert_platform_setting(key, value, actor_id)
-    return repo.get_platform_settings()
+
+    if "maintenance_mode" in validated:
+        evict_maintenance_cache()
+
+    if validated:
+        try:
+            repo.insert_platform_audit(
+                action="SETTINGS_UPDATED",
+                actor_id=actor_id,
+                target_tenant_id=None,
+                details={"updated_keys": sorted(validated.keys()), "values": validated},
+                ip_address=ip_address,
+            )
+        except Exception as exc:
+            logger.warning("Platform audit insert failed for settings update: %s", exc)
+
+    return _strip_internal_and_secret_settings(repo.get_platform_settings())
 
 
 # ---------------------------------------------------------------------------

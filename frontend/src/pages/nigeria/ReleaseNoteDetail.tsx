@@ -10,46 +10,25 @@ import {
   canSendPickupCode,
   canSplitNote,
   isTerminalReleaseStatus,
-  releaseNoteStatusLabel,
   releaseTypeLabel,
   sentViaLabel,
 } from '../../api/releaseNotesRules'
 import { useSession } from '../../auth/useSession'
 import { useStaffList } from '../../hooks/useStaff'
 import { useWarehouses } from '../../hooks/useWarehouses'
-import {
-  Action,
-  Badge,
-  Banner,
-  Button,
-  Card,
-  ExportButton,
-  Field,
-  Icon,
-  Kvp,
-  Modal,
-  Mono,
-  PhoneField,
-  StatCard,
-  ToggleSwitch,
-  DialogGuard,
-  type BadgeVariant,
-} from '../../design/components'
-import { SectionHead } from '../../shell/SectionHead'
+import { Action, Badge, Banner, Button, ExportButton, Field, Kvp, Modal, Mono, PhoneField, StatusBadge, ToggleSwitch, Select, PageSkeleton, ErrorState } from '../../design/components'
 import styles from './ReleaseNoteDetail.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
+import { formatDate, formatNgn, plural } from '../../lib/format'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { DetailPage } from '../../shell/DetailPage'
+import { PageHeader } from '../../shell/PageHeader'
+import { RecordLink } from '../../shell/RecordLink'
+import { Section } from '../../shell/Section'
+import { toast } from '../../design/toast'
 
 // ---------------------------------------------------------------------------
 // Status helpers
 // ---------------------------------------------------------------------------
-
-const STATUS_VARIANT: Record<ReleaseNote['status'], BadgeVariant> = {
-  active: 'success',
-  picked_up: 'neutral',
-  expired: 'error',
-  cancelled: 'neutral',
-}
 
 // ---------------------------------------------------------------------------
 // RecordPickupModal — mobile-optimised, large touch targets
@@ -68,7 +47,9 @@ const ID_TYPES: { value: DelegateIdType; label: string }[] = [
 ]
 
 function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps): JSX.Element {
-  const [cartons, setCartons] = useState(String(note.carton_count))
+  const maxCartons =
+    note.packages_balance != null && note.packages_balance > 0 ? note.packages_balance : note.carton_count
+  const [cartons, setCartons] = useState(String(maxCartons))
   const [isDelegate, setIsDelegate] = useState(false)
   // Required by the backend when the customer collects in person (not via a
   // delegate) — RecordPickupRequest's _require_collector_name_for_non_delegate.
@@ -92,6 +73,12 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
   const { data: staffList } = useStaffList()
   const staff = staffList ?? []
 
+  const cartonsNum = Number(cartons)
+  const cartonsValid = Number.isInteger(cartonsNum) && cartonsNum >= 1 && cartonsNum <= maxCartons
+  const cartonsError =
+    cartons.trim() !== '' && !cartonsValid
+      ? `Enter a whole number between 1 and ${maxCartons}.`
+      : undefined
   const delegateFilled = !isDelegate || (
     delegateName.trim().length > 0 &&
     delegatePhone.trim().length > 0 &&
@@ -101,13 +88,13 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
   const codeRequired = note.pickup_code_required === true
   const codeLocked = note.pickup_code_locked === true
   const codeGiven = !codeRequired || pickupCode.trim().length > 0
-  const canSubmit = Number(cartons) > 0 && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
+  const canSubmit = cartonsValid && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
     try {
-      const body: RecordPickupInput = { cartons_released: Number(cartons) }
+      const body: RecordPickupInput = { cartons_released: cartonsNum }
       if (isDelegate) {
         body.is_delegate = true
         body.delegate_name = delegateName
@@ -123,6 +110,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
       if (accountingOfficerId) body.accounting_officer_id = accountingOfficerId
       if (notes.trim()) body.notes = notes
       const result = await releaseNotesApi.recordPickup(note.id, body)
+      toast.success('Pickup recorded', note.reference_number)
       onSuccess(result)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not record pickup.')
@@ -132,27 +120,40 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Record pickup — {note.reference_number}</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title={`Record pickup — ${note.reference_number}`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+            Confirm pickup
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
 
         <Field
           label="Cartons collected"
           name="cartons_released"
           required
           type="number"
+          min="1"
+          max={String(maxCartons)}
+          error={cartonsError}
+          helper={`Up to ${plural(maxCartons, 'carton')} available for pickup on this note.`}
           value={cartons}
           onChange={(e) => setCartons(e.target.value)}
         />
 
         {codeLocked && (
-          <div className={styles.modalBanner}>
-            <Banner variant="error" title="Pickup code locked">
-              Too many wrong codes were entered. Send the customer a new code before these goods can be released.
-            </Banner>
-          </div>
+          <Banner variant="error" title="Pickup code locked">
+            Too many wrong codes were entered. Send the customer a new code before these goods can be released.
+          </Banner>
         )}
         {codeRequired && !codeLocked && (
           <Field
@@ -169,7 +170,7 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
         )}
 
         <label className={styles.delegateToggle}>
-          <ToggleSwitch checked={isDelegate} onChange={setIsDelegate} />
+          <ToggleSwitch label="Collected by a delegate" checked={isDelegate} onChange={setIsDelegate} />
           <span>Collected by a delegate (not the customer)</span>
         </label>
 
@@ -189,35 +190,20 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
             <Field label="Delegate name" name="delegate_name" required value={delegateName} onChange={(e) => setDelegateName(e.target.value)} />
             <PhoneField label="Delegate phone" name="delegate_phone" required value={delegatePhone} onChange={setDelegatePhone} />
             <div>
-              <label className={styles.fieldLabel}>
-                ID type <span className={styles.requiredMark}>*</span>
-              </label>
-              <select
-                aria-label="ID type"
-                className={styles.rawSelect}
+              <Select label="ID type"
                 value={delegateIdType}
                 onChange={(e) => setDelegateIdType(e.target.value as DelegateIdType)}
               >
                 {ID_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+              </Select>
             </div>
             <Field label="ID number" name="delegate_id_number" required value={delegateIdNumber} onChange={(e) => setDelegateIdNumber(e.target.value)} />
           </>
         )}
 
-        {/* Ground-truth gap found live, against a real paper "Goods Release
-            Note" reference: two further named sign-off lines exist alongside
-            the warehouse attendant (implicitly the acting user) — Customer
-            Service Officer and Accounting Officer. Optional: a small
-            warehouse doesn't necessarily split these duties out. */}
         {warehouses.length > 0 && (
           <div>
-            <label className={styles.fieldLabel}>
-              Warehouse / branch <span className={styles.optionalHint}>Optional</span>
-            </label>
-            <select
-              aria-label="Warehouse / branch"
-              className={styles.rawSelect}
+            <Select label="Warehouse / branch" optional
               value={warehouseId}
               onChange={(e) => setWarehouseId(e.target.value)}
             >
@@ -225,52 +211,35 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
               {warehouses.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}{w.is_default ? ' (default)' : ''}</option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
         {staff.length > 0 && (
           <>
             <div>
-              <label className={styles.fieldLabel}>
-                Customer Service Officer <span className={styles.optionalHint}>Optional</span>
-              </label>
-              <select
-                aria-label="Customer Service Officer"
-                className={styles.rawSelect}
+              <Select label="Customer Service Officer" optional
                 value={csoId}
                 onChange={(e) => setCsoId(e.target.value)}
               >
                 <option value="">None</option>
                 {staff.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
+              </Select>
             </div>
             <div>
-              <label className={styles.fieldLabel}>
-                Accounting Officer <span className={styles.optionalHint}>Optional</span>
-              </label>
-              <select
-                aria-label="Accounting Officer"
-                className={styles.rawSelect}
+              <Select label="Accounting Officer" optional
                 value={accountingOfficerId}
                 onChange={(e) => setAccountingOfficerId(e.target.value)}
               >
                 <option value="">None</option>
                 {staff.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-              </select>
+              </Select>
             </div>
           </>
         )}
 
         <Field label="Notes" name="notes" multiline optional placeholder="Any observations about the pickup…" value={notes} onChange={(e) => setNotes(e.target.value)} />
-
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="success" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
-            Confirm pickup
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -293,6 +262,7 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
     setError(null)
     try {
       const newNote = await releaseNotesApi.reissue(note.id)
+      toast.success('Release note re-issued', newNote.reference_number)
       onSuccess(newNote)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not re-issue this release note.')
@@ -305,11 +275,22 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
   const expiredDate = formatDate(note.expired_at)
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Re-issue release note</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Re-issue release note"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} onClick={() => void handleReissue()}>
+            Re-issue release note
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
         <Banner variant="warning" title="Outstanding storage fees">
           {storageFees > 0
             ? `This release note has ${formatNgn(storageFees)} in outstanding storage fees. The new note will carry this balance forward.`
@@ -319,14 +300,8 @@ function ReissueConfirmModal({ note, onCancel, onSuccess }: ReissueConfirmModalP
           A new release note will be created with the same carton tags and a fresh 14-day window.
           The expired note ({note.reference_number}, expired {expiredDate}) will be preserved for audit purposes.
         </p>
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="primary" loading={submitting} onClick={() => void handleReissue()}>
-            Re-issue release note
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -361,7 +336,7 @@ function SendPickupCodeModal({ note, onCancel, onSent }: SendPickupCodeModalProp
     <Modal
       open
       title="Send a new pickup code"
-      width={480}
+      size="sm"
       onClose={onCancel}
       footer={
         <>
@@ -416,6 +391,7 @@ function SplitModal({ note, onCancel, onSuccess }: SplitModalProps): JSX.Element
         carton_tags: Array.from(selected),
         notes: splitNotes || undefined,
       })
+      toast.success('Release note split', child.reference_number)
       onSuccess(child)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not split release note.')
@@ -424,14 +400,28 @@ function SplitModal({ note, onCancel, onSuccess }: SplitModalProps): JSX.Element
     }
   }
 
+  const allSelected = note.carton_tags.length > 0 && selected.size >= note.carton_tags.length
+  const canSplitSubmit = selected.size > 0 && selected.size < note.carton_tags.length && !submitting
+
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <DialogGuard onClose={onCancel} />
-      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <h3 className={styles.modalTitle}>Split release note</h3>
-        {error && <div className={styles.modalBanner}><Banner variant="error" title="Action failed">{error}</Banner></div>}
+    <Modal
+      open
+      onClose={onCancel}
+      title="Split release note"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} disabled={!canSplitSubmit} onClick={() => void handleSubmit()}>
+            Create child note
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error" title="Action failed">{error}</Banner>}
         <p className={styles.splitInstruction}>
-          Select the carton tags to move into a new child release note. The remaining tags stay on this note.
+          Select the carton tags to move into a new child release note. At least one tag must stay on this note.
         </p>
         <div className={styles.tagGrid}>
           {note.carton_tags.map((tag) => (
@@ -448,18 +438,16 @@ function SplitModal({ note, onCancel, onSuccess }: SplitModalProps): JSX.Element
             </span>
           ))}
         </div>
-        {selected.size > 0 && (
-          <p className={styles.splitCount}>{selected.size} carton(s) selected for new note</p>
-        )}
+        {allSelected ? (
+          <Banner variant="warning">
+            Leave at least one carton tag on the original release note so both notes remain valid.
+          </Banner>
+        ) : selected.size > 0 ? (
+          <p className={styles.splitCount}>{plural(selected.size, 'carton')} selected for the new note</p>
+        ) : null}
         <Field label="Notes" name="split_notes" multiline optional placeholder="Reason for splitting…" value={splitNotes} onChange={(e) => setSplitNotes(e.target.value)} />
-        <div className={styles.modalActions}>
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
-          <Button variant="primary" loading={submitting} disabled={selected.size === 0} onClick={() => void handleSubmit()}>
-            Create child note
-          </Button>
-        </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -476,11 +464,11 @@ export function ReleaseNoteDetail(): JSX.Element {
   const role = session?.role ?? 'nigeria_office_staff'
 
   const stateNote = (location.state as { note?: ReleaseNote } | null)?.note ?? null
-  const { data: note = null, isLoading: loading, error: loadError } = useQuery({
+  const { data: note = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: releaseNoteKeys.detail(id ?? ''),
     queryFn: () => releaseNotesApi.get(id!),
     enabled: !!id,
-    ...(stateNote ? { initialData: stateNote } : {}),
+    ...(stateNote ? { placeholderData: stateNote } : {}),
     staleTime: STALE_30S,
   })
   // Names this record in the breadcrumb once loaded (FD-46).
@@ -496,16 +484,17 @@ export function ReleaseNoteDetail(): JSX.Element {
   const [showSplit, setShowSplit] = useState(false)
   const [showReissue, setShowReissue] = useState(false)
   const [showSendCode, setShowSendCode] = useState(false)
-  const [codeSentVia, setCodeSentVia] = useState<string[] | null>(null)
   const [pickupResult, setPickupResult] = useState<PickupResult | null>(null)
+  const [splitChild, setSplitChild] = useState<ReleaseNote | null>(null)
 
 
-  if (loading && !note) return <div className={styles.loadingState}>Loading release note…</div>
+  if (loading && !note) return <PageSkeleton kind="detail" label="Loading release note" />
   if (error && !note) {
     return (
-      <div className={styles.loadingState}>
-        <Banner variant="error" title="Couldn't load this release note">{error ?? 'Not found.'}</Banner>
-      </div>
+      <>
+        <PageHeader title="Release note" />
+        <ErrorState title="Couldn't load this release note" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
   if (!note) return <></>
@@ -518,184 +507,198 @@ export function ReleaseNoteDetail(): JSX.Element {
   const storageFees = Number(note.storage_fees_ngn ?? 0)
 
   return (
-    <div>
-      {/* Hero */}
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="file" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{note.reference_number}</h1>
-              <Badge variant={STATUS_VARIANT[note.status]}>{releaseNoteStatusLabel(note.status)}</Badge>
-              {note.is_partial_release && (
-                <Badge variant="warning">Partial</Badge>
-              )}
-            </div>
-            <div className={styles.heroMeta}>
-              {note.customer_name && <span>{note.customer_name}</span>}
-              {note.container_number && <span> · {note.container_number}</span>}
-              <span> · Issued {formatDate(note.authorized_at)}</span>
-              {note.valid_until && !isExpired && (
-                <span> · Valid until {note.valid_until}</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.heroActions}>
-          <ExportButton
-            formats={['pdf']}
-            onExport={() => releaseNotesApi.pdf(note.id)}
+    <>
+      <DetailPage
+        header={
+          <PageHeader
+            title={`Release note ${note.reference_number}`}
+            status={
+              <>
+                <StatusBadge kind="releaseNote" status={note.status} />
+                {note.is_partial_release && <Badge variant="warning">Partial</Badge>}
+              </>
+            }
+            meta={[
+              note.customer_name,
+              note.container_number && <Mono>{note.container_number}</Mono>,
+              `Issued ${formatDate(note.authorized_at)}`,
+              note.valid_until && !isExpired && `Valid until ${formatDate(note.valid_until)}`,
+            ]}
+            primary={
+              isExpired ? (
+                <Action variant="primary" icon="refresh" onClick={() => setShowReissue(true)}>
+                  Re-issue release note
+                </Action>
+              ) : !isTerminal && showPickupBtn ? (
+                <Action variant="primary" icon="check" onClick={() => setShowPickup(true)}>
+                  Record pickup
+                </Action>
+              ) : null
+            }
+            actions={
+              <>
+                {canSendPickupCode(note, r) && (
+                  <Action variant="secondary" icon="refresh" onClick={() => setShowSendCode(true)}>
+                    {note.pickup_code_required ? 'Send new pickup code' : 'Send pickup code'}
+                  </Action>
+                )}
+                <ExportButton formats={['pdf']} onExport={() => releaseNotesApi.pdf(note.id)} />
+              </>
+            }
+            more={
+              !isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1
+                ? [{ label: 'Split note', mutates: true, onSelect: () => setShowSplit(true) }]
+                : []
+            }
+            moreLabel="More release note actions"
           />
-          <Button variant="secondary" icon="file" onClick={() => navigate(`/release-notes/${note.id}/print`)}>
-            Print view
-          </Button>
-          {isExpired && (
-            <Action variant="primary" icon="refresh" onClick={() => setShowReissue(true)}>
-              Re-issue release note
-            </Action>
-          )}
-          {!isTerminal && !isExpired && showPickupBtn && (
-            <Action variant="success" icon="check" onClick={() => setShowPickup(true)}>
-              Record pickup
-            </Action>
-          )}
-          {canSendPickupCode(note, r) && (
-            <Action variant="secondary" icon="refresh" onClick={() => setShowSendCode(true)}>
-              {note.pickup_code_required ? 'Send new pickup code' : 'Send pickup code'}
-            </Action>
-          )}
-          {!isTerminal && !isExpired && showSplitBtn && note.carton_tags.length > 1 && (
-            <Action variant="secondary" onClick={() => setShowSplit(true)}>
-              Split note
-            </Action>
-          )}
-        </div>
-      </div>
-
-      {/* Expired state banners */}
-      {isExpired && (
-        <div className={styles.section}>
-          <Banner variant="error" title="Release note expired">
-            This release note expired on {formatDate(note.expired_at)}.
-            The customer cannot collect their goods until a new release note is issued.
-          </Banner>
-        </div>
-      )}
-      {isExpired && storageFees > 0 && (
-        <div className={styles.section}>
-          <Banner variant="warning" title={`Outstanding storage fees: ${formatNgn(storageFees)}`}>
-            Storage fees continue to accrue until the goods are collected. The balance will carry forward to the re-issued note.
-          </Banner>
-        </div>
-      )}
-      {isExpired && (
-        <div className={styles.section}>
-          <Banner variant="warning" title="Warehouse notice">
-            Goods remaining in the warehouse past the release window may be subject to long-term storage charges.
-            Re-issue this note and notify the customer immediately.
-          </Banner>
-        </div>
-      )}
-
-      {/* Pickup success feedback */}
-      {note.pickup_code_locked && note.status === 'active' && (
-        <div className={styles.section}>
-          <Banner variant="error" title="Pickup code locked">
-            Too many wrong pickup codes were entered at the warehouse, so these goods cannot be released. Check with the
-            customer, then send them a new code.
-          </Banner>
-        </div>
-      )}
-      {codeSentVia && (
-        <div className={styles.successBanner}>
-          <Banner variant="success" title="New pickup code sent" dismissible onDismiss={() => setCodeSentVia(null)}>
-            Sent to the customer by {sentViaLabel(codeSentVia)}. Any earlier code no longer works.
-          </Banner>
-        </div>
-      )}
-      {pickupResult && (
-        <div className={styles.successBanner}>
-          <Banner variant="success" title="Pickup recorded">
-            {pickupResult.remaining_cartons > 0
-              ? `${pickupResult.remaining_cartons} carton(s) still pending collection on this note.`
-              : 'All cartons on this note have been collected.'}
-            {pickupResult.shipment_status === 'picked_up' && ' All customer cartons are now picked up — shipment tracking updated.'}
-          </Banner>
-        </div>
-      )}
-
-      {/* Stats */}
-      <div className={styles.statsRow}>
-        <StatCard label="Cartons on note" value={`${note.carton_count} of ${note.total_cartons_for_customer}`} />
-        <StatCard label="Type" value={releaseTypeLabel(note)} />
-        <StatCard label="Payment status" value={note.payment_status.replace('_', ' ')} />
-        {isExpired && storageFees > 0 && (
-          <StatCard label="Storage fees" value={formatNgn(storageFees)} />
-        )}
-      </div>
-
-      {/* Details */}
-      <div className={styles.section}>
-        <SectionHead title="Release details" />
-        <Card padding={20}>
-          <Kvp label="Reference" value={<Mono>{note.reference_number}</Mono>} />
-          {note.physical_document_number && (
-            <Kvp label="Physical document no." value={<Mono>{note.physical_document_number}</Mono>} />
-          )}
-          <Kvp label="Customer" value={note.customer_name ?? '—'} />
-          <Kvp label="Container" value={note.container_number ? <Mono>{note.container_number}</Mono> : '—'} />
+        }
+        notices={
+          <>
+            {isExpired && (
+              <Banner variant="error" title={`Release note expired on ${formatDate(note.expired_at)}`}>
+                The customer cannot collect their goods until a new release note is issued.
+                {storageFees > 0
+                  ? ` ${formatNgn(storageFees)} in outstanding storage fees will carry forward to the re-issued note.`
+                  : ' Goods remaining past the release window may accrue storage fees — re-issue and notify the customer.'}
+              </Banner>
+            )}
+            {note.pickup_code_locked && note.status === 'active' && (
+              <Banner variant="error" title="Pickup code locked">
+                Too many wrong pickup codes were entered at the warehouse, so these goods cannot be
+                released. Check with the customer, then send them a new code.
+              </Banner>
+            )}
+            {splitChild && (
+              <Banner variant="success" title="Child release note created" dismissible onDismiss={() => setSplitChild(null)}>
+                Moved selected cartons to{' '}
+                <RecordLink to={`/release-notes/${splitChild.id}`}>
+                  <Mono>{splitChild.reference_number}</Mono>
+                </RecordLink>
+                .
+              </Banner>
+            )}
+            {pickupResult && (
+              <Banner variant="success" title="Pickup recorded">
+                {pickupResult.remaining_cartons > 0
+                  ? `${plural(pickupResult.remaining_cartons, 'carton')} still to collect on this note.`
+                  : 'All cartons on this note have been collected.'}
+                {pickupResult.shipment_status === 'picked_up' &&
+                  ' All customer cartons are now picked up — shipment tracking updated.'}
+              </Banner>
+            )}
+          </>
+        }
+        // The figures looked for first; customer, container, reference and issue date are in the header (FD-19).
+        aside={
+          <Section title="Summary">
+            <Kvp
+              label="Cartons on this note"
+              value={
+                note.package_unit ? (
+                  <Mono>
+                    {note.packages_released} of {note.total_cartons_for_customer}{' '}
+                    {note.package_unit}
+                  </Mono>
+                ) : (
+                  <Mono>
+                    {note.carton_count} of {note.total_cartons_for_customer}
+                  </Mono>
+                )
+              }
+            />
+            {note.packages_balance != null && note.packages_balance > 0 && (
+              <Kvp label="Still to release" value={<Mono>{note.packages_balance}</Mono>} />
+            )}
+            <Kvp
+              label="Payment"
+              value={<StatusBadge kind="invoice" status={note.payment_status} />}
+            />
+            {(Number(note.amount_paid_ngn) > 0 || Number(note.balance_ngn) > 0) && (
+              <Kvp
+                label="Paid"
+                value={`${formatNgn(note.amount_paid_ngn)} of ${formatNgn(note.total_ngn)}, ${formatNgn(note.balance_ngn)} outstanding`}
+              />
+            )}
+            {isExpired && storageFees > 0 && (
+              <Kvp label="Storage fees" value={formatNgn(storageFees)} />
+            )}
+            {note.debt_due_date && (
+              <Kvp
+                label="Debt payment due"
+                value={formatDate(note.debt_due_date)}
+                divider={false}
+              />
+            )}
+          </Section>
+        }
+      >
+        <Section title="Release details">
+          <Kvp label="Type" value={releaseTypeLabel(note)} />
           <Kvp
-            label="Carton count"
+            optional
+            label="Physical document no."
+            value={note.physical_document_number && <Mono>{note.physical_document_number}</Mono>}
+          />
+          {note.packing_list_invoice_numbers.length > 0 && (
+            <Kvp
+              label={
+                note.packing_list_invoice_numbers.length === 1
+                  ? 'Packing list invoice'
+                  : 'Packing list invoices'
+              }
+              value={note.packing_list_invoice_numbers.join(', ')}
+            />
+          )}
+          <Kvp
+            optional
+            label="Warehouse"
             value={
-              note.package_unit
-                ? <Mono>{note.packages_released} of {note.total_cartons_for_customer} {note.package_unit}</Mono>
-                : <Mono>{note.carton_count} / {note.total_cartons_for_customer} (customer total)</Mono>
+              note.warehouse_name &&
+              `${note.warehouse_name}${note.warehouse_address ? `, ${note.warehouse_address}` : ''}`
             }
           />
-          {note.packages_balance != null && note.packages_balance > 0 && (
-            <Kvp label="Balance remaining" value={<Mono>{note.packages_balance}</Mono>} />
-          )}
-          {note.packing_list_invoice_numbers.length > 0 && (
-            <Kvp label="Packing list invoice(s)" value={note.packing_list_invoice_numbers.join(', ')} />
-          )}
-          <Kvp label="Warehouse" value={note.warehouse_name ? `${note.warehouse_name}${note.warehouse_address ? ` — ${note.warehouse_address}` : ''}` : '—'} />
-          <Kvp label="Issued" value={formatDate(note.authorized_at)} divider={!note.is_on_credit && !note.receipt_number} />
           {note.is_on_credit && (
             <Kvp
               label="On credit"
-              value={`Yes${note.credit_granted_by_name ? ` — granted by ${note.credit_granted_by_name}` : ''}`}
+              value={`Yes${note.credit_granted_by_name ? `, granted by ${note.credit_granted_by_name}` : ''}`}
             />
           )}
-          {note.receipt_number && <Kvp label="Receipt no." value={<Mono>{note.receipt_number}</Mono>} />}
-          {(Number(note.amount_paid_ngn) > 0 || Number(note.balance_ngn) > 0) && (
+          <Kvp
+            optional
+            label="Receipt no."
+            value={note.receipt_number && <Mono>{note.receipt_number}</Mono>}
+            divider={Boolean(note.parent_release_note_id)}
+          />
+          {note.parent_release_note_id && (
             <Kvp
-              label="Payment"
-              value={`${formatNgn(note.amount_paid_ngn)} paid of ${formatNgn(note.total_ngn)} — ${formatNgn(note.balance_ngn)} outstanding`}
+              label="Parent release note"
+              divider={false}
+              value={
+                <RecordLink to={`/release-notes/${note.parent_release_note_id}`}>
+                  View original note
+                </RecordLink>
+              }
             />
           )}
-          {note.debt_due_date && <Kvp label="Debt payment due" value={note.debt_due_date} divider={false} />}
-        </Card>
-      </div>
-
-      {/* Carton tags */}
-      <div className={styles.section}>
-        <SectionHead title="Carton tags" sub={`${note.carton_tags.length} tag(s) on this release note`} />
-        <Card padding={20}>
+        </Section>
+        <Section
+          title="Carton tags"
+          sub={`${plural(note.carton_tags.length, 'tag')} on this release note`}
+        >
           {note.carton_tags.length > 0 ? (
             <div className={styles.tagGrid}>
               {note.carton_tags.map((tag) => (
-                <span key={tag} className={styles.tag}>{tag}</span>
+                <span key={tag} className={styles.tag}>
+                  {tag}
+                </span>
               ))}
             </div>
           ) : (
             <span className={styles.mutedText}>No carton tags recorded.</span>
           )}
-        </Card>
-      </div>
-
+        </Section>
+      </DetailPage>
       {/* Modals */}
       {showPickup && (
         <RecordPickupModal
@@ -705,7 +708,10 @@ export function ReleaseNoteDetail(): JSX.Element {
             setShowPickup(false)
             setPickupResult(result)
             if (result.release_note_status !== note.status) {
-              qc.setQueryData(releaseNoteKeys.detail(id ?? ''), { ...note, status: result.release_note_status })
+              qc.setQueryData(releaseNoteKeys.detail(id ?? ''), {
+                ...note,
+                status: result.release_note_status,
+              })
             }
             // Ground-truth gap found live: none of this page's mutations
             // (pickup, split, reissue) ever invalidated the release-notes
@@ -721,8 +727,9 @@ export function ReleaseNoteDetail(): JSX.Element {
         <SplitModal
           note={note}
           onCancel={() => setShowSplit(false)}
-          onSuccess={(_child) => {
+          onSuccess={(child) => {
             setShowSplit(false)
+            setSplitChild(child)
             // releaseNoteKeys.detail(id) is a child of releaseNoteKeys.all, so
             // this one invalidation now refreshes this page as well as the list
             // — the explicit reload it replaced is redundant.
@@ -736,7 +743,10 @@ export function ReleaseNoteDetail(): JSX.Element {
           onCancel={() => setShowSendCode(false)}
           onSent={(sentVia) => {
             setShowSendCode(false)
-            setCodeSentVia(sentVia)
+            toast.success(
+              'New pickup code sent',
+              `Sent to the customer by ${sentViaLabel(sentVia)}. Any earlier code no longer works.`,
+            )
             void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
           }}
         />
@@ -752,6 +762,6 @@ export function ReleaseNoteDetail(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </>
   )
 }

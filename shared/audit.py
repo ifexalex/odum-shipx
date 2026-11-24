@@ -15,7 +15,7 @@ from shared.observability import record_failure
 logger = logging.getLogger(__name__)
 
 # Fields that must never appear in plaintext in audit JSONB snapshots.
-# Redacted to "***" before storage.
+# Redacted to "***" before storage (recursively across nested dicts/lists).
 _AUDIT_SENSITIVE_FIELDS = frozenset(
     {
         "id_number",  # passport / national ID (pickup_record)
@@ -24,15 +24,34 @@ _AUDIT_SENSITIVE_FIELDS = frozenset(
         "bank_name",  # bank name (refund_request)
         "delegate_phone",  # delegate collector phone (pickup_record)
         "collected_by_phone",  # collector phone (pickup_record)
+        "delivery_address",  # GDPR Art. 17 customer street/delivery PII
+        "secret",
+        "secret_key",
+        "secret_key_encrypted",
+        "api_key",
+        "access_token",
+        "server_token",
+        "password",
+        "refresh_token",
+        "token",
     }
 )
 
 
+def _mask_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {k: ("***" if str(k).lower() in _AUDIT_SENSITIVE_FIELDS else _mask_value(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_mask_value(item) for item in value]
+    return value
+
+
 def _mask_sensitive(state: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return a copy of state with sensitive fields replaced by '***'."""
+    """Return a copy of state with sensitive fields replaced by '***' recursively."""
     if not state:
         return state
-    return {k: ("***" if k in _AUDIT_SENSITIVE_FIELDS else v) for k, v in state.items()}
+    masked: dict[str, Any] = _mask_value(state)
+    return masked
 
 
 def log_audit(

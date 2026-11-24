@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -37,8 +37,14 @@ class DiscrepancyInput(BaseModel):
 
 
 class VerifyManifestRequest(BaseModel):
-    verification_status: VerificationStatus
+    verification_status: Literal[VerificationStatus.verified, VerificationStatus.discrepancies_found]
     discrepancies: list[DiscrepancyInput] | None = None
+
+    @model_validator(mode="after")
+    def _require_discrepancies_when_found(self) -> "VerifyManifestRequest":
+        if self.verification_status == VerificationStatus.discrepancies_found and not self.discrepancies:
+            raise ValueError("At least one discrepancy is required when verification_status is 'discrepancies_found'")
+        return self
 
 
 class ResolveDiscrepancyRequest(BaseModel):

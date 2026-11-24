@@ -14,7 +14,7 @@
  *    _enrich_billing() — no separate fetch needed for dispute status display.
  */
 
-import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat } from './client'
+import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat, type DataExportFormat } from './client'
 import type { PresignedResponse } from '../hooks/useFileUpload'
 
 // ---------------------------------------------------------------------------
@@ -76,6 +76,8 @@ export interface CBMDispute {
   customer_name?: string | null
   invoice_number?: string | null
   container_number?: string | null
+  reason?: string | null
+  customer_measured_cbm?: string | null
   acknowledged_at?: string | null
   /** 24h after submitted_at — SLA for first acknowledgement. */
   acknowledge_due_by?: string | null
@@ -222,6 +224,8 @@ export interface BillingListParams {
   /** ISO date (YYYY-MM-DD) — filters on `billed_at`, inclusive. */
   created_after?: string
   created_before?: string
+  /** Only invoices owed for over 30 days: what the list's "Overdue" stat opens (FD-18). */
+  overdue?: boolean
   cursor?: string
   limit?: number
   /** Column to sort by — must match shared/pagination.py's ALLOWED_SORT_FIELDS. */
@@ -459,8 +463,15 @@ export const billingApi = {
    * role too (own record only, enforced server-side), so this doubles as
    * the customer-facing "Download invoice" action.
    */
-  export: (id: string, format: ExportFormat) =>
+  export: (id: string, format: DataExportFormat) =>
     apiDownloadFile(`/v1/billing/${id}/export`, format, `billing-${id}.${format}`),
+
+  /** A payment's receipt as a PDF (FD-43), opened in a new tab. A customer may open their own. */
+  receiptPdf: (paymentId: string) =>
+    apiDownloadFile(`/v1/payments/${paymentId}/receipt/pdf`, 'pdf', `receipt-${paymentId}.pdf`),
+
+  /** The invoice as a branded PDF (FD-39), opened in a new tab. A customer may open their own. */
+  invoicePdf: (id: string) => apiDownloadFile(`/v1/billing/${id}/pdf`, 'pdf', `invoice-${id}.pdf`),
 
   /**
    * xlsx or csv export of the invoice list: every invoice matching the same filters and sort the list is showing
@@ -468,6 +479,13 @@ export const billingApi = {
    */
   exportList: (params: BillingExportParams, format: Exclude<ExportFormat, 'pdf'>) =>
     apiDownloadFile('/v1/billing/export', format, `invoices.${format}`, params as Record<string, string | undefined>),
+
+  /**
+   * xlsx or csv of the reports page's billing by container, every container billed in the period (the page lists the
+   * top 200). Tenant admin only. Refused with 422 EXPORT_TOO_LARGE past 10,000 containers.
+   */
+  exportReport: (params: { created_after?: string; created_before?: string }, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile('/v1/billing/report/export', format, `billing-by-container.${format}`, params),
 
   /** xlsx or csv export for all billing records in a container. */
   exportByContainer: (containerId: string, format: Exclude<ExportFormat, 'pdf'>) =>

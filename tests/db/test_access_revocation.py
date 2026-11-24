@@ -58,11 +58,12 @@ def _context(world, user_id: str, role: str = "nigeria_office_staff"):
 def _deactivate(world, user_id: str, cognito=None):
     from services.tenant_management import service
 
+    actor_id = str(uuid.uuid4()) if user_id == world["user"] else world["user"]
     with (
         patch_tenant_management("get_identity_provider", return_value=cognito or MagicMock()),
         patch_tenant_management("log_audit"),
     ):
-        return service.deactivate_user(world["tenant"], user_id, actor_id=world["user"])
+        return service.deactivate_user(world["tenant"], user_id, actor_id=actor_id)
 
 
 def _portal_login(admin, world) -> tuple[str, str]:

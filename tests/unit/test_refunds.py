@@ -231,7 +231,7 @@ class TestGetRefund:
             patch.object(service.repo, "get_customer_by_user_id", return_value=customer),
         ):
             ctx = _ctx(UserRole.CUSTOMER)
-            with pytest.raises(InsufficientPermissionsError):
+            with pytest.raises(ResourceNotFoundError):
                 service.get_refund(TENANT_ID, "refund-001", ctx)
 
     def test_not_found_raises_resource_not_found(self):
@@ -562,14 +562,14 @@ class TestRejectRefund:
 
 
 class TestRefundApprovalIsAtomic:
-    """The invoice reduction and the approval commit together, and only once."""
+    """Overpayment settlement and approval commit together, and compensation never shrinks total_ngn."""
 
-    def _refund(self):
+    def _refund(self, *, refund_type: str = "overpayment", customer_choice: str = "immediate_refund"):
         return _refund(
             status="pending_approval",
-            refund_type="damage_or_loss",
+            refund_type=refund_type,
             amount_ngn=Decimal("20000.00"),
-            customer_choice="immediate_refund",
+            customer_choice=customer_choice,
             billing_id="billing-001",
         )
 
@@ -578,11 +578,11 @@ class TestRefundApprovalIsAtomic:
         req.amount_approved_ngn = Decimal("20000")
         return req
 
-    def test_an_immediate_refund_hands_the_invoice_reduction_to_the_atomic_repo_call(self):
+    def test_an_overpayment_refund_hands_settlement_to_the_atomic_repo_call(self):
         from services.refunds import service
 
         with (
-            patch.object(service.repo, "get_refund_request_by_id", return_value=self._refund()),
+            patch.object(service.repo, "get_refund_request_by_id", return_value=self._refund(refund_type="overpayment")),
             patch.object(
                 service.repo, "approve_refund_and_adjust_billing", return_value=_refund(status="processed")
             ) as mock_approve,
@@ -595,11 +595,25 @@ class TestRefundApprovalIsAtomic:
         assert kwargs["reduction_ngn"] == Decimal("20000")
         assert mock_approve.call_args.args[2] == "processed"
 
-    def test_a_credit_for_the_next_shipment_does_not_reduce_any_invoice(self):
+    def test_a_damage_compensation_refund_does_not_reduce_any_invoice(self):
         from services.refunds import service
 
-        refund = self._refund()
-        refund["customer_choice"] = "credit_next_shipment"
+        with (
+            patch.object(service.repo, "get_refund_request_by_id", return_value=self._refund(refund_type="damage_or_loss")),
+            patch.object(
+                service.repo, "approve_refund_and_adjust_billing", return_value=_refund(status="processed")
+            ) as mock_approve,
+            patch("services.refunds.service.publish_event"),
+        ):
+            service.approve_refund(TENANT_ID, "refund-001", self._req(), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+
+        assert mock_approve.call_args.kwargs["billing_id"] is None
+        assert mock_approve.call_args.kwargs["reduction_ngn"] is None
+
+    def test_overpayment_applied_as_credit_also_settles_the_overpaid_invoice(self):
+        from services.refunds import service
+
+        refund = self._refund(refund_type="overpayment", customer_choice="credit_next_shipment")
         with (
             patch.object(service.repo, "get_refund_request_by_id", return_value=refund),
             patch.object(
@@ -609,8 +623,9 @@ class TestRefundApprovalIsAtomic:
         ):
             service.approve_refund(TENANT_ID, "refund-001", self._req(), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
 
-        assert mock_approve.call_args.kwargs["billing_id"] is None
-        assert mock_approve.call_args.kwargs["reduction_ngn"] is None
+        assert mock_approve.call_args.kwargs["billing_id"] == "billing-001"
+        assert mock_approve.call_args.kwargs["reduction_ngn"] == Decimal("20000")
+        assert mock_approve.call_args.args[2] == "applied_as_credit"
 
     def test_an_approval_that_lost_the_race_is_refused_and_publishes_nothing(self):
         from services.refunds import service

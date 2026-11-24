@@ -134,22 +134,44 @@ def verify_impersonation_token(token: str) -> dict[str, Any]:
 
 
 def _get_tenant_admin(target_tenant_id: str) -> dict[str, Any] | None:
-    """Return the active tenant_admin user for a given tenant, or None."""
-    # tenant_user's PK is `id` and its liveness column is `status` (an
-    # 'active'/'deactivated' enum, migration 001) — this query previously
-    # selected non-existent tu.user_id / tu.is_active columns, which made
-    # every impersonation attempt 500 against the real schema.
+    """Return an active tenant_admin user (primary or secondary role) for a given tenant, or None."""
     rows = execute_with_tenant(
         target_tenant_id,
         """
         SELECT tu.id AS user_id, tu.full_name
         FROM tenant_user tu
-        WHERE tu.tenant_id = %s AND tu.role = 'tenant_admin' AND tu.status = 'active'
+        LEFT JOIN tenant_user_role tur ON tur.tenant_user_id = tu.id AND tur.tenant_id = tu.tenant_id
+        WHERE tu.tenant_id = %s
+          AND tu.status = 'active'
+          AND (tu.role = 'tenant_admin' OR tur.role = 'tenant_admin')
+        ORDER BY (tu.role = 'tenant_admin') DESC, tu.created_at ASC
         LIMIT 1
         """,
         (target_tenant_id,),
     )
     return rows[0] if rows else None
+
+
+def end_all_sessions_for_tenant(
+    target_tenant_id: str,
+    reason: str = "tenant_suspended",
+    *,
+    end_reason: str | None = None,
+) -> None:
+    """Immediately terminate all active impersonation sessions for a suspended/offboarded tenant."""
+    from shared.db import execute_write_with_tenant_many
+
+    effective_reason = end_reason or reason
+    execute_write_with_tenant_many(
+        PLATFORM_TENANT_ID,
+        """
+        UPDATE impersonation_session
+        SET ended_at = NOW(), end_reason = %(reason)s
+        WHERE target_tenant_id = %(tenant_id)s AND ended_at IS NULL
+        RETURNING id
+        """,
+        {"tenant_id": target_tenant_id, "reason": effective_reason},
+    )
 
 
 def _get_tenant_status(target_tenant_id: str) -> str | None:
@@ -318,9 +340,6 @@ def end_impersonation(
     if not active:
         raise ResourceNotFoundError("impersonation_session", session_id)
 
-    if str(active.get("platform_admin_id", "")) != platform_admin_id:
-        raise ResourceNotFoundError("impersonation_session", session_id)
-
     ended = _end_session(session_id, end_reason)
     if not ended:
         raise ResourceNotFoundError("impersonation_session", session_id)
@@ -332,7 +351,11 @@ def end_impersonation(
         action="IMPERSONATION_END",
         actor_id=platform_admin_id,
         target_tenant_id=target_tenant_id,
-        details={"session_id": session_id, "end_reason": end_reason},
+        details={
+            "session_id": session_id,
+            "end_reason": end_reason,
+            "started_by": str(active.get("platform_admin_id") or ""),
+        },
         ip_address=ip_address,
     )
 

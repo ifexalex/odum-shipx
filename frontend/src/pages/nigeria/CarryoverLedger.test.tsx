@@ -11,7 +11,6 @@ import { ApiError } from '../../api/client'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { withQuery } from '../../test/queryWrapper'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { CarryoverLedger } from './CarryoverLedger'
 
 vi.mock('../../api/billing', async (importOriginal) => {
@@ -57,9 +56,9 @@ function renderPage(role: Session['role'] = 'tenant_admin') {
     withQuery(
       <MemoryRouter>
         <SessionContext.Provider value={ctx(role)}>
-          <TopBarTestWrapper>
+          <>
             <CarryoverLedger />
-          </TopBarTestWrapper>
+          </>
         </SessionContext.Provider>
       </MemoryRouter>,
     ),

@@ -9,7 +9,7 @@
  *   - the copy + the "are you a customer?" off-ramp keep the two from being confused.
  */
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { companyOnboardingApi } from '../../api/customer'
 import { Banner, Button, CountrySelect, Field, Icon, PhoneField } from '../../design/components'
@@ -66,13 +66,13 @@ export function RequestOnboardingScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Request received.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 24 }}>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Request received.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             Thanks, <strong>{companyName}</strong>. Our team will review your details and reach out to{' '}
             <strong>{contactEmail}</strong> to set up your workspace. No account has been created yet —
             we&apos;ll provision it with you.
@@ -92,16 +92,16 @@ export function RequestOnboardingScreen(): JSX.Element {
         sub="For shipping &amp; logistics companies — request onboarding to run your China→Nigeria operations on ShipX. This is a request; our team will follow up to set you up."
       />
 
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 'var(--space-5)' }}>
         <Banner variant="info" title="Are you a customer?">
           If you&apos;re a customer trying to track a shipment or access your account, this isn&apos;t the
           page — use the link your shipping company gave you, or{' '}
-          <button type="button" className={styles.link} onClick={() => navigate('/login')}>sign in</button>.
+          <Link to="/login" className={styles.link}>sign in</Link>.
         </Banner>
       </div>
 
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Couldn't submit">{error}</Banner>
         </div>
       )}
@@ -141,7 +141,7 @@ export function RequestOnboardingScreen(): JSX.Element {
           onChange={setContactPhone}
           optional
         />
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <CountrySelect
               label="Origin"
@@ -181,11 +181,9 @@ export function RequestOnboardingScreen(): JSX.Element {
         </Button>
       </form>
 
-      <p className={styles.footerLine} style={{ marginTop: 20 }}>
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
         Already set up?{' '}
-        <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/login')}>
-          Sign in →
-        </button>
+        <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
       </p>
     </AuthShell>
   )

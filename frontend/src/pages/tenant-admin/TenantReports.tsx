@@ -1,26 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, type CSSProperties, type JSX } from 'react'
+import { useMemo, type JSX } from 'react'
+import { Link, useInRouterContext, useNavigate } from 'react-router-dom'
 import { billingApi } from '../../api/billing'
 import { billingKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { Button, Card, DateRangeFilter, Icon, Mono, StatCard, Table } from '../../design/components'
+import { Banner, Card, DateRangeFilter, ErrorState, ExportButton, Icon, Mono, StatCard, Table, PageSkeleton, EmptyState } from '../../design/components'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { useListExport } from '../../hooks/useListExport'
 import { SectionHead } from '../../shell/SectionHead'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './TenantReports.module.css'
-import { formatNgn } from '../../lib/format'
+import { formatCbm, formatNgn, formatUsd } from '../../lib/format'
+import { PageHeader } from '../../shell/PageHeader'
+import { NEUTRAL_SERIES_COLOR, statusLabel, statusSeriesColors } from '../../design/status'
 
-const dateInputStyle: CSSProperties = {
-  height: 36,
-  boxSizing: 'border-box',
-  padding: '0 8px',
-  background: 'var(--color-page)',
-  border: '1px solid var(--color-line)',
-  borderRadius: 'var(--radius-sm)',
-  fontFamily: 'var(--font-body)',
-  fontSize: 13,
-  color: 'var(--color-ink)',
-}
+/** How many containers GET /v1/billing/report lists (REPORT_CONTAINER_ROWS in services/billing/repository.py). */
+const REPORT_CONTAINER_ROWS = 200
 
 function fmtNgn(n: number): string {
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`
@@ -62,20 +56,29 @@ function DonutChart({ segments, total }: { segments: DonutSegment[]; total: numb
   )
 }
 
+const DONUT_INVOICE_STATUSES = ['paid', 'partially_paid', 'unpaid', 'released_with_outstanding', 'waived'] as const
+
 // ─── Top customers horizontal bars ───────────────────────────────────────────
-function TopCustomersChart({ data }: { data: Array<{ name: string; amount: number }> }): JSX.Element {
+function TopCustomersChart({ data, inRouter }: { data: Array<{ name: string; amount: number }>; inRouter: boolean }): JSX.Element {
   const max = data[0]?.amount ?? 1
   return (
     <div>
-      {data.slice(0, 7).map((c, i) => (
+      {data.slice(0, 7).map((c) => (
         <div key={c.name} className={styles.topCustRow}>
-          <span className={styles.topCustName}>{c.name}</span>
+          {inRouter ? (
+            <Link to={`/admin/customers?q=${encodeURIComponent(c.name)}`} className={styles.topCustLink} title={c.name}>
+              {c.name}
+            </Link>
+          ) : (
+            <span className={styles.topCustName}>{c.name}</span>
+          )}
           <div className={styles.topCustBar}>
             <div
               className={styles.topCustFill}
               style={{
                 width: `${(c.amount / max) * 100}%`,
-                background: i === 0 ? 'var(--color-accent)' : 'var(--color-primary)',
+                // One series of amounts, not statuses: one neutral colour (the first bar is not special) (FD-52).
+                background: NEUTRAL_SERIES_COLOR,
               }}
             />
           </div>
@@ -91,11 +94,15 @@ function TopCustomersChart({ data }: { data: Array<{ name: string; amount: numbe
 // → container_pipeline) so this never needs every container row client-side.
 type PipelineWeek = { week: string; cn: number; transit: number; arrived: number; released: number }
 
+// Each stage group is coloured as the container status it stands for (FD-52): sealed in China, in transit, arrived,
+// fully released, with the registry's badge colours (in transit shares sealed's blue, so it takes the darker shade).
+const PIPELINE_STATUSES = ['sealed', 'in_transit', 'arrived', 'fully_released'] as const
+const PIPELINE_COLORS = statusSeriesColors('container', PIPELINE_STATUSES)
 const PIPELINE_GROUPS = [
-  { key: 'cn',       label: 'China',      color: 'var(--color-info)' },
-  { key: 'transit',  label: 'In transit', color: 'var(--color-accent)' },
-  { key: 'arrived',  label: 'Arrived',    color: 'var(--color-warning)' },
-  { key: 'released', label: 'Released',   color: 'var(--color-success)' },
+  { key: 'cn', label: 'China', color: PIPELINE_COLORS[0]! },
+  { key: 'transit', label: 'In transit', color: PIPELINE_COLORS[1]! },
+  { key: 'arrived', label: 'Arrived', color: PIPELINE_COLORS[2]! },
+  { key: 'released', label: 'Released', color: PIPELINE_COLORS[3]! },
 ] as const
 
 function ContainerPipelineChart({ data }: { data: PipelineWeek[] }): JSX.Element {
@@ -153,7 +160,7 @@ function ClaimsSummaryCard({ iconName, color, title, stats }: {
   stats: Array<[string, string]>
 }): JSX.Element {
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <div className={styles.claimCardHeader}>
         <div className={styles.claimIcon} style={{ background: color + '18', color }}>
           <Icon name={iconName} size={18} color={color} />
@@ -172,8 +179,20 @@ function ClaimsSummaryCard({ iconName, color, title, stats }: {
   )
 }
 
+function RouterTenantReports(): JSX.Element {
+  const navigate = useNavigate()
+  return <TenantReportsContent navigate={(to) => navigate(to)} />
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export function TenantReports(): JSX.Element {
+  const inRouter = useInRouterContext()
+  return inRouter ? <RouterTenantReports /> : <TenantReportsContent navigate={null} />
+}
+
+function TenantReportsContent({ navigate }: { navigate: ((to: string) => void) | null }): JSX.Element {
+  const inRouter = navigate !== null
+
   // "Billed/created/filed within" — null/'' means no date filter (the whole
   // report is "all time"), same opt-in-only rationale as every other list
   // page's date filter. Scopes billing, containers, and claims together;
@@ -181,35 +200,20 @@ export function TenantReports(): JSX.Element {
   // per-period metric, so it's intentionally left unscoped.
   const reportRange = useDateRangeFilter()
 
-  useTopBarSlot({
-    actions: (
-      <>
-        <DateRangeFilter value={reportRange.daysBack} onChange={reportRange.handlePreset} />
-        <input
-          type="date"
-          aria-label="From"
-          style={dateInputStyle}
-          value={reportRange.dateFrom}
-          max={reportRange.dateTo || undefined}
-          onChange={(e) => reportRange.handleCustomFrom(e.target.value)}
-        />
-        <input
-          type="date"
-          aria-label="To"
-          style={dateInputStyle}
-          value={reportRange.dateTo}
-          min={reportRange.dateFrom || undefined}
-          onChange={(e) => reportRange.handleCustomTo(e.target.value)}
-        />
-        <Button variant="secondary" icon="download">Export</Button>
-      </>
-    ),
-  })
-
   const { createdAfter, createdBefore } = reportRange
+  // The table's Export downloads every container billed in the period on screen; the table itself shows the top 200.
+  const exportReport = useListExport((format: 'xlsx' | 'csv') =>
+    billingApi.exportReport(
+      {
+        ...(createdAfter ? { created_after: createdAfter } : {}),
+        ...(createdBefore ? { created_before: createdBefore } : {}),
+      },
+      format,
+    ),
+  )
   // One SQL-computed report endpoint — correct at scale (previously summed a
   // capped `limit: 500` sample of billing/containers/claims per period).
-  const { data: report, isLoading: loading } = useQuery({
+  const { data: report, isLoading: loading, error: reportError, refetch } = useQuery({
     queryKey: billingKeys.report({ createdAfter, createdBefore }),
     queryFn: () => billingApi.report({ created_after: createdAfter, created_before: createdBefore }),
     staleTime: STALE_5_MIN,
@@ -223,26 +227,24 @@ export function TenantReports(): JSX.Element {
   const claimCounts = report?.claims ?? { open: 0, resolved: 0, total: 0 }
 
   const avgCbmPerContainer = containersProcessed > 0
-    ? (totalCbm / containersProcessed).toFixed(1)
+    ? formatCbm(totalCbm / containersProcessed)
     : '—'
 
   // Revenue donut segments
-  const DONUT_STATUS: Array<{ key: keyof NonNullable<typeof report>['overview']; label: string; color: string }> = [
-    { key: 'revenue_paid', label: 'Paid', color: 'var(--color-success)' },
-    { key: 'revenue_partially_paid', label: 'Partially paid', color: 'var(--color-warning)' },
-    { key: 'revenue_unpaid', label: 'Unpaid', color: 'var(--color-error)' },
-    { key: 'revenue_released_with_outstanding', label: 'Released w/ outstanding', color: 'var(--color-role-platform)' },
-    { key: 'revenue_waived', label: 'Waived', color: 'var(--color-ink-4)' },
-  ]
+  // Each slice is an invoice status: its words and colour come from the status registry, so "Released, balance owed"
+  // is the amber of its badge, not purple (FD-52). Colours are picked for the slices on screen, so a status keeps its
+  // badge's own shade unless another slice shares it.
   const donutSegments = useMemo(() => {
     if (!report) return []
-    return DONUT_STATUS
-      .map(({ key, label, color }) => {
-        const value = Number(report.overview[key] ?? 0)
-        return { label, value, color, amount: value }
-      })
-      .filter((s) => s.value > 0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const present = DONUT_INVOICE_STATUSES.map((status) => ({
+      status,
+      value: Number(report.overview[`revenue_${status}` as keyof typeof report.overview] ?? 0),
+    })).filter((s) => s.value > 0)
+    const colors = statusSeriesColors(
+      'invoice',
+      present.map((s) => s.status),
+    )
+    return present.map((s, i) => ({ label: statusLabel('invoice', s.status), value: s.value, color: colors[i]!, amount: s.value }))
   }, [report])
 
   // Top customers by amount billed (server-ranked, top 20).
@@ -266,67 +268,126 @@ export function TenantReports(): JSX.Element {
     [report],
   )
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading reports…</div>
+  const totalCollected = useMemo(() => {
+    if (containerBilling.length > 0) {
+      return containerBilling.reduce((sum, r) => sum + r.collected, 0)
+    }
+    return Number(report?.overview.revenue_paid ?? 0)
+  }, [containerBilling, report])
+
+  const collectionRate = totalRevenue > 0 ? Math.min(100, Math.round((totalCollected / totalRevenue) * 100)) : null
+
+  // The header holds the period filter, so it stays on screen while a new period loads; only the figures wait.
+  const header = <PageHeader title="Reports" actions={<DateRangeFilter label="Period" range={reportRange} />} />
+  if (loading) {
+    return (
+      <div>
+        {header}
+        <PageSkeleton kind="list" label="Loading reports" />
+      </div>
+    )
+  }
+
+  if (reportError) {
+    return (
+      <div>
+        {header}
+        <ErrorState
+          title="Couldn't load reports"
+          error={reportError}
+          onRetry={() => void refetch()}
+        />
+      </div>
+    )
+  }
 
   return (
     <div>
+      {header}
       {/* Section A — Overview stats */}
       <div className={styles.statsRow}>
-        <StatCard label="Containers processed" value={containersProcessed}   sublabel="cleared + released" icon="container" />
-        <StatCard label="Total revenue"         value={fmtNgn(totalRevenue)} sublabel="billed this period"  icon="coin" />
-        <StatCard label="Active customers"      value={customerCount}         sublabel="registered"          icon="users" />
-        <StatCard label="Avg CBM / container"   value={avgCbmPerContainer}    sublabel="total CBM / processed" icon="package" />
+        <StatCard label="Total revenue" value={fmtNgn(totalRevenue)} sublabel="billed this period" icon="coin" />
+        <StatCard
+          label="Collected"
+          value={fmtNgn(totalCollected)}
+          sublabel={collectionRate != null ? `${collectionRate}% collection rate` : 'collected this period'}
+          icon="check"
+        />
+        <StatCard
+          label="Containers processed"
+          value={containersProcessed}
+          sublabel={containersProcessed > 0 ? `avg ${avgCbmPerContainer} CBM / container` : 'cleared + released'}
+          icon="container"
+        />
+        <StatCard label="Active customers" value={customerCount} sublabel="registered" icon="users" />
       </div>
 
       {/* Section B — Revenue breakdown donut + top customers */}
-      <div className={styles.grid2} style={{ marginBottom: 24 }}>
+      <div className={styles.grid2} style={{ marginBottom: 'var(--space-6)' }}>
         <Card>
           <SectionHead title="Revenue by payment status" sub={`Total: ${fmtNgn(totalRevenue)}`} />
           <div style={{ height: 16 }} />
           {donutSegments.length > 0
             ? <DonutChart segments={donutSegments} total={totalRevenue} />
-            : <p style={{ color: 'var(--color-ink-4)', fontSize: 13 }}>No billing data yet.</p>}
+            : <p style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>No billing data yet.</p>}
         </Card>
         <Card>
           <SectionHead title="Top customers by revenue" />
           <div style={{ height: 16 }} />
           {topCustomers.length > 0
-            ? <TopCustomersChart data={topCustomers} />
-            : <p style={{ color: 'var(--color-ink-4)', fontSize: 13 }}>No billing data yet.</p>}
+            ? <TopCustomersChart data={topCustomers} inRouter={inRouter} />
+            : <p style={{ color: 'var(--color-ink-4)', fontSize: 'var(--text-sm)' }}>No billing data yet.</p>}
         </Card>
       </div>
 
       {/* Section C — Container pipeline (weekly stacked bar) */}
-      <Card style={{ marginBottom: 24 }}>
+      <Card style={{ marginBottom: 'var(--space-6)' }}>
         <SectionHead title="Container pipeline" sub="Containers created per week by stage" />
         <div style={{ height: 16 }} />
         <ContainerPipelineChart data={report?.container_pipeline ?? []} />
       </Card>
 
       {/* Section D — CBM & billing table */}
-      <Card padding={0} style={{ marginBottom: 24 }}>
+      <Card padding="none" style={{ marginBottom: 'var(--space-6)' }}>
         <div className={styles.tableHead}>
-          <SectionHead title="CBM &amp; billing by container" sub="Every container processed this period" />
-          <Button variant="secondary" size="sm" icon="download">Export</Button>
+          <SectionHead
+            title="CBM &amp; billing by container"
+            sub={
+              containerBilling.length >= REPORT_CONTAINER_ROWS
+                ? `The ${REPORT_CONTAINER_ROWS} containers billed most this period. Export for every container.`
+                : 'Every container billed this period'
+            }
+          />
+          <ExportButton size="sm" formats={['xlsx', 'csv']} onExport={exportReport.onExport} />
         </div>
+        {exportReport.error && (
+          <div className={styles.exportError}>
+            <Banner variant="error" title="Couldn't export the report" dismissible onDismiss={exportReport.dismissError}>
+              {exportReport.error}
+            </Banner>
+          </div>
+        )}
         <Table
           columns={[
-            { title: 'Container' },
-            { title: 'Customers', align: 'right' },
-            { title: 'Total CBM', align: 'right' },
-            { title: 'CBM rate', align: 'right' },
-            { title: 'FX rate', align: 'right' },
-            { title: 'Billed', align: 'right' },
-            { title: 'Collected', align: 'right' },
-            { title: 'Outstanding', align: 'right' },
+            { title: 'Container', type: 'reference' },
+            { title: 'Customers', type: 'number' },
+            { title: 'Volume (CBM)', type: 'number' },
+            { title: 'Rates (CBM / FX)' },
+            { title: 'Billed (₦)', type: 'money' },
+            { title: 'Collected (₦)', type: 'money' },
+            { title: 'Outstanding (₦)', type: 'money' },
           ]}
           rows={containerBilling.map((row) => ({
+            ...(navigate ? { onOpen: () => navigate(`/billing?q=${encodeURIComponent(row.ctn)}`) } : {}),
             cells: [
               <Mono key="ctn">{row.ctn}</Mono>,
               <Mono key="cust">{row.customers}</Mono>,
-              <Mono key="cbm">{Number(row.cbm).toFixed(2)}</Mono>,
-              <Mono key="cbmrate" color="var(--color-ink-3)">{row.cbmRateUsd > 0 ? `$${row.cbmRateUsd.toFixed(2)}` : '—'}</Mono>,
-              <Mono key="fx" color="var(--color-ink-3)">{row.dollarRate > 0 ? `₦${row.dollarRate.toFixed(0)}` : '—'}</Mono>,
+              <Mono key="cbm">{formatCbm(row.cbm)}</Mono>,
+              <Mono key="rates" color="var(--color-ink-3)">
+                {row.cbmRateUsd > 0 ? formatUsd(row.cbmRateUsd) : '—'}
+                {' · '}
+                {row.dollarRate > 0 ? `₦${row.dollarRate.toFixed(0)}` : '—'}
+              </Mono>,
               <Mono key="billed">{fmtNgn(row.billed)}</Mono>,
               <Mono key="collected" color="var(--color-success)">{fmtNgn(row.collected)}</Mono>,
               <Mono key="out" color={row.outstanding > 0 ? 'var(--color-warning)' : 'var(--color-ink-4)'}>
@@ -334,12 +395,12 @@ export function TenantReports(): JSX.Element {
               </Mono>,
             ],
           }))}
-          emptyState={<span>No billing records yet.</span>}
+          emptyState={<EmptyState compact title="No billing records yet" />}
         />
       </Card>
 
-      {/* Section E — Claims summary */}
-      <SectionHead title="Claims summary" />
+      {/* Section E — Claims & exceptions summary */}
+      <SectionHead title="Claims &amp; exceptions" />
       <div style={{ height: 12 }} />
       <div className={styles.claimsGrid}>
         <ClaimsSummaryCard
@@ -347,16 +408,22 @@ export function TenantReports(): JSX.Element {
           title="Damage claims"
           stats={[['Open', String(claimCounts.open)], ['Resolved', String(claimCounts.resolved)], ['Total', String(claimCounts.total)]]}
         />
-        <ClaimsSummaryCard
-          iconName="package" color="var(--color-warning)"
-          title="Missing items"
-          stats={[['Filed', '—'], ['Found', '—'], ['Lost', '—']]}
-        />
-        <ClaimsSummaryCard
-          iconName="coin" color="var(--color-success)"
-          title="Refunds issued"
-          stats={[['Approved', '—'], ['Total', '—'], ['', '']]}
-        />
+        {inRouter && (
+          <Card padding="default">
+            <div className={styles.claimCardHeader}>
+              <div className={styles.claimIcon} style={{ background: 'var(--color-surface-muted)', color: 'var(--color-ink-2)' }}>
+                <Icon name="package" size={18} color="var(--color-ink-2)" />
+              </div>
+              <span className={styles.claimCardTitle}>Exceptions &amp; refunds</span>
+            </div>
+            <div className={styles.quickLinks}>
+              <Link to="/claims" className={styles.quickLink}>Damage claims</Link>
+              <Link to="/missing-items" className={styles.quickLink}>Missing items</Link>
+              <Link to="/seized-items" className={styles.quickLink}>Seized items</Link>
+              <Link to="/refunds" className={styles.quickLink}>Refund requests</Link>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   )

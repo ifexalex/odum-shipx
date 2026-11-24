@@ -161,7 +161,7 @@ describe('China office view of missing items (UX-08)', () => {
   it('offers only the investigation statuses, never a decision', async () => {
     const dialog = await openUpdate()
     const options = within(dialog).getAllByRole('option').map((o) => o.textContent)
-    expect(options).toEqual(['Investigating', 'Found & shipping'])
+    expect(options).toEqual(['Investigating', 'Found, shipping'])
   })
 
   it('has no compensation field, even if the status is changed', async () => {

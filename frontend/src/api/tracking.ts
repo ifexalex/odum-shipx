@@ -136,6 +136,10 @@ export const containersApi = {
   exportList: (params: ContainerExportParams, format: Exclude<ExportFormat, 'pdf'>) =>
     apiDownloadFile('/v1/containers/export', format, `containers.${format}`, params as Record<string, string | undefined>),
 
+  /** The tracking tab's event log, oldest first, as xlsx or csv (GET /v1/containers/{id}/events/export). */
+  exportEvents: (id: string, format: Exclude<ExportFormat, 'pdf'>) =>
+    apiDownloadFile(`/v1/containers/${id}/events/export`, format, `tracking-${id}.${format}`),
+
   /** Tenant-wide per-status counts for the list stats row + chips — staff only,
    *  SQL-computed so it stays correct as containers grow past a single page. */
   stats: () => apiRequest<ContainerStats>({ method: 'GET', path: '/v1/containers/stats' }),
@@ -156,8 +160,8 @@ export const containersApi = {
 
 // ---------------------------------------------------------------------------
 // Container documents (Section 5.3 Documents tab)
-// Upload flow: POST presigned-url → S3 presigned-POST form upload → done
-// (the backend registers the document row when issuing the presigned URL).
+// Upload flow: POST presigned-url → PUT to storage → POST confirm. The document
+// is listed only once confirmed; the confirm call checks the stored size.
 // ---------------------------------------------------------------------------
 
 export type ContainerDocumentType =
@@ -198,6 +202,13 @@ export const containerDocumentsApi = {
       method: 'POST',
       path: `/v1/containers/${containerId}/documents/presigned-url`,
       body,
+    }),
+
+  /** After the upload: the API checks the stored size and lists the document. */
+  confirmUpload: (containerId: string, docId: string) =>
+    apiRequest<ContainerDocument>({
+      method: 'POST',
+      path: `/v1/containers/${containerId}/documents/${docId}/confirm`,
     }),
 
   /** Short-lived (5 min) GET URL with attachment disposition. */

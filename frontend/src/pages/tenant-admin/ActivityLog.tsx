@@ -36,19 +36,23 @@ import {
   Badge,
   Banner,
   Button,
-  Card,
   Chip,
   DateRangeFilter,
-  Icon,
   ListFooter,
   Modal,
   Mono,
   Table,
   type BadgeVariant,
+  SearchField,
+  Select,
+  EmptyState,
+  LinesSkeleton,
 } from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
-import styles from './admin.module.css'
-import { isoDateOffset, formatDateTime } from '../../lib/format'
+import {  formatDateTime } from '../../lib/format'
+import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
+import { PageHeader } from '../../shell/PageHeader'
 
 // Every entity_type actually written by shared.audit.log_audit(...) across
 // the backend, grouped into the categories a tenant admin actually thinks
@@ -101,6 +105,30 @@ function actionVariant(action: TenantActivityEntry['action']): BadgeVariant {
   return 'info'
 }
 
+function formatDiffVal(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function extractDiffRows(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown> | null,
+): Array<{ field: string; before: string; after: string }> {
+  const b = before ?? {}
+  const a = after ?? {}
+  const keys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)]))
+  const rows: Array<{ field: string; before: string; after: string }> = []
+  for (const key of keys) {
+    const bv = formatDiffVal(b[key])
+    const av = formatDiffVal(a[key])
+    if (before && after && bv === av) continue
+    rows.push({ field: key.replace(/_/g, ' '), before: bv, after: av })
+  }
+  return rows
+}
+
 export function ActivityLog(): JSX.Element {
   const [entries, setEntries] = useState<TenantActivityEntry[]>([])
   const [category, setCategory] = useState('')
@@ -108,17 +136,8 @@ export function ActivityLog(): JSX.Element {
   const [actionFilter, setActionFilter] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
-  const [daysBack, setDaysBack] = useState<number | null>(null)
-  // Exact custom range — reported directly by the user: presets alone
-  // ("last 7/30/90 days") aren't "fully functional" date filtering; an
-  // audit trail needs an exact from/to range too (e.g. "everything on the
-  // day of that disputed charge"). Take precedence over the preset once set.
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  // Resolved when the preset is chosen, not during render: Date.now() is impure,
-  // and recomputing it per render let the window slide forward while the page
-  // sat open, so two loads with the same preset could query different ranges.
-  const [presetFrom, setPresetFrom] = useState<string | undefined>(undefined)
+  // Presets and an exact from/to range (an audit trail needs "everything on the day of that disputed charge").
+  const when = useDateRangeFilter()
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [cursor, setCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -144,27 +163,7 @@ export function ActivityLog(): JSX.Element {
   // still queried with the stale entity type.
   const effectiveEntityFilter = entityFilter && entityOptions.includes(entityFilter) ? entityFilter : ''
 
-  // An explicit custom date always wins over the "last N days" preset —
-  // picking one clears the other so the two controls never silently fight.
-  const createdAfter = dateFrom || presetFrom
-  const createdBefore = dateTo || undefined
-
-  function handlePreset(days: number | null): void {
-    setDaysBack(days)
-    setPresetFrom(days ? isoDateOffset(-days) : undefined)
-    setDateFrom('')
-    setDateTo('')
-  }
-  function handleCustomFrom(value: string): void {
-    setDateFrom(value)
-    setDaysBack(null)
-    setPresetFrom(undefined)
-  }
-  function handleCustomTo(value: string): void {
-    setDateTo(value)
-    setDaysBack(null)
-    setPresetFrom(undefined)
-  }
+  const { createdAfter, createdBefore } = when
 
   const load = useCallback(
     async (nextCursor?: string) => {
@@ -209,7 +208,6 @@ export function ActivityLog(): JSX.Element {
   }, [effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection])
 
   const expandedEntry = entries.find((e) => e.id === expandedId) ?? null
-  const filtersActive = !!(category || actionFilter || search || daysBack || dateFrom || dateTo)
 
   function clearFilters(): void {
     setCategory('')
@@ -217,153 +215,151 @@ export function ActivityLog(): JSX.Element {
     setActionFilter('')
     setSearchInput('')
     setSearch('')
-    setDaysBack(null)
-    setPresetFrom(undefined)
-    setDateFrom('')
-    setDateTo('')
+    when.clear()
   }
 
-  useTopBarSlot({ subtitle: 'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.' })
-
   return (
-    <div>
-
-      {error && <div style={{ marginBottom: 16 }}><Banner variant="error" title="Couldn't load">{error}</Banner></div>}
-
-      <Card padding={16} style={{ marginBottom: 16 }}>
-        {/* Row 1 — primary dimension as chips + search, matching every other
-            tenant-admin list page (Customers / Users / Billing). */}
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={category === ''} onClick={() => setCategory('')}>
-              All
-            </Chip>
-            {CATEGORIES.map((c) => (
-              <Chip
-                key={c.label}
-                active={category === c.label}
-                onClick={() => setCategory(category === c.label ? '' : c.label)}
-              >
-                {c.label}
-              </Chip>
-            ))}
-          </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              aria-label="Search"
-              placeholder="Person's name, or paste a record id…"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Row 2 — secondary controls, all on the same 36px baseline. */}
-        <div className={styles.filterControls}>
-          <div className={styles.controlGroup}>
-            <label htmlFor="activity_entity_type" className={styles.controlLabel}>Record type</label>
-            <select
-              id="activity_entity_type"
-              className={styles.control}
-              style={{ textTransform: 'capitalize' }}
-              value={effectiveEntityFilter}
-              onChange={(e) => setEntityFilter(e.target.value)}
-            >
-              <option value="">{activeCategory ? `All in ${activeCategory.label}` : 'All types'}</option>
-              {entityOptions.map((t) => (
-                <option key={t} value={t} style={{ textTransform: 'capitalize' }}>{humanEntity(t)}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.controlGroup}>
-            <label htmlFor="activity_action" className={styles.controlLabel}>Action</label>
-            <select
-              id="activity_action"
-              className={styles.control}
-              style={{ textTransform: 'capitalize' }}
-              value={actionFilter}
-              onChange={(e) => setActionFilter(e.target.value)}
-            >
-              <option value="">All actions</option>
-              {ACTIONS.map((a) => (
-                <option key={a} value={a} style={{ textTransform: 'capitalize' }}>{a.replace(/_/g, ' ').toLowerCase()}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.controlGroup}>
-            <span className={styles.controlLabel}>When</span>
-            <DateRangeFilter value={daysBack} onChange={handlePreset} />
-          </div>
-
-          <div className={styles.controlGroup}>
-            <span className={styles.controlLabel}>From</span>
-            <input
-              type="date"
-              className={styles.control}
-              aria-label="From (custom)"
-              value={dateFrom}
-              max={dateTo || undefined}
-              onChange={(e) => handleCustomFrom(e.target.value)}
-            />
-          </div>
-
-          <div className={styles.controlGroup}>
-            <span className={styles.controlLabel}>To</span>
-            <input
-              type="date"
-              className={styles.control}
-              aria-label="To (custom)"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={(e) => handleCustomTo(e.target.value)}
-            />
-          </div>
-
-          <div className={styles.controlGroup}>
-            <label htmlFor="activity_sort" className={styles.controlLabel}>Sort</label>
-            <select
-              id="activity_sort"
-              className={styles.control}
-              value={sortDirection}
-              onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-            >
-              <option value="desc">Newest first</option>
-              <option value="asc">Oldest first</option>
-            </select>
-          </div>
-
-          {filtersActive && (
-            <Button variant="ghost" onClick={clearFilters}>Clear filters</Button>
-          )}
-        </div>
-      </Card>
-
-      <Card padding={0}>
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Activity log"
+            meta={
+              'Every recorded change in your account — who did what, and when. Confirmed/rejected payments, refunds, and claims all show exactly what changed, not just that something did.'
+            }
+          />
+        }
+        notices={
+          <>
+            {error && (
+              <Banner variant="error" title="Couldn't load">
+                {error}
+              </Banner>
+            )}
+          </>
+        }
+        filters={
+          <FilterBar
+            label="Filter the activity log"
+            activeCount={
+              [category, actionFilter, effectiveEntityFilter, when.isActive].filter(Boolean).length
+            }
+            onClear={clearFilters}
+            status={
+              <>
+                <Chip active={category === ''} onClick={() => setCategory('')}>
+                  All
+                </Chip>
+                {CATEGORIES.map((c) => (
+                  <Chip
+                    key={c.label}
+                    active={category === c.label}
+                    onClick={() => setCategory(category === c.label ? '' : c.label)}
+                  >
+                    {c.label}
+                  </Chip>
+                ))}
+              </>
+            }
+            search={
+              <>
+                <SearchField
+                  label="Search the activity log"
+                  placeholder="Person's name, or paste a record id…"
+                  value={searchInput}
+                  onChange={setSearchInput}
+                />
+              </>
+            }
+            dateRange={
+              <>
+                <DateRangeFilter label="When" range={when} />
+              </>
+            }
+            more={
+              <>
+                <Select
+                  label="Record type"
+                  id="activity_entity_type"
+                  value={effectiveEntityFilter}
+                  onChange={(e) => setEntityFilter(e.target.value)}
+                >
+                  <option value="">
+                    {activeCategory ? `All in ${activeCategory.label}` : 'All types'}
+                  </option>
+                  {entityOptions.map((t) => (
+                    <option key={t} value={t} style={{ textTransform: 'capitalize' }}>
+                      {humanEntity(t)}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Action"
+                  id="activity_action"
+                  value={actionFilter}
+                  onChange={(e) => setActionFilter(e.target.value)}
+                >
+                  <option value="">All actions</option>
+                  {ACTIONS.map((a) => (
+                    <option key={a} value={a} style={{ textTransform: 'capitalize' }}>
+                      {a.replace(/_/g, ' ').toLowerCase()}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  label="Sort"
+                  id="activity_sort"
+                  value={sortDirection}
+                  onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+                >
+                  <option value="desc">Newest first</option>
+                  <option value="asc">Oldest first</option>
+                </Select>
+              </>
+            }
+          />
+        }
+        footer={
+          <ListFooter
+            shown={entries.length}
+            total={totalCount}
+            hasMore={hasMore}
+            loading={loading}
+            onLoadMore={() => void load(cursor ?? undefined)}
+            noun="log entries"
+            nounOne="log entry"
+          />
+        }
+      >
         <Table
           columns={[
-            { title: 'Timestamp' },
+            { title: 'Timestamp', type: 'date' },
             { title: 'Record' },
+            { title: 'Record ID', type: 'reference' },
             { title: 'Action' },
             { title: 'By' },
-            { title: '', width: '90px' },
+            { title: '', type: 'action', width: '90px' },
           ]}
           rows={entries.map((e) => ({
             cells: [
               <Mono key="ts">{formatDateTime(e.created_at, { year: false })}</Mono>,
-              <span key="entity" style={{ fontSize: 13, textTransform: 'capitalize' }}>{humanEntity(e.entity_type)}</span>,
-              <Badge key="action" variant={actionVariant(e.action)}>{e.action.replace(/_/g, ' ')}</Badge>,
-              <span key="actor" style={{ fontSize: 13, color: 'var(--color-ink-3)' }}>{e.actor_name ?? (e.actor_id ? e.actor_id.slice(0, 8) : 'System')}</span>,
-              (e.before_state || e.after_state) ? (
-                <Button
-                  key="details"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setExpandedId(e.id)}
-                >
+              <span
+                key="entity"
+                style={{ fontSize: 'var(--text-sm)', textTransform: 'capitalize' }}
+              >
+                {humanEntity(e.entity_type)}
+              </span>,
+              <Mono key="ref" color="var(--color-ink-3)">
+                {e.entity_id ? e.entity_id.slice(0, 8) : '—'}
+              </Mono>,
+              <Badge key="action" variant={actionVariant(e.action)}>
+                {e.action.replace(/_/g, ' ')}
+              </Badge>,
+              <span key="actor" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-3)' }}>
+                {e.actor_name ?? (e.actor_id ? e.actor_id.slice(0, 8) : 'System')}
+              </span>,
+              e.before_state || e.after_state ? (
+                <Button key="details" variant="ghost" size="sm" onClick={() => setExpandedId(e.id)}>
                   Details
                 </Button>
               ) : (
@@ -372,56 +368,158 @@ export function ActivityLog(): JSX.Element {
             ],
           }))}
           emptyState={
-            <span style={{ color: 'var(--color-ink-3)', fontSize: 13 }}>
-              {loading ? 'Loading activity…' : 'No activity matches these filters.'}
-            </span>
+            loading ? (
+              <LinesSkeleton label="Loading activity" />
+            ) : (
+              <EmptyState compact title="No activity matches these filters" />
+            )
           }
         />
-      </Card>
-
+      </ListPage>
       <Modal
         open={!!expandedEntry}
         onClose={() => setExpandedId(null)}
-        title={expandedEntry ? `${humanEntity(expandedEntry.entity_type)} — ${expandedEntry.action.replace(/_/g, ' ')}` : undefined}
-        width={720}
+        title={
+          expandedEntry
+            ? `${humanEntity(expandedEntry.entity_type)} — ${expandedEntry.action.replace(/_/g, ' ')}`
+            : undefined
+        }
+        size="lg"
       >
-        {expandedEntry && (
-          <>
-            <div style={{ fontSize: 12, color: 'var(--color-ink-3)', marginBottom: 16 }}>
-              {formatDateTime(expandedEntry.created_at)}
-              {' · by '}
-              {expandedEntry.actor_name ?? (expandedEntry.actor_id ? expandedEntry.actor_id.slice(0, 8) : 'System')}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-                  Before
-                </div>
-                <pre style={{ margin: 0, fontSize: 12, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 12, borderRadius: 8 }}>
-                  {JSON.stringify(expandedEntry.before_state ?? {}, null, 2)}
-                </pre>
+        {expandedEntry && (() => {
+          const diffRows = extractDiffRows(expandedEntry.before_state, expandedEntry.after_state)
+          return (
+            <>
+              <div
+                style={{
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--color-ink-3)',
+                  marginBottom: 'var(--space-4)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 'var(--space-2)',
+                  alignItems: 'center',
+                }}
+              >
+                <span>{formatDateTime(expandedEntry.created_at)}</span>
+                <span>· by {expandedEntry.actor_name ?? (expandedEntry.actor_id ? 'A former user' : 'System')}</span>
+                {expandedEntry.entity_id && (
+                  <span>· ID <Mono color="var(--color-ink-2)">{expandedEntry.entity_id}</Mono></span>
+                )}
               </div>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-ink-4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
-                  After
-                </div>
-                <pre style={{ margin: 0, fontSize: 12, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', overflowX: 'auto', background: 'var(--color-page)', padding: 12, borderRadius: 8 }}>
-                  {JSON.stringify(expandedEntry.after_state ?? {}, null, 2)}
-                </pre>
-              </div>
-            </div>
-          </>
-        )}
-      </Modal>
 
-      <ListFooter
-        shown={entries.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={loading}
-        onLoadMore={() => void load(cursor ?? undefined)}
-        noun="log entries"
-      />
-    </div>
+              {diffRows.length > 0 && (
+                <div style={{ marginBottom: 'var(--space-4)' }}>
+                  <div
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      fontWeight: 700,
+                      color: 'var(--color-ink-4)',
+                      textTransform: 'uppercase',
+                      letterSpacing: 'var(--tracking-label)',
+                      marginBottom: 'var(--space-2)',
+                    }}
+                  >
+                    Changed fields
+                  </div>
+                  <Table
+                    columns={[
+                      { title: 'Field' },
+                      { title: 'Before' },
+                      { title: 'After' },
+                    ]}
+                    rows={diffRows.map((row) => ({
+                      cells: [
+                        <span key="f" style={{ fontWeight: 600, textTransform: 'capitalize' }}>{row.field}</span>,
+                        <Mono key="b" color="var(--color-ink-3)">{row.before}</Mono>,
+                        <Mono key="a" color="var(--color-ink)">{row.after}</Mono>,
+                      ],
+                    }))}
+                  />
+                </div>
+              )}
+
+              <details>
+                <summary
+                  style={{
+                    cursor: 'pointer',
+                    fontSize: 'var(--text-xs)',
+                    fontWeight: 600,
+                    color: 'var(--color-ink-3)',
+                    marginBottom: 'var(--space-3)',
+                  }}
+                >
+                  Raw JSON payload
+                </summary>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: 'var(--space-4)',
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 700,
+                        color: 'var(--color-ink-4)',
+                        textTransform: 'uppercase',
+                        letterSpacing: 'var(--tracking-label)',
+                        marginBottom: 'var(--space-2)',
+                      }}
+                    >
+                      Before
+                    </div>
+                    <pre
+                      style={{
+                        margin: 0,
+                        fontSize: 'var(--text-xs)',
+                        fontFamily: 'var(--font-mono)',
+                        whiteSpace: 'pre-wrap',
+                        overflowX: 'auto',
+                        background: 'var(--color-page)',
+                        padding: 'var(--space-3)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      {JSON.stringify(expandedEntry.before_state ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: 700,
+                        color: 'var(--color-ink-4)',
+                        textTransform: 'uppercase',
+                        letterSpacing: 'var(--tracking-label)',
+                        marginBottom: 'var(--space-2)',
+                      }}
+                    >
+                      After
+                    </div>
+                    <pre
+                      style={{
+                        margin: 0,
+                        fontSize: 'var(--text-xs)',
+                        fontFamily: 'var(--font-mono)',
+                        whiteSpace: 'pre-wrap',
+                        overflowX: 'auto',
+                        background: 'var(--color-page)',
+                        padding: 'var(--space-3)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      {JSON.stringify(expandedEntry.after_state ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </details>
+            </>
+          )
+        })()}
+      </Modal>
+    </>
   )
 }

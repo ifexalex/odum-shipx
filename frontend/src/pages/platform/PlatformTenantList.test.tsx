@@ -91,11 +91,11 @@ describe('PlatformTenantList (B2)', () => {
     expect(screen.queryByText('Acme Logistics')).toBeNull()
   })
 
-  it('opens a tenant on view', async () => {
+  it('opens a tenant from its row', async () => {
     renderPage()
     await screen.findByText('Acme Logistics')
     const firstRow = screen.getByText('Acme Logistics').closest('tr')!
-    await userEvent.click(within(firstRow).getByText('View'))
+    await userEvent.click(within(firstRow).getAllByRole('button')[0]!)
     expect(await screen.findByText('Tenant detail')).toBeInTheDocument()
   })
 })

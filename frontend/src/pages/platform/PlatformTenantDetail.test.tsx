@@ -179,7 +179,7 @@ describe('PlatformTenantDetail tabs read through hooks (FE-05)', () => {
     expect(await screen.findByText('Ada Obi')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: 'Configuration' }))
-    expect(await screen.findByText('{"primary_color":"#123456"}')).toBeInTheDocument()
+    expect(await screen.findByText('#123456')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: 'Audit log' }))
     expect(await screen.findByText('TENANT EXPORT LINK ISSUED')).toBeInTheDocument()

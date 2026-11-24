@@ -19,6 +19,7 @@ import type { ExportFormat } from '../../api/client'
 import { Button } from './Button'
 import { Icon } from './Icon'
 import styles from './ExportButton.module.css'
+import { runDocument } from '../../lib/documents'
 
 // Generic over the formats actually offered, so `formats={['xlsx', 'csv']}`
 // narrows onExport's parameter to 'xlsx' | 'csv' — callers backed by endpoints
@@ -54,11 +55,12 @@ export function ExportButton<F extends ExportFormat>({
 
   const defaultFormat = formats[0]!
 
+  // Feedback while the file is prepared and the reason if it fails (FD-44): it used to fail without a word.
   async function handleExport(fmt: F): Promise<void> {
     setExporting(fmt)
     setOpen(false)
     try {
-      await onExport(fmt)
+      await runDocument(fmt === 'pdf' ? 'the PDF' : 'the export', () => onExport(fmt))
     } finally {
       setExporting(null)
     }

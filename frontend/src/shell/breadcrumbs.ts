@@ -44,19 +44,23 @@ function allows(route: RouteDef, roles: readonly UserRole[]): boolean {
   return route.allow === 'public' || roles.some((role) => (route.allow as UserRole[]).includes(role))
 }
 
+/** Whether one of `roles` may open `pathname` (a concrete address such as `/admin/customers/c1`). */
+export function canOpen(pathname: string, roles: readonly UserRole[]): boolean {
+  const match = matchRoute(pathname)
+  return !!match && allows(match.route, roles)
+}
+
 /**
  * The trail for `pathname`: every ancestor as a link, then the current page. Empty for a top-level page.
  *
  * @param pathname The current location.
  * @param roles Every role the user holds; an ancestor none of them may open is left out.
  * @param labels Record labels the pages supplied, by route pattern.
- * @param fallbackLabel A label for the current page when it supplied none (the staff top bar's suffix).
  */
 export function breadcrumbTrail(
   pathname: string,
   roles: readonly UserRole[],
   labels: Readonly<Record<string, string>> = {},
-  fallbackLabel?: string | null,
 ): Crumb[] {
   const match = matchRoute(pathname)
   if (!match?.route.parent) return []
@@ -69,7 +73,7 @@ export function breadcrumbTrail(
   }
   // Nothing above it this role can open (China staff on CBM disputes): a lone crumb would only repeat the title.
   if (ancestors.length === 0) return []
-  const current = labels[route.path] ?? fallbackLabel ?? route.crumb ?? route.title
+  const current = labels[route.path] ?? route.crumb ?? route.title
   return [...ancestors, { label: current }]
 }
 

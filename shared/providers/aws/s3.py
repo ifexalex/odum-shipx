@@ -75,6 +75,10 @@ class S3StorageProvider:
             return None
         return int(resp["ContentLength"])
 
+    def delete_object(self, key: str) -> None:
+        # A plain delete; on a versioned bucket the old version is purged by the lifecycle rule.
+        self._s3().delete_object(Bucket=self._bucket, Key=key)
+
     def delete_prefix(self, prefix: str) -> int:
         """Delete all objects, versions, and delete-markers under `prefix`.
 

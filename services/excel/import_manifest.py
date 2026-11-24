@@ -135,6 +135,21 @@ _UNIT_NORMALIZATION: dict[str, str] = {
 _ANNOTATION_UNITS = frozenset({"item"})
 
 _RED_RGB_PREFIXES = ("FFFF0000", "00FF0000")  # openpyxl ARGB hex for pure red
+_MAX_SHEET_ROWS = 20_000
+
+
+def _clean_id_str(raw: Any) -> str | None:
+    """Convert an ID/phone/bale cell value to string, stripping Excel's trailing '.0' on integers."""
+    if raw is None:
+        return None
+    if isinstance(raw, float) and raw.is_integer():
+        return str(int(raw))
+    text = str(raw).strip()
+    if not text:
+        return None
+    if re.fullmatch(r"\d+\.0", text):
+        return text[:-2]
+    return text
 
 
 def _cell_value(ws: Worksheet, row: int, col: int) -> Any:
@@ -379,7 +394,7 @@ def _parse_manifest_sheet(
     rows: list[dict[str, Any]] = []
     total_rows = 0
 
-    for row_idx in range(header_row + 1, ws.max_row + 1):
+    for row_idx in range(header_row + 1, min(ws.max_row, _MAX_SHEET_ROWS) + 1):
         # The real source file repeats a fresh header row at each layout
         # switch (a new "page" with different columns) — re-check every row
         # against the alias table and swap in a new column map when one
@@ -448,17 +463,17 @@ def _parse_manifest_sheet(
 
         row_dict: dict[str, Any] = {
             "customer_name": customer_name,
-            "customer_phone": str(by_field.get("customer_phone") or "").strip() or None,
+            "customer_phone": _clean_id_str(by_field.get("customer_phone")),
             "description": description,
-            "delivery_note_number": str(by_field.get("delivery_note_number") or "").strip() or None,
+            "delivery_note_number": _clean_id_str(by_field.get("delivery_note_number")),
             "quantity": quantity,
             "quantity_raw": str(quantity_raw).strip() if quantity_raw is not None else None,
             "package_unit": package_unit,
             "cbm": float(cbm_value) if cbm_value is not None else 0.0,
             "weight_actual_kg": float(weight_actual) if weight_actual is not None else None,
-            "bale_no": str(by_field.get("bale_no") or "").strip() or None,
+            "bale_no": _clean_id_str(by_field.get("bale_no")),
             "bale_type": _bale_type(by_field.get("package_unit")),
-            "original_receipt_number": str(by_field.get("original_receipt_number") or "").strip() or None,
+            "original_receipt_number": _clean_id_str(by_field.get("original_receipt_number")),
             "delivery_zone": str(by_field.get("delivery_zone") or "").strip() or None,
             "on_hold": on_hold,
         }
@@ -492,7 +507,10 @@ def parse_manifest_xlsx(
         weight_actual_kg, bale_no, original_receipt_number, delivery_zone,
         on_hold), each tagged with its source `sheet_name`.
     """
-    wb = openpyxl.load_workbook(file_buffer, data_only=True)
+    try:
+        wb = openpyxl.load_workbook(file_buffer, data_only=True)
+    except Exception as exc:
+        raise ValueError("Invalid or corrupted .xlsx workbook") from exc
 
     container_metadata: dict[str, Any] = {}
     rows: list[dict[str, Any]] = []

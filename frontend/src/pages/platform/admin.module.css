@@ -1,25 +1,20 @@
-.banner { margin-bottom: 16px; }
-.tableWrap { margin-top: 16px; }
-.statusBadge { display: inline-flex; align-items: center; }
-.formCard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 24px; display: flex; flex-direction: column; gap: 16px; max-width: 560px; }
-.formActions { display: flex; gap: 8px; justify-content: flex-end; }
-.section { margin-top: 24px; }
-.dangerZone { border: 1px solid var(--color-error); border-radius: var(--radius-md); padding: 20px; margin-top: 24px; }
-.dangerTitle { font-weight: 700; color: var(--color-error); font-size: 0.9375rem; margin: 0 0 8px; }
-.dangerDesc { font-size: 0.8125rem; color: var(--color-text-muted); margin: 0 0 12px; }
+.banner { margin-bottom: var(--space-4); }
+.formCard { background: var(--color-surface); border: 1px solid var(--color-line-soft); border-radius: var(--radius-lg); box-shadow: var(--shadow-rest); padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); max-width: 560px; }
+.formActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+.section { margin-top: var(--space-6); }
 /* Modal — mobile-first bottom sheet, see
    nigeria/ReleaseNoteDetail.module.css's matching comment for the
    pattern reference. */
-.modalOverlay { position: fixed; inset: 0; background: rgba(11,47,13,0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 200; }
-.modalPanel { background: var(--color-surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 24px 20px; width: 100%; display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
-.modalTitle { font-size: 1rem; font-weight: 700; margin: 0; }
+.modalOverlay { position: fixed; inset: 0; background: var(--scrim-modal); display: flex; align-items: flex-end; justify-content: center; z-index: var(--layer-modal); }
+.modalPanel { background: var(--color-surface); border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding: var(--space-6) var(--space-5); width: 100%; display: flex; flex-direction: column; gap: var(--space-4); box-shadow: var(--shadow-modal); max-height: 90vh; overflow-y: auto; }
+.modalTitle { font-size: var(--text-lg); font-weight: 600; margin: 0; }
 .modalBanner { margin: 0; }
-.modalActions { display: flex; gap: 8px; justify-content: flex-end; }
-.modalActions > * { min-height: 48px; font-size: 1rem; }
+.modalActions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+.modalActions > * { min-height: 48px; font-size: var(--text-lg); }
 
 @container sxapp (min-width: 861px) {
-  .modalOverlay { align-items: center; padding: 16px; }
-  .modalPanel { border-radius: var(--radius-lg); max-width: 480px; padding: 24px; }
+  .modalOverlay { align-items: center; padding: var(--space-4); }
+  .modalPanel { border-radius: var(--radius-xl); max-width: var(--dialog-sm); padding: var(--space-6); }
   .modalActions > * { min-height: 36px; font-size: inherit; }
 }
 
@@ -27,10 +22,11 @@
 .dashCols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 20px;
-  align-items: start;
+  gap: var(--space-5);
+  /* Cards side by side share one height (FD-10). */
+  align-items: stretch;
 }
-@container sxapp (max-width: 1080px) {
+@container sxapp (max-width: 1200px) {
   .dashCols {
     grid-template-columns: 1fr;
   }
@@ -40,6 +36,31 @@
 .tenantActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: 100%;
+}
+
+/* Falcon card-header and footer bands for platform dashboard cards. */
+.cardHeader {
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface-muted);
+  border-bottom: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.cardHeader > :first-child {
+  margin-bottom: 0;
+}
+.cardFooter {
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-surface-muted);
+  border-top: 1px solid var(--color-line-soft);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  text-align: center;
+}
+
+/* "Showing 3 of 12 tenants" under the tenant table. */
+.showing {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-ink-4);
 }

@@ -61,3 +61,15 @@ export function customerChoiceLabel(choice: Refund['customer_choice']): string {
   if (choice === 'credit_next_shipment') return 'Credit on next shipment'
   return '—'
 }
+
+/**
+ * Why the bank details for a refund to a bank account cannot be sent yet, or null when they can. Mirrors
+ * `CreateRefundRequest` (services/refunds/models.py): all three required, the account number 10 digits (NUBAN).
+ */
+export function bankDetailsProblem(details: { bankName: string; accountNumber: string; accountName: string }): string | null {
+  if (details.bankName.trim().length < 2) return 'Enter the name of your bank.'
+  if (!/^\d{10}$/.test(details.accountNumber.trim())) return 'Enter your 10-digit account number.'
+  if (details.accountName.trim().length < 2) return 'Enter the name on the account.'
+  return null
+}
+

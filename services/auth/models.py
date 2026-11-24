@@ -10,7 +10,9 @@ class EstablishSessionRequest(BaseModel):
     never assigned to a variable that outlives it (see CognitoClient.ts / SessionProvider.tsx).
     """
 
-    refresh_token: str = Field(min_length=20)
+    # Cookie-safe token characters only — rejects `;`, spaces, or CRLF that would
+    # otherwise inject arbitrary Set-Cookie attributes in _establish_session.
+    refresh_token: str = Field(min_length=20, max_length=4096, pattern=r"^[A-Za-z0-9._~+/=-]+$")
 
 
 class LoginRequest(BaseModel):

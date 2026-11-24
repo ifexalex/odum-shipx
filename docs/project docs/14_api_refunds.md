@@ -185,3 +185,22 @@ they are what compensation for a seized or missing item creates, and the UI labe
 A refund approved as `credit_next_shipment` (`applied_as_credit`) used to be subtracted whole from the customer's next invoice and marked `completed`, even when it was larger than the invoice (which then went negative). `completed` is not a status `refund_request` allows, so on a real database every invoice that used a credit failed and rolled back: the customer was not invoiced at all (found by `tests/db/test_invoice_credits.py`, 2026-11-17). A used-up credit now becomes `processed`. It is now taken oldest first and only up to what the invoice comes to: `credit_applied_ngn` (new response field, migration 066) is how much has been used, the refund stays `applied_as_credit` while any is left, and becomes `processed` when it is used up. The credit is worth `amount_approved_ngn`, not the requested amount. Staff see "Credit used: ₦X of ₦Y" on the refund page. Detail and tests: `11_api_billing.md`.
 
 **Ground-truth gap found 2026-11-17 (OPS-03 work, not changed):** the customer's refund form (`frontend/src/pages/customer/RefundRequest.tsx`) offers "Bank account refund" but sends no `account_number` / `account_name`, so a customer-raised immediate refund reaches staff with no payout details. See frontend `07_domain_modules.md`.
+
+## A credit comes back when the invoice that used it is cancelled (2026-11-19)
+
+Each use of a credit is recorded in `billing_credit_application` (migration 070). Cancelling the invoice subtracts that use from `credit_applied_ngn`, and a credit that had been used up (`processed`) is `applied_as_credit` again, so the customer's next invoice can use it. Previously the credit stayed spent.
+
+## A bank refund carries its bank account (2026-11-19)
+
+**Ground-truth gap closed:** the customer form offered "Bank account refund" but collected no account, and `POST /v1/refunds` had no field for one, so accounts had nowhere to pay.
+
+- `POST /v1/refunds` body gains `bank_name` (2–100), `account_number` (10 digits, NUBAN), `account_name` (2–255); whitespace is stripped. With `customer_choice: immediate_refund` all three are required; with any other choice they are refused (not stored for no purpose). Either violation → 422.
+- `account_number` and `account_name` are stored encrypted (`shared.encryption.encrypt_field`); the audit entry masks all three (`***`). Never logged.
+- Responses carry `bank_details: {bank_name, account_number, account_name} | null`. Staff get it whole; a customer gets `account_number` masked (`******6789`).
+- Refunds created from a claim decision still carry no account (`customer_choice` null); staff arrange those directly.
+- Migration 071 widened `account_number`/`account_name` to TEXT: an encrypted value is ~260+ characters and the old VARCHAR(50)/(255) would have refused every write once encryption was on.
+- Verified live on :3010: missing details, 9 digits and a credit with details → 422; valid → 201; staff read the account; audit masked.
+
+## The detail read names its customer, invoice and claim (2026-11-20, audit FD-17)
+
+`GET /v1/refunds/{id}` adds three fields beside the ids it already returned: `customer_name` (the customer's name), `invoice_number` (of `billing_id`) and `claim_reference` (of `damage_claim_id`, e.g. `DC-20261113-001`), each `null` when the link is absent. `repository.get_refund_request_by_id` joins `customer`, `billing` and `damage_claim`, every join scoped to the refund's own tenant. The list (`GET /v1/refunds`) does not join them and omits the fields. Customers reading their own refund get them too (it is their own name and invoice). Ground-truth gap closed: the staff refund page printed the customer, invoice and claim as three UUIDs. Tests: `tests/db/test_refund_read.py` (3, real Postgres: names joined, absent links read as null, another tenant cannot read the row).

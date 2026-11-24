@@ -38,6 +38,7 @@ export function useContainerEvents(id: string) {
 export function useUpdateContainerStatus(id: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Container status updated' },
     mutationFn: (body: UpdateContainerStatusInput) => containersApi.updateStatus(id, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: containerKeys.detail(id) })
@@ -50,6 +51,7 @@ export function useUpdateContainerStatus(id: string) {
 export function useCancelContainer(id: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Container cancelled' },
     mutationFn: (notes?: string) => containersApi.cancel(id, notes),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: containerKeys.detail(id) })
@@ -61,6 +63,7 @@ export function useCancelContainer(id: string) {
 export function useDeleteContainer(id: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Container deleted' },
     mutationFn: () => containersApi.delete(id),
     onSuccess: () => {
       qc.removeQueries({ queryKey: containerKeys.detail(id) })

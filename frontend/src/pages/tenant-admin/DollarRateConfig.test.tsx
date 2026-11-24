@@ -130,7 +130,7 @@ describe('DollarRateConfig', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Update markup' }))
 
     await waitFor(() => expect(configApi.updateDollarRate).toHaveBeenCalledWith({ markup_type: 'flat', markup_value: 20 }))
-    expect(await screen.findByText('Markup updated successfully.')).toBeInTheDocument()
+    expect(await screen.findByText('Dollar rate markup updated')).toBeInTheDocument()
     expect(screen.getByText('₦20 per $1')).toBeInTheDocument()
   })
 
@@ -151,7 +151,7 @@ describe('DollarRateConfig', () => {
     )
     renderPage()
 
-    expect(await screen.findByText('Boom')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
   })
 
   it('shows an error banner when updating the markup fails', async () => {

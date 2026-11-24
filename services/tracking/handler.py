@@ -20,11 +20,11 @@ from shared import rate_limit
 from shared.auth import get_tenant_context
 from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.pagination import parse_pagination_params
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
 
@@ -87,18 +87,33 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
 
-        # Idempotency for POST requests
+        # Idempotency for POST requests, scoped to caller + route + payload
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response = _dispatch(event, method, path, parts, tenant_ctx, request_id, ip_address)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -182,6 +197,7 @@ def _handle_public_tracking(event: dict[str, Any], tracking_code: str, request_i
     except ResourceNotFoundError:
         rate_limit.record_failure(rate_limit.TRACKING_FAILURES, tracking_code)
         raise
+    rate_limit.clear(rate_limit.TRACKING_FAILURES, tracking_code)
     return success(result, request_id=request_id)
 
 
@@ -279,8 +295,7 @@ def _container_routes(
                 filters["eta_after"] = _qp(event, "eta_after")
             if _qp(event, "eta_before"):
                 filters["eta_before"] = _qp(event, "eta_before")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             sort_field = _qp(event, "sort") or "created_at"
             sort_direction = _qp(event, "direction") or "desc"
             page, next_cursor, has_more = service.list_containers(
@@ -305,6 +320,7 @@ def _container_routes(
                     actor_id=ctx.user_id,
                     request_id=request_id,
                     ip_address=ip_address,
+                    ctx=ctx,
                 )
                 return success({"deleted": True}, request_id=request_id)
 
@@ -320,6 +336,7 @@ def _container_routes(
                     notes=body.get("notes"),
                     request_id=request_id,
                     ip_address=ip_address,
+                    ctx=ctx,
                 )
                 return success(result, request_id=request_id)
 
@@ -336,6 +353,12 @@ def _container_routes(
 
             # PATCH /v1/containers/{id}/status
             if action == "status" and method == "PATCH":
+                ctx.assert_role(
+                    UserRole.CHINA_OFFICE_STAFF,
+                    UserRole.NIGERIA_OFFICE_STAFF,
+                    UserRole.TENANT_ADMIN,
+                    UserRole.WAREHOUSE_ATTENDANT,
+                )
                 body = _parse_body(event)
                 new_status = body.get("new_status", "")
                 extra = {k: body.get(k) for k in ("ship_date", "actual_arrival_date", "notes") if body.get(k)}
@@ -374,6 +397,23 @@ def _container_routes(
                     doc_id=sub_action,
                     actor_id=ctx.user_id,
                     actor_role=str(ctx.role),
+                )
+                return success(result, request_id=request_id)
+
+            # POST /v1/containers/{id}/documents/{doc-id}/confirm — the browser finished the upload
+            if action == "documents" and sub_action and download_action == "confirm" and method == "POST":
+                ctx.assert_role(
+                    UserRole.CHINA_OFFICE_STAFF,
+                    UserRole.NIGERIA_OFFICE_STAFF,
+                    UserRole.TENANT_ADMIN,
+                )
+                result = service.confirm_document_upload(
+                    tenant_id=tenant_id,
+                    container_id=container_id,
+                    doc_id=sub_action,
+                    actor_id=ctx.user_id,
+                    actor_role=str(ctx.role),
+                    ip_address=ip_address,
                 )
                 return success(result, request_id=request_id)
 
@@ -422,8 +462,7 @@ def _shipment_routes(
             filters["status"] = _qp(event, "status")
         if _qp(event, "tracking_code"):
             filters["tracking_code"] = _qp(event, "tracking_code")
-        limit = int(_qp(event, "limit", 50))
-        cursor = decode_cursor(_qp(event, "cursor"))
+        cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
         page, next_cursor, has_more = service.list_shipments(tenant_id, filters, limit, cursor, ctx)
         return paginated(page, next_cursor, has_more, request_id=request_id)
 

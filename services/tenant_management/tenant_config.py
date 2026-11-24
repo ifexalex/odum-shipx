@@ -8,6 +8,7 @@ Split out of ``service.py`` (audit BE-13); ``service`` re-exports every public f
 
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -16,10 +17,12 @@ from shared.encryption import decrypt_field, encrypt_field
 from shared.exceptions import (
     BusinessRuleViolationError,
     ResourceNotFoundError,
+    ValidationError,
 )
 from shared.webhook import test_fire_tenant_webhook
 
 from . import repository as repo
+from .branding_logo import keep_server_owned, with_logo_url
 from .models import (
     PaystackConfigRequest,
     UpdateTenantConfigRequest,
@@ -76,7 +79,24 @@ def get_tenant_config(tenant_id: str) -> dict[str, Any]:
     """
     rows = repo.get_all_configs(tenant_id)
     config_map = {row["config_key"]: row["config_value"] for row in rows}
+    # The logo is shown through a short-lived link, never its storage key (FD-29).
+    if "branding_config" in config_map:
+        config_map["branding_config"] = with_logo_url(tenant_id, config_map["branding_config"])
     return _mask_paystack_config(_mask_webhook_config(config_map))
+
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_BRANDING_COLOR_KEYS = ("primary_color", "secondary_color", "accent_color")
+
+
+def _validate_branding(branding: dict[str, Any]) -> None:
+    for key in _BRANDING_COLOR_KEYS:
+        val = branding.get(key)
+        if val is not None and val != "" and (not isinstance(val, str) or not _HEX_COLOR_RE.fullmatch(val)):
+            raise ValidationError(
+                f"branding.{key} must be a 6-digit hex color (e.g. #1a2b3c)",
+                field_errors={f"branding.{key}": "must be #RRGGBB"},
+            )
 
 
 def update_tenant_config(
@@ -86,16 +106,51 @@ def update_tenant_config(
     ip_address: str | None = None,
 ) -> dict[str, Any]:
     if req.branding is not None:
-        repo.upsert_config(tenant_id, "branding_config", req.branding, updated_by=actor_id)
+        _validate_branding(req.branding)
+        # The logo fields are the server's (FD-29): a save from the settings form keeps the stored logo, and a client
+        # can never point it at a file of its choosing.
+        branding = keep_server_owned(tenant_id, req.branding)
+        repo.upsert_config(tenant_id, "branding_config", branding, updated_by=actor_id)
         # Also update tenant.branding_config column
-        repo.update_tenant(tenant_id, {"branding_config": json.dumps(req.branding)})
+        repo.update_tenant(tenant_id, {"branding_config": json.dumps(branding)})
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="tenant_config",
+            entity_id=tenant_id,
+            action="UPDATE",
+            actor_id=actor_id,
+            actor_role="tenant_admin",
+            after_state={"branding_config": branding},
+            ip_address=ip_address,
+        )
     if req.notification_preferences is not None:
         repo.upsert_config(tenant_id, "notification_preferences", req.notification_preferences, updated_by=actor_id)
         repo.update_tenant(tenant_id, {"notification_preferences": json.dumps(req.notification_preferences)})
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="tenant_config",
+            entity_id=tenant_id,
+            action="UPDATE",
+            actor_id=actor_id,
+            actor_role="tenant_admin",
+            after_state={"notification_preferences": req.notification_preferences},
+            ip_address=ip_address,
+        )
     if req.webhook_config is not None:
         _update_webhook_config(tenant_id, req.webhook_config, actor_id, ip_address)
     if req.bank_transfer_config is not None:
-        repo.upsert_config(tenant_id, "bank_transfer_config", req.bank_transfer_config.model_dump(), updated_by=actor_id)
+        bank_cfg = req.bank_transfer_config.model_dump()
+        repo.upsert_config(tenant_id, "bank_transfer_config", bank_cfg, updated_by=actor_id)
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="tenant_config",
+            entity_id=tenant_id,
+            action="UPDATE",
+            actor_id=actor_id,
+            actor_role="tenant_admin",
+            after_state={"bank_transfer_config": bank_cfg},
+            ip_address=ip_address,
+        )
     return get_tenant_config(tenant_id)
 
 
@@ -351,7 +406,7 @@ def upsert_notification_template(
     log_audit(
         tenant_id=tenant_id,
         entity_type="notification_template",
-        entity_id=f"{event_type}/{channel}",
+        entity_id=str(row.get("id") or tenant_id),
         action="UPDATE" if existing else "CREATE",
         actor_id=actor_id,
         actor_role="tenant_admin",

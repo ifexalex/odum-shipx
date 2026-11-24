@@ -61,14 +61,15 @@ locals {
     "GET /v1/containers/{id}/packing-lists" = "packing_list"
 
     # --- Manifests (4 routes) -----------------------------------------------
-    "POST /v1/manifests"                           = "manifest"
-    "GET /v1/manifests"                            = "manifest"
-    "GET /v1/manifests/stats"                      = "manifest"
-    "GET /v1/manifests/{id}"                       = "manifest"
-    "PATCH /v1/manifests/{id}/verify"              = "manifest"
-    "PATCH /v1/manifests/{id}/revoke-verification" = "manifest"
-    "PATCH /v1/manifests/{id}/resolve-discrepancy" = "manifest"
-    "POST /v1/manifests/{id}/evidence"             = "manifest"
+    "POST /v1/manifests"                                     = "manifest"
+    "GET /v1/manifests"                                      = "manifest"
+    "GET /v1/manifests/stats"                                = "manifest"
+    "GET /v1/manifests/{id}"                                 = "manifest"
+    "PATCH /v1/manifests/{id}/verify"                        = "manifest"
+    "PATCH /v1/manifests/{id}/revoke-verification"           = "manifest"
+    "PATCH /v1/manifests/{id}/resolve-discrepancy"           = "manifest"
+    "POST /v1/manifests/{id}/evidence"                       = "manifest"
+    "POST /v1/manifests/{id}/evidence/{evidence-id}/confirm" = "manifest"
 
     # --- Shipments (1 route; GET /{tracking-code} is public — see public_routes) ---
     "GET /v1/shipments" = "tracking"
@@ -104,11 +105,12 @@ locals {
     "PATCH /v1/billing/disputes/{id}/reject"      = "billing"
 
     # --- Claims (5 routes) --------------------------------------------------
-    "POST /v1/claims"               = "claims"
-    "GET /v1/claims"                = "claims"
-    "GET /v1/claims/{id}"           = "claims"
-    "PATCH /v1/claims/{id}/inspect" = "claims"
-    "PATCH /v1/claims/{id}/resolve" = "claims"
+    "POST /v1/claims"                                     = "claims"
+    "GET /v1/claims"                                      = "claims"
+    "GET /v1/claims/{id}"                                 = "claims"
+    "PATCH /v1/claims/{id}/inspect"                       = "claims"
+    "PATCH /v1/claims/{id}/resolve"                       = "claims"
+    "POST /v1/claims/{id}/evidence/{evidence-id}/confirm" = "claims"
 
     # --- Claims extension (4 routes) ----------------------------------------
     "GET /v1/claims/stats"              = "claims"
@@ -148,16 +150,18 @@ locals {
     # --- Uploads (1 route) --------------------------------------------------
     "POST /v1/uploads/presigned-url" = "claims"
 
-    # --- Excel import/export (8 routes) -------------------------------------
+    # --- Excel import/export (11 routes) -------------------------------------
     "GET /v1/packing-lists/{id}/export"           = "excel"
     "POST /v1/packing-lists/import"               = "excel"
     "POST /v1/packing-lists/import/presigned-url" = "excel"
     "GET /v1/manifests/{id}/export"               = "excel"
     "GET /v1/billing/{id}/export"                 = "excel"
     "GET /v1/containers/{id}/billing/export"      = "excel"
+    "GET /v1/containers/{id}/events/export"       = "excel"
     # Whole-list exports: a literal segment beats the {id} routes on the same path.
-    "GET /v1/billing/export"    = "excel"
-    "GET /v1/containers/export" = "excel"
+    "GET /v1/billing/export"        = "excel"
+    "GET /v1/containers/export"     = "excel"
+    "GET /v1/billing/report/export" = "excel"
 
     # --- Customers (6 routes) -----------------------------------------------
     "POST /v1/customers"            = "tenant_management"
@@ -212,6 +216,8 @@ locals {
     # Lambda (see scripts/local_server.py's _excel_pdf_prefixes).
     "POST /v1/manifests/import"         = "excel"
     "GET /v1/packing-lists/{id}/pdf"    = "excel"
+    "GET /v1/billing/{id}/pdf"          = "excel" # FD-39 invoice
+    "GET /v1/manifests/{id}/pdf"        = "excel" # FD-39 manifest
     "GET /v1/release-notes/{id}/pdf"    = "excel"
     "GET /v1/payments/{id}/receipt/pdf" = "excel"
 
@@ -231,6 +237,7 @@ locals {
     "GET /v1/containers/{id}/documents"                   = "tracking"
     "POST /v1/containers/{id}/documents/presigned-url"    = "tracking"
     "GET /v1/containers/{id}/documents/{doc-id}/download" = "tracking"
+    "POST /v1/containers/{id}/documents/{doc-id}/confirm" = "tracking"
 
     # --- Tenant admin: rates, payment gateway, webhook, templates, users ----
     "GET /v1/tenant/cbm-rate"                                 = "tenant_management"
@@ -238,6 +245,9 @@ locals {
     "GET /v1/tenant/rate-history"                             = "tenant_management"
     "PATCH /v1/tenant/me"                                     = "tenant_management" # self-service profile/locale
     "GET /v1/tenants/me/quota"                                = "tenant_management"
+    "POST /v1/tenant/config/logo/upload-url"                  = "tenant_management" # FD-29 tenant logo
+    "PUT /v1/tenant/config/logo"                              = "tenant_management"
+    "DELETE /v1/tenant/config/logo"                           = "tenant_management"
     "PUT /v1/tenant/config/paystack"                          = "tenant_management"
     "DELETE /v1/tenant/config/paystack"                       = "tenant_management"
     "POST /v1/tenant/config/paystack/test"                    = "tenant_management"
@@ -247,6 +257,7 @@ locals {
     "GET /v1/tenant/notification-templates/{event}/{channel}" = "tenant_management"
     "PUT /v1/tenant/notification-templates/{event}/{channel}" = "tenant_management"
     "POST /v1/tenant/users/{id}/resend-invite"                = "tenant_management"
+    "POST /v1/tenant/users/{id}/resend-activation"            = "tenant_management"
     "POST /v1/tenant/users/{id}/reset-password"               = "tenant_management"
     "POST /v1/customers/{id}/invite"                          = "tenant_management"
 

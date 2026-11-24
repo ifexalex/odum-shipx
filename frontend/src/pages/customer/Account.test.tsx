@@ -72,7 +72,7 @@ describe('Account — notification language (P2-1)', () => {
     vi.mocked(customersApi.update).mockResolvedValue({ ...CUSTOMER, locale: 'zh' })
     await openNotifications(CUSTOMER)
 
-    expect(screen.getByText('Message language')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Message language' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('radio', { name: /中文/ }))
     await userEvent.click(screen.getByRole('button', { name: /Save preferences/ }))
 

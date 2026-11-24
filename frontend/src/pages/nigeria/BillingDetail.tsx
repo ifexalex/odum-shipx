@@ -1,26 +1,32 @@
-import { useCallback, useState, type JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { billingApi, carryoverApi, type Billing, type Carryover, type CBMDispute } from '../../api/billing'
-import { canApplyCarryover, canCancelBilling, canRecordPayment } from '../../api/billingRules'
+import { canApplyCarryover, canCancelBilling, canRecordPayment, isTerminalDisputeStatus } from '../../api/billingRules'
 import { useSession } from '../../auth/useSession'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { billingKeys, releaseNoteKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
-import { Action, Badge, Banner, ExportButton, Icon, Mono, StatCard } from '../../design/components'
-import { SectionHead } from '../../shell/SectionHead'
+import { Action, Banner, ExportButton, Icon, Kvp, Mono, StatusBadge, PageSkeleton, ErrorState, ConfirmDialog } from '../../design/components'
 import styles from './BillingDetail.module.css'
-import { formatDate, formatNgn } from '../../lib/format'
-import { STATUS_VARIANT, statusLabel } from './billingDetail/status'
+import { formatCbm, formatDate, formatNgn } from '../../lib/format'
 import { StorageFeeBanner, StorageFeeLog } from './billingDetail/StorageFees'
 import { DisputeCard } from './billingDetail/DisputeCard'
 import { RecordPaymentModal } from './billingDetail/RecordPaymentModal'
 import { AddChargeModal, CancelBillingModal, ApplyCarryoverModal } from './billingDetail/ChargeModals'
 import { GenerateReleaseNoteModal } from './billingDetail/GenerateReleaseNoteModal'
-import { BillingBreakdown, PaymentsTable } from './billingDetail/Breakdown'
+import { PaymentsTable } from './billingDetail/Breakdown'
+import { InvoiceBreakdown } from '../shared/InvoiceBreakdown'
 import { MiscChargesSection } from './billingDetail/MiscCharges'
 import { PaymentClaimsSection } from './billingDetail/PaymentClaims'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
+import { DetailPage } from '../../shell/DetailPage'
+import { PageHeader } from '../../shell/PageHeader'
+import { Section } from '../../shell/Section'
+import { RecordLink } from '../../shell/RecordLink'
+import { toast } from '../../design/toast'
+import { nextActionLabel } from '../../design/nextAction'
+import { runDocument } from '../../lib/documents'
 
 
 // ---------------------------------------------------------------------------
@@ -54,8 +60,9 @@ export function BillingDetail(): JSX.Element {
   // Router state from BillingList seeds the first paint so arriving from the
   // list renders instantly; GET /v1/billing/{id}/detail is the real source and
   // backs direct links plus every refresh after a mutation.
-  const stateBilling = (location.state as { billing?: Billing } | null)?.billing ?? null
-  const { data: billing = null, isLoading: loading, error: loadError } = useQuery({
+  const routeState = location.state as { billing?: Billing; openModal?: 'payment' | 'release' } | null
+  const stateBilling = routeState?.billing ?? null
+  const { data: billing = null, isLoading: loading, error: loadError, refetch } = useQuery({
     queryKey: billingKeys.detail(id ?? ''),
     queryFn: () => billingApi.get(id!),
     enabled: !!id,
@@ -65,17 +72,8 @@ export function BillingDetail(): JSX.Element {
   // Names this record in the breadcrumb once loaded (FD-46).
   useBreadcrumbLabel(billing?.invoice_number)
   const [carryovers, setCarryovers] = useState<Carryover[]>([])
+  const [loadingCarryovers, setLoadingCarryovers] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-
-  const error =
-    actionError ??
-    (loadError
-      ? loadError instanceof ApiError && loadError.status === 404
-        ? 'Billing record not found.'
-        : loadError instanceof ApiError
-          ? loadError.message
-          : 'Could not load billing record.'
-      : null)
 
   const applyBilling = (updated: Billing): void => {
     qc.setQueryData(billingKeys.detail(id ?? ''), updated)
@@ -88,6 +86,30 @@ export function BillingDetail(): JSX.Element {
   const [showAddChargeModal, setShowAddChargeModal] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [waivingFees, setWaivingFees] = useState(false)
+  const [confirmWaive, setConfirmWaive] = useState(false)
+  const autoOpenedRef = useRef(false)
+
+  // If navigated from a BillingList row action ("Record payment" / "Release"),
+  // open the target modal immediately once the invoice is loaded and permitted.
+  useEffect(() => {
+    if (autoOpenedRef.current || !billing || !routeState?.openModal) return
+    if (routeState.openModal === 'payment' && canRecordPayment(billing, role)) {
+      autoOpenedRef.current = true
+      const timer = setTimeout(() => setShowPaymentModal(true), 0)
+      return () => clearTimeout(timer)
+    } else if (
+      routeState.openModal === 'release' &&
+      (role === 'nigeria_office_staff' || role === 'tenant_admin') &&
+      (billing.payment_status === 'paid' ||
+        billing.payment_status === 'overpaid' ||
+        billing.payment_status === 'partially_paid')
+    ) {
+      autoOpenedRef.current = true
+      const timer = setTimeout(() => setShowReleaseNoteModal(true), 0)
+      return () => clearTimeout(timer)
+    }
+    return undefined
+  }, [billing, role, routeState?.openModal])
 
   // Storage fee accrual log — loaded lazily once a billing record is known
   const { data: storageFees = [] } = useQuery({
@@ -102,10 +124,11 @@ export function BillingDetail(): JSX.Element {
 
   async function loadCarryovers(): Promise<void> {
     if (!billing) return
+    setLoadingCarryovers(true)
     try {
       // A carryover can only be applied to a billing for the SAME customer
       // (the backend rejects a mismatch, BR-CARRYOVER-003). Scope the list to
-      // this billing's customer so the picker only offers applicable credits
+      // this billing's customer so the picker only offers applicable balances
       // instead of every customer's — picking a mismatch always failed.
       const result = await carryoverApi.list({
         status: 'outstanding',
@@ -114,6 +137,8 @@ export function BillingDetail(): JSX.Element {
       setCarryovers(result.data)
     } catch {
       // non-fatal — user can still see the modal with empty state
+    } finally {
+      setLoadingCarryovers(false)
     }
   }
 
@@ -126,12 +151,13 @@ export function BillingDetail(): JSX.Element {
     invalidateBillingCaches()
   }
 
-  if (loading) return <div className={styles.loadingState}>Loading billing record…</div>
-  if (error || !billing) {
+  if (loading) return <PageSkeleton kind="detail" label="Loading billing record" />
+  if (!billing || (loadError && !billing)) {
     return (
-      <div className={styles.loadingState}>
-        <Banner variant="error" title="Couldn't load this billing record">{error ?? 'Not found.'}</Banner>
-      </div>
+      <>
+        <PageHeader title="Invoice" />
+        <ErrorState title="Couldn't load this billing record" error={loadError} message="We couldn't find this record. It may have been removed, or the link is out of date." onRetry={() => void refetch()} />
+      </>
     )
   }
 
@@ -155,6 +181,7 @@ export function BillingDetail(): JSX.Element {
     setWaivingFees(true)
     try {
       const updated = await billingApi.waiveStorageFees(billing.id, 'Waived by staff')
+      toast.success('Storage fees waived', updated.invoice_number ?? undefined)
       applyBilling(updated)
       invalidateBillingCaches()
     } catch (err) {
@@ -167,155 +194,238 @@ export function BillingDetail(): JSX.Element {
 
 
   return (
-    <div>
-      {session?.readOnly && (
-        <div style={{ marginBottom: 16 }}>
-          <Banner variant="warning" icon="eye" title="Read-only session">
-            You're viewing this tenant as their Tenant Admin for support. Data is fully visible, but every create, edit, approve, and delete action is disabled. The session ends automatically after 30 minutes or when you exit.
-          </Banner>
-        </div>
-      )}
-      {/* Hero */}
-      <div className={styles.hero}>
-        <div className={styles.heroLeft}>
-          <div className={styles.heroIcon}>
-            <Icon name="coin" size={28} stroke={2} />
-          </div>
-          <div>
-            <div className={styles.heroTitleRow}>
-              <h1 className={styles.heroTitle}>{billing.customer_name ?? 'Billing record'}</h1>
-              <Badge variant={STATUS_VARIANT[billing.payment_status]}>{statusLabel(billing.payment_status)}</Badge>
-            </div>
-            <div className={styles.heroMeta}>
-              {billing.invoice_number && <span><Mono>{billing.invoice_number}</Mono></span>}
-              <span>· Container <Mono>{billing.container_number ?? billing.container_id}</Mono></span>
-              {billing.billed_at && <span>· Billed {formatDate(billing.billed_at)}</span>}
-            </div>
+    <>
+      <DetailPage
+        header={
+          <PageHeader
+            title={billing.invoice_number ? `Invoice ${billing.invoice_number}` : 'Invoice'}
+            status={<StatusBadge kind="invoice" status={billing.payment_status} />}
+            meta={[
+              billing.customer_name && billing.customer_id && (
+                <RecordLink to={`/admin/customers/${billing.customer_id}`}>
+                  {billing.customer_name}
+                </RecordLink>
+              ),
+              billing.container_number && billing.container_id && (
+                <>
+                  Container{' '}
+                  <RecordLink to={`/containers/${billing.container_id}`}>
+                    <Mono>{billing.container_number}</Mono>
+                  </RecordLink>
+                </>
+              ),
+              billing.billed_at && `Billed ${formatDate(billing.billed_at)}`,
+            ]}
+            // One next step (FD-23): money owed → record it; settled → release the goods.
+            primary={
+              isActionable ? (
+                <Action variant="primary" icon="coin" onClick={() => setShowPaymentModal(true)}>
+                  {nextActionLabel('invoice', 'unpaid')}
+                </Action>
+              ) : canGenerateRelease ? (
+                <Action variant="primary" icon="file" onClick={() => setShowReleaseNoteModal(true)}>
+                  {nextActionLabel('invoice', 'paid')}
+                </Action>
+              ) : null
+            }
+            actions={
+              <>
+                <ExportButton
+                  formats={['xlsx', 'csv']}
+                  onExport={(fmt) => billingApi.export(billing.id, fmt)}
+                />
+                {isActionable && canGenerateRelease && (
+                  <Action
+                    variant="secondary"
+                    icon="file"
+                    onClick={() => setShowReleaseNoteModal(true)}
+                  >
+                    Generate release note
+                  </Action>
+                )}
+              </>
+            }
+            more={[
+              // The branded invoice the customer receives (FD-39), to print or send.
+              {
+                label: 'Invoice PDF',
+                icon: 'file' as const,
+                onSelect: () => void runDocument('the invoice', () => billingApi.invoicePdf(billing.id)),
+              },
+              ...(isStaff &&
+              billing.payment_status !== 'cancelled' &&
+              billing.payment_status !== 'waived'
+                ? [
+                    {
+                      label: 'Add charge',
+                      icon: 'plus' as const,
+                      mutates: true,
+                      onSelect: () => setShowAddChargeModal(true),
+                    },
+                  ]
+                : []),
+              ...(isCarryoverApplicable
+                ? [
+                    {
+                      label: 'Apply carryover',
+                      mutates: true,
+                      onSelect: () => {
+                        void loadCarryovers()
+                        setShowCarryoverModal(true)
+                      },
+                    },
+                  ]
+                : []),
+              ...(isCancellable
+                ? [
+                    {
+                      label: 'Cancel billing',
+                      tone: 'danger' as const,
+                      onSelect: () => {
+                        setCancelError(null)
+                        setShowCancelModal(true)
+                      },
+                    },
+                  ]
+                : []),
+            ]}
+            moreLabel="More invoice actions"
+          />
+        }
+        notices={
+          <>
+            {actionError && (
+              <Banner variant="error" title="Action failed" onDismiss={() => setActionError(null)}>
+                {actionError}
+              </Banner>
+            )}
+            {session?.readOnly && (
+              <Banner variant="warning" icon="eye" title="Read-only session">
+                You're viewing this tenant as their Tenant Admin for support. Data is fully visible,
+                but every create, edit, approve, and delete action is disabled. The session ends
+                automatically after 30 minutes or when you exit.
+              </Banner>
+            )}
+            {billing._active_disputes.some((d) => !isTerminalDisputeStatus(d.status)) && (
+              <Banner variant="warning" title="Active CBM dispute">
+                A customer measurement dispute is open on this invoice. Review or resolve it below
+                before finalizing payment.
+              </Banner>
+            )}
+            {(Number(billing.storage_fees_ngn) > 0 || billing.release_note_issued_at) && (
+              <StorageFeeBanner
+                billing={billing}
+                storageFees={storageFees}
+                canWaive={canWaiveFees}
+                onWaive={() => setConfirmWaive(true)}
+                waiving={waivingFees}
+              />
+            )}
+          </>
+        }
+        // Summary + release status + direct customer shortcuts in aside.
+        aside={
+          <>
+            <Section title="Summary">
+              <Kvp label="Volume" value={<Mono>{formatCbm(billing.total_cbm)} CBM</Mono>} />
+              <Kvp label="Total due" value={<Mono>{formatNgn(billing.total_due_ngn)}</Mono>} />
+              <Kvp label="Paid" value={<Mono>{formatNgn(billing.total_paid_ngn)}</Mono>} />
+              <Kvp
+                label="Outstanding"
+                value={
+                  <Mono color={outstanding > 0 ? 'var(--color-error)' : undefined}>
+                    {formatNgn(outstanding)}
+                  </Mono>
+                }
+                divider={Boolean(billing.release_note_issued_at)}
+              />
+              {billing.release_note_issued_at && (
+                <Kvp
+                  label="Release note"
+                  divider={false}
+                  value={
+                    <RecordLink to="/release-notes">
+                      Issued {formatDate(billing.release_note_issued_at, 'short')}
+                    </RecordLink>
+                  }
+                />
+              )}
+            </Section>
             {(billing.customer_phone || billing.customer_email) && (
-              <div className={styles.heroContacts}>
+              <Section title="Customer contact">
                 {billing.customer_phone && (
-                  <span className={styles.heroContact}>
-                    <Icon name="phone" size={12} color="var(--color-ink-4)" />
-                    {billing.customer_phone}
-                  </span>
+                  <Kvp
+                    label="Phone"
+                    divider={Boolean(billing.customer_email)}
+                    value={
+                      <a href={`tel:${billing.customer_phone}`} className={styles.contactLink}>
+                        <Icon name="phone" size={12} color="currentColor" />
+                        {billing.customer_phone}
+                      </a>
+                    }
+                  />
                 )}
                 {billing.customer_email && (
-                  <span className={styles.heroContact}>
-                    <Icon name="mail" size={12} color="var(--color-ink-4)" />
-                    {billing.customer_email}
-                  </span>
+                  <Kvp
+                    label="Email"
+                    divider={false}
+                    value={
+                      <a href={`mailto:${billing.customer_email}`} className={styles.contactLink}>
+                        <Icon name="mail" size={12} color="currentColor" />
+                        {billing.customer_email}
+                      </a>
+                    }
+                  />
                 )}
-              </div>
+              </Section>
             )}
-          </div>
-        </div>
-        <div className={styles.heroActions}>
-          <ExportButton
-            formats={['xlsx', 'csv']}
-            onExport={(fmt) => billingApi.export(billing.id, fmt)}
-          />
-          {isActionable && (
-            <Action variant="primary" icon="coin" onClick={() => setShowPaymentModal(true)}>
-              Record payment
-            </Action>
-          )}
-          {isStaff && billing.payment_status !== 'cancelled' && billing.payment_status !== 'waived' && (
-            <Action variant="secondary" icon="plus" onClick={() => setShowAddChargeModal(true)}>
-              Add charge
-            </Action>
-          )}
-          {isCarryoverApplicable && (
-            <Action
-              variant="secondary"
-              onClick={() => {
-                void loadCarryovers()
-                setShowCarryoverModal(true)
-              }}
-            >
-              Apply carryover
-            </Action>
-          )}
-          {canGenerateRelease && (
-            <Action
-              variant="secondary"
-              icon="file"
-              onClick={() => setShowReleaseNoteModal(true)}
-            >
-              Generate release note
-            </Action>
-          )}
-          {isCancellable && (
-            <Action
-              variant="danger-outline"
-              onClick={() => {
-                setCancelError(null)
-                setShowCancelModal(true)
-              }}
-            >
-              Cancel billing
-            </Action>
-          )}
-        </div>
-      </div>
-
-      {/* Stat cards */}
-      <div className={styles.stats}>
-        <StatCard label="Total CBM" value={Number(billing.total_cbm).toFixed(3)} />
-        <StatCard label="Total due" value={formatNgn(billing.total_due_ngn)} />
-        <StatCard label="Total paid" value={formatNgn(billing.total_paid_ngn)} />
-        <StatCard
-          label="Outstanding"
-          value={formatNgn(outstanding)}
+          </>
+        }
+      >
+        {/* Urgent actionable items first: pending transfer claims & active CBM disputes */}
+        <PaymentClaimsSection
+          billingId={billing.id}
+          isStaff={isStaff}
+          onChanged={invalidateBillingCaches}
         />
-      </div>
-
-      {/* Storage fee banner + accrual log */}
-      {(Number(billing.storage_fees_ngn) > 0 || billing.release_note_issued_at) && (
-        <div className={styles.section}>
-          <StorageFeeBanner
-            billing={billing}
-            storageFees={storageFees}
-            canWaive={canWaiveFees}
-            onWaive={() => void handleWaiveStorageFees()}
-            waiving={waivingFees}
-          />
-          {storageFees.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <SectionHead title="Storage fee accrual log" />
-              <div style={{ marginTop: 8 }}>
-                <StorageFeeLog fees={storageFees} />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <BillingBreakdown billing={billing} />
-
-      <PaymentsTable payments={billing.payments} />
-
-      <PaymentClaimsSection billingId={billing.id} isStaff={isStaff} onChanged={invalidateBillingCaches} />
-
-      <MiscChargesSection
-        billing={billing}
-        canRemove={canRemoveCharge}
-        onChanged={invalidateBillingCaches}
-        onError={setActionError}
-      />
-
-      {/* Active disputes */}
-      {billing._active_disputes.length > 0 && (
-        <div className={styles.section}>
-          <SectionHead title="CBM disputes" />
-          {billing._active_disputes.map((d) => (
-            <DisputeCard key={d.id} dispute={d} role={role} onUpdated={handleDisputeUpdated} />
-          ))}
-        </div>
-      )}
-
-      {/* Back link */}
-
+        {billing._active_disputes.length > 0 && (
+          <Section title="CBM disputes">
+            {billing._active_disputes.map((d) => (
+              <DisputeCard key={d.id} dispute={d} role={role} onUpdated={handleDisputeUpdated} />
+            ))}
+          </Section>
+        )}
+        <Section title="Invoice breakdown">
+          <InvoiceBreakdown billing={billing} />
+        </Section>
+        <MiscChargesSection
+          billing={billing}
+          canRemove={canRemoveCharge}
+          onChanged={invalidateBillingCaches}
+          onError={setActionError}
+        />
+        <PaymentsTable payments={billing.payments} />
+        {storageFees.length > 0 && (
+          <Section title="Storage fee accrual log" flush>
+            <StorageFeeLog fees={storageFees} />
+          </Section>
+        )}
+      </DetailPage>
       {/* Modals */}
+      <ConfirmDialog
+        open={confirmWaive}
+        title={`Waive the storage fees on ${billing.invoice_number ?? 'this invoice'}?`}
+        confirmLabel="Waive storage fees"
+        undo="Fees from later days still accrue; the ones waived now do not come back."
+        busy={waivingFees}
+        onConfirm={async () => {
+          await handleWaiveStorageFees()
+          setConfirmWaive(false)
+        }}
+        onCancel={() => setConfirmWaive(false)}
+      >
+        {formatNgn(billing.storage_fees_ngn)} of storage fees come off what the customer owes.
+      </ConfirmDialog>
       {showAddChargeModal && (
         <AddChargeModal
           billing={billing}
@@ -342,6 +452,8 @@ export function BillingDetail(): JSX.Element {
         <CancelBillingModal
           billingId={billing.id}
           error={cancelError}
+          creditsNgn={-Number(billing.adjustments_ngn ?? 0)}
+          carryoverNgn={billing.carryover_ngn}
           onCancel={() => setShowCancelModal(false)}
           onSuccess={(updated) => {
             setShowCancelModal(false)
@@ -355,6 +467,7 @@ export function BillingDetail(): JSX.Element {
         <ApplyCarryoverModal
           billing={billing}
           carryovers={carryovers}
+          loading={loadingCarryovers}
           onCancel={() => setShowCarryoverModal(false)}
           onSuccess={() => {
             setShowCarryoverModal(false)
@@ -367,19 +480,18 @@ export function BillingDetail(): JSX.Element {
         <GenerateReleaseNoteModal
           billing={billing}
           onCancel={() => setShowReleaseNoteModal(false)}
-          onSuccess={() => {
+          onSuccess={(created) => {
             setShowReleaseNoteModal(false)
             invalidateBillingCaches()
-            // Ground-truth gap found live: this navigates straight to the
-            // release-notes list, but nothing invalidated its query cache —
-            // with the 3-minute default staleTime (lib/queryClient.ts), a
-            // list already fetched once this session kept showing
-            // pre-generation data, hiding the note just created.
             void qc.invalidateQueries({ queryKey: releaseNoteKeys.all })
-            navigate('/release-notes')
+            if (created?.id) {
+              navigate(`/release-notes/${created.id}`, { state: { note: created } })
+            } else {
+              navigate('/release-notes')
+            }
           }}
         />
       )}
-    </div>
+    </>
   )
 }

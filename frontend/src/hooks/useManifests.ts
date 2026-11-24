@@ -27,6 +27,7 @@ export function useManifestStats() {
 export function useVerifyManifest(id: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Manifest verification saved' },
     mutationFn: (body: VerifyManifestInput) => manifestApi.verify(id, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: manifestKeys.detail(id) })

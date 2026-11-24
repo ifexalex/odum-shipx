@@ -6,7 +6,6 @@ import { disputeApi } from '../../api/billing'
 import { manifestApi } from '../../api/manifest'
 import { packingListApi } from '../../api/packingList'
 import { withQuery } from '../../test/queryWrapper'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { ChinaWorkQueue } from './ChinaWorkQueue'
 
 vi.mock('../../api/packingList', () => ({ packingListApi: { list: vi.fn() } }))
@@ -27,12 +26,12 @@ function renderPage() {
   return render(
     withQuery(
       <MemoryRouter initialEntries={['/work-queue']}>
-        <TopBarTestWrapper>
+        <>
           <Routes>
             <Route path="/work-queue" element={<ChinaWorkQueue />} />
             <Route path="*" element={<Where />} />
           </Routes>
-        </TopBarTestWrapper>
+        </>
       </MemoryRouter>,
     ),
   )
@@ -78,13 +77,13 @@ describe('ChinaWorkQueue (audit UX-10)', () => {
   ])('%s links to its filtered list', async (queue, url) => {
     renderPage()
     const region = await screen.findByRole('region', { name: queue })
-    await userEvent.click(within(region).getByRole('button', { name: 'View all →' }))
+    await userEvent.click(within(region).getByRole('button', { name: 'View all' }))
     expect(screen.getByTestId('where')).toHaveTextContent(url)
   })
 
   it('opens a row', async () => {
     renderPage()
-    await userEvent.click(await screen.findByRole('button', { name: /PL-0042/ }))
+    await userEvent.click(await screen.findByRole('link', { name: /PL-0042/ }))
     expect(screen.getByTestId('where')).toHaveTextContent('/packing-lists/pl1')
   })
 

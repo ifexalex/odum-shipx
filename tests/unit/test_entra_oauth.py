@@ -159,20 +159,36 @@ class TestHandlerInteractiveRoutes:
     def test_callback_validates_state_exchanges_and_sets_session(self, monkeypatch):
         monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")
         tx = _encode_tx({"v": "verifier", "s": "state-xyz", "n": "nonce"})
+        payload = base64.urlsafe_b64encode(json.dumps({"nonce": "nonce", "oid": "u1"}).encode()).decode().rstrip("=")
+        fake_id_token = f"hdr.{payload}.sig"
         with patch(
             "services.auth.entra_refresh.authorization_code_grant",
-            return_value={"id_token": "id.jwt", "access_token": "a", "refresh_token": "r", "expires_in": 1800},
+            return_value={"id_token": fake_id_token, "access_token": "a", "refresh_token": "r", "expires_in": 1800},
         ) as mock_x:
             resp = handler.lambda_handler(
                 self._event("/v1/auth/callback", {"code": "the-code", "state": "state-xyz"}, [f"shipx_auth_tx={tx}"]),
                 None,
             )
         assert resp["statusCode"] == 200
-        assert json.loads(resp["body"])["data"]["id_token"] == "id.jwt"
+        assert json.loads(resp["body"])["data"]["id_token"] == fake_id_token
         # Session cookie set with the refresh token; tx cookie expired.
         assert any(c.startswith("shipx_rt=r;") for c in resp["cookies"])
         assert any(c.startswith("shipx_auth_tx=;") and "Max-Age=0" in c for c in resp["cookies"])
         mock_x.assert_called_once_with(code="the-code", code_verifier="verifier", redirect_uri=_ENV["ENTRA_REDIRECT_URI"])
+
+    def test_callback_rejects_nonce_mismatch(self, monkeypatch):
+        monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")
+        tx = _encode_tx({"v": "verifier", "s": "state-xyz", "n": "expected-nonce"})
+        payload = base64.urlsafe_b64encode(json.dumps({"nonce": "wrong-nonce"}).encode()).decode().rstrip("=")
+        with patch(
+            "services.auth.entra_refresh.authorization_code_grant",
+            return_value={"id_token": f"hdr.{payload}.sig", "access_token": "a", "refresh_token": "r", "expires_in": 1800},
+        ):
+            resp = handler.lambda_handler(
+                self._event("/v1/auth/callback", {"code": "the-code", "state": "state-xyz"}, [f"shipx_auth_tx={tx}"]),
+                None,
+            )
+        assert resp["statusCode"] == 401
 
     def test_callback_rejects_state_mismatch(self, monkeypatch):
         monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")

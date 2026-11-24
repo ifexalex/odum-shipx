@@ -5,14 +5,14 @@
 .grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 20px;
+  gap: var(--space-5);
   align-items: start;
 }
 
 .formCol {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-5);
   min-width: 0;
 }
 
@@ -22,99 +22,114 @@
   min-width: 0;
 }
 
-@container sxapp (max-width: 1240px) {
+.mobilePreviewBtn {
+  display: none;
+}
+
+@container sxapp (max-width: 1200px) {
   .grid {
     grid-template-columns: 1fr;
   }
   .previewCol {
     display: none;
   }
+  .mobilePreviewBtn {
+    display: inline-flex;
+  }
+}
+
+.inlineLink {
+  color: var(--color-primary-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.inlineLink:hover {
+  text-decoration: underline;
 }
 
 /* ---- form ---- */
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: var(--space-4);
 }
-@container sxapp (max-width: 560px) {
+@container sxapp (max-width: 600px) {
   .grid2 {
     grid-template-columns: 1fr;
   }
 }
 
-.logoRow {
+.logoBlock {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  border: 1.5px dashed var(--color-line);
-  border-radius: var(--radius-md);
-  padding: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   background: var(--color-surface-muted);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 .logoTile {
   width: 64px;
   height: 64px;
   border-radius: var(--radius-lg);
-  color: #fff;
+  color: var(--color-on-dark);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 24px;
+  font-weight: 700;
+  font-size: var(--text-2xl);
   font-family: var(--font-display);
   flex-shrink: 0;
 }
 .logoMeta {
   flex: 1;
-  min-width: 0;
+  min-width: 200px;
 }
 .logoTitle {
   font-weight: 600;
   color: var(--color-ink);
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 .logoDesc {
-  font-size: 12px;
-  color: var(--color-ink-4);
-  margin-top: 4px;
-  line-height: 1.45;
+  font-size: var(--text-sm);
+  color: var(--color-ink-3);
+  margin-top: var(--space-1);
+  line-height: var(--text-sm-line);
 }
-.colorField {
-  width: 160px;
-  flex-shrink: 0;
+.logoProblem {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-error);
 }
-@container sxapp (max-width: 560px) {
-  .logoRow {
-    flex-wrap: wrap;
-  }
-  .colorField {
-    width: 100%;
-  }
+.logoActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
-
 .saveBar {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--space-3);
 }
 
 /* ---- live preview ---- */
 .previewToggle {
   display: flex;
   background: var(--color-surface-muted);
-  border-radius: var(--radius-sm);
-  padding: 4px;
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
   border: 1px solid var(--color-line-soft);
 }
 .previewTab {
   flex: 1;
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-3);
   background: transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 0;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-ink-3);
   cursor: pointer;
@@ -128,11 +143,12 @@
 }
 
 .docPreview {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   aspect-ratio: 210 / 297;
-  padding: 18px;
+  padding: var(--space-5);
   font-size: 9px;
   color: var(--color-ink);
   line-height: 1.4;
@@ -144,22 +160,23 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 14px;
-  padding-bottom: 10px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--color-line-soft);
 }
 .docBrand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 .docLogo {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   width: 36px;
   height: 36px;
-  border-radius: 6px;
-  color: #fff;
+  border-radius: var(--radius-md);
+  color: var(--color-on-dark);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -169,47 +186,53 @@
   flex-shrink: 0;
 }
 .docCompany {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 11px;
   line-height: 1.1;
 }
 .docTagline {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   font-size: 7px;
   color: var(--color-ink-4);
   font-style: italic;
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 .docTitleBlock {
   text-align: right;
   flex-shrink: 0;
 }
 .docTitle {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 11px;
   letter-spacing: 0.04em;
 }
 .docRef {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   font-family: var(--font-mono);
   font-size: 7px;
   color: var(--color-ink-3);
-  margin-top: 2px;
+  margin-top: var(--space-0-5);
 }
 .docMetaGrid {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--space-2);
   font-size: 7.5px;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 .docMetaLabel {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   color: var(--color-ink-4);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 6.5px;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-0-5);
 }
 .docMetaStrong {
   font-weight: 700;
@@ -222,24 +245,26 @@
   color: var(--color-ink-3);
 }
 .docTableHead {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   background: var(--color-surface-muted);
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   display: grid;
   grid-template-columns: 44px 1fr 32px;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 6.5px;
   font-weight: 700;
   color: var(--color-ink-3);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 .docTableRow {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   display: grid;
   grid-template-columns: 44px 1fr 32px;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 7px;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--color-line-soft);
   color: var(--color-ink-2);
 }
@@ -247,34 +272,37 @@
   text-align: right;
 }
 .docTotals {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   display: flex;
   justify-content: flex-end;
   font-size: 7.5px;
-  margin-top: 8px;
-  padding-top: 6px;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--color-line-soft);
   font-weight: 700;
 }
 .docQrRow {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   display: flex;
-  gap: 10px;
+  gap: var(--space-3);
   align-items: center;
-  margin-top: 6px;
+  margin-top: var(--space-2);
   font-size: 7px;
 }
 .docQr {
   width: 44px;
   height: 44px;
   flex-shrink: 0;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background:
     repeating-linear-gradient(0deg, var(--color-ink) 0 3px, transparent 3px 6px),
     repeating-linear-gradient(90deg, var(--color-ink) 0 3px, var(--color-surface) 3px 6px);
   opacity: 0.85;
 }
 .docFooter {
+  /* scale-exempt: miniature document preview, sized like the printed page (FD-01) */
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: var(--space-4);
   font-size: 6px;
   color: var(--color-ink-4);
   line-height: 1.6;

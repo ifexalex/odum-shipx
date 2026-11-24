@@ -8,7 +8,8 @@
  * counters (no max in the quota response) render as a plain meta line rather
  * than fabricated percentages.
  */
-import type { JSX } from 'react'
+import { useEffect, useRef, type JSX } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Badge, Card, Mono } from '../design/components'
 import { pctUsed, useQuota } from '../hooks/useQuota'
 import { SectionHead } from './SectionHead'
@@ -43,14 +44,24 @@ function QuotaBarRow({ label, used, max, unit }: { label: string; used: number; 
   )
 }
 
+/** The panel's anchor: the plan-limit notice's "View plan" link opens `/dashboard#plan` (FD-16). */
+export const PLAN_ANCHOR = 'plan'
+
 export function PlanUsagePanel(): JSX.Element | null {
   const { quota } = useQuota()
+  const { hash } = useLocation()
+  const ref = useRef<HTMLElement>(null)
+  // The app scrolls inside its content area, not the window, so the browser's own jump to #plan does nothing.
+  useEffect(() => {
+    if (quota && hash === `#${PLAN_ANCHOR}`) ref.current?.scrollIntoView({ block: 'start' })
+  }, [hash, quota])
   if (!quota) return null
 
   const tierLabel = quota.subscription_tier[0]!.toUpperCase() + quota.subscription_tier.slice(1)
 
   return (
-    <Card padding={20}>
+    <section id={PLAN_ANCHOR} ref={ref} aria-label="Plan usage">
+    <Card padding="default">
       <SectionHead
         title={`Plan usage · ${tierLabel}`}
         sub={`Period ${quota.period} · limits reset monthly`}
@@ -68,5 +79,6 @@ export function PlanUsagePanel(): JSX.Element | null {
         · {formatCount(quota.notifications.whatsapp_sent)} WhatsApp · {formatCount(quota.notifications.emails_sent)} email
       </div>
     </Card>
+    </section>
   )
 }

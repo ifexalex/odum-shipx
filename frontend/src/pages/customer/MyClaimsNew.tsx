@@ -18,22 +18,21 @@ import { ApiError } from '../../api/client'
 import { claimsApi, presignedUploadApi, type FileDamageClaimInput } from '../../api/claims'
 import { packingListApi, type PackingList } from '../../api/packingList'
 import { type UploadedEvidence } from '../nigeria/EvidenceUploader'
-import { Banner, Button, Field } from '../../design/components'
+import { Banner, Button, Check, Field, Select, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
+import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
 import { EvidenceUploader } from '../nigeria/EvidenceUploader'
 import styles from './customer.module.css'
+import { statusLabel } from '../../design/status'
+import { toast } from '../../design/toast'
+import { ResultScreen } from '../../shell/ResultScreen'
+import { plural } from '../../lib/format'
 
 type Step = 'details' | 'evidence' | 'review'
 
 // Mirrors services/claims/service.py's `_PRE_ARRIVAL_STATUSES` complement —
 // a claim can only be filed once the container has physically arrived.
-const ARRIVED_STATUS_LABEL: Record<string, string> = {
-  arrived: 'Arrived NG',
-  customs_clearance: 'In customs',
-  cleared: 'Cleared',
-  at_warehouse: 'Ready for pickup',
-  fully_released: 'Delivered',
-}
+const ARRIVED_STATUSES: ReadonlySet<string> = new Set(['arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released'])
 
 export function MyClaimsNew(): JSX.Element {
   const navigate = useNavigate()
@@ -45,6 +44,8 @@ export function MyClaimsNew(): JSX.Element {
   const [selectedShipmentId, setSelectedShipmentId] = useState('')
   const [description, setDescription] = useState('')
   const [cartonsRaw, setCartonsRaw] = useState('')
+  const [shipmentCartons, setShipmentCartons] = useState<{ tag: string; description: string }[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [claimId, setClaimId] = useState<string | null>(null)
   const [uploadedEvidence, setUploadedEvidence] = useState<UploadedEvidence[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -70,11 +71,52 @@ export function MyClaimsNew(): JSX.Element {
   }, [])
 
   const arrivedShipments = (shipments ?? []).filter(
-    (pl) => pl.container_status && pl.container_status in ARRIVED_STATUS_LABEL,
+    (pl) => pl.container_status && ARRIVED_STATUSES.has(pl.container_status),
   )
   const selectedShipment = arrivedShipments.find((pl) => pl.id === selectedShipmentId) ?? null
 
-  const cartonsAffected = cartonsRaw.split(/[\n,\s]+/).map((t) => t.trim()).filter(Boolean)
+  // Load the chosen shipment's cartons so affected ones can be ticked instead of typed. Best-effort: if it cannot
+  // be loaded, the free-text field below still works.
+  useEffect(() => {
+    let active = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset when the shipment changes
+    setSelectedTags([])
+    setShipmentCartons([])
+    if (!selectedShipmentId || typeof packingListApi.get !== 'function') return
+    packingListApi
+      .get(selectedShipmentId)
+      .then((pl) => {
+        if (!active) return
+        const seen = new Set<string>()
+        const cartons: { tag: string; description: string }[] = []
+        for (const item of pl?.items ?? []) {
+          if (item.carton_tag && !seen.has(item.carton_tag)) {
+            seen.add(item.carton_tag)
+            cartons.push({ tag: item.carton_tag, description: item.description })
+          }
+        }
+        setShipmentCartons(cartons)
+      })
+      .catch(() => {
+        if (active) setShipmentCartons([])
+      })
+    return () => {
+      active = false
+    }
+  }, [selectedShipmentId])
+
+  const manualTags = cartonsRaw.split(/[\n,\s]+/).map((t) => t.trim()).filter(Boolean)
+  const cartonsAffected = Array.from(new Set([...selectedTags, ...manualTags]))
+
+  function toggleCarton(tag: string, checked: boolean): void {
+    setSelectedTags((prev) => (checked ? [...prev, tag] : prev.filter((t) => t !== tag)))
+  }
+
+  // A claim being written but not yet filed (FD-54). Once filed it exists, and adding evidence is optional.
+  const unsaved =
+    step === 'details' &&
+    !submitting &&
+    (selectedShipmentId !== '' || description.trim() !== '' || cartonsRaw.trim() !== '' || selectedTags.length > 0)
 
   async function handleCreateClaim(): Promise<void> {
     if (!selectedShipment?.container_number) return
@@ -87,6 +129,7 @@ export function MyClaimsNew(): JSX.Element {
         cartons_affected: cartonsAffected.length > 0 ? cartonsAffected : undefined,
       }
       const claim = await claimsApi.file(body, idempotencyKey.current)
+      toast.success('Claim filed', claim.reference ?? undefined)
       setClaimId(claim.id)
       setStep('evidence')
     } catch (err) {
@@ -103,11 +146,12 @@ export function MyClaimsNew(): JSX.Element {
 
   if (done) {
     return (
-      <div className={styles.resultPage}>
-        <div className={styles.resultIcon}>✓</div>
-        <h1 className={styles.resultTitle}>Claim filed!</h1>
-        <p className={styles.resultBody}>Our team will contact you once we begin the inspection.</p>
-      </div>
+      <ResultScreen
+        tone="success"
+        title="Claim filed"
+      >
+        Our team will contact you once we begin the inspection.
+      </ResultScreen>
     )
   }
 
@@ -119,7 +163,8 @@ export function MyClaimsNew(): JSX.Element {
 
   return (
     <div className={styles.page}>
-      <PageHeader title="File a Damage Claim" />
+      <UnsavedChangesGuard when={unsaved}>Your claim has not been filed yet, and what you wrote will be lost.</UnsavedChangesGuard>
+      <PageHeader title="File a damage claim" />
 
       <p className={styles.stepIndicator}>{STEP_LABELS[step]}</p>
 
@@ -130,7 +175,7 @@ export function MyClaimsNew(): JSX.Element {
           {shipmentsError && <Banner variant="error" title="Could not load your shipments">{shipmentsError}</Banner>}
 
           {shipments === null ? (
-            <p style={{ color: 'var(--color-ink-3)', fontSize: 14 }}>Loading your shipments…</p>
+            <LinesSkeleton label="Loading your shipments" />
           ) : arrivedShipments.length === 0 ? (
             <Banner variant="info" title="Nothing to claim against yet">
               A claim can only be filed once a shipment has arrived in Nigeria — damage or loss
@@ -142,23 +187,19 @@ export function MyClaimsNew(): JSX.Element {
             </Banner>
           ) : (
             <div className={styles.selectField}>
-              <label className={styles.selectLabel} htmlFor="claim-shipment">
-                Which shipment? <span className={styles.required}>*</span>
-              </label>
-              <select
+              <Select label="Which shipment?"
                 id="claim-shipment"
-                className={styles.select}
                 value={selectedShipmentId}
                 onChange={(e) => setSelectedShipmentId(e.target.value)}
               >
                 <option value="" disabled>Select an arrived shipment…</option>
                 {arrivedShipments.map((pl) => (
                   <option key={pl.id} value={pl.id}>
-                    {pl.reference ?? pl.id.slice(0, 8)} — Container {pl.container_number ?? '—'}
-                    {' '}({ARRIVED_STATUS_LABEL[pl.container_status ?? ''] ?? pl.container_status})
+                    {pl.reference ?? 'Shipment'} — Container {pl.container_number ?? 'not assigned yet'}
+                    {' '}({statusLabel('container', pl.container_status ?? '', 'customer')})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 
@@ -173,8 +214,23 @@ export function MyClaimsNew(): JSX.Element {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+              {shipmentCartons.length > 0 && (
+                <div>
+                  <div className={styles.cartonPickerLabel}>Which cartons were affected? (tap to select)</div>
+                  <div className={styles.cartonPicker}>
+                    {shipmentCartons.map((c) => (
+                      <Check
+                        key={c.tag}
+                        label={`${c.tag} — ${c.description}`}
+                        checked={selectedTags.includes(c.tag)}
+                        onChange={(checked) => toggleCarton(c.tag, checked)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
               <Field
-                label="Carton tags affected"
+                label={shipmentCartons.length > 0 ? 'Other carton tags' : 'Carton tags affected'}
                 name="cartons"
                 multiline
                 optional
@@ -184,8 +240,14 @@ export function MyClaimsNew(): JSX.Element {
               />
             </>
           )}
+          {arrivedShipments.length > 0 && (
+            <p className={styles.stepNote}>
+              Filing submits your claim right away. You can attach photos and videos in the next step, or add them later
+              from the claim page.
+            </p>
+          )}
           <div className={styles.formActions}>
-            <Button variant="ghost" onClick={() => navigate('/my-claims')}>
+            <Button variant="ghost" onClick={() => navigate(arrivedShipments.length > 0 ? '/my-claims' : '/my-shipments')}>
               {arrivedShipments.length > 0 ? 'Cancel' : 'Back to My Shipments'}
             </Button>
             {arrivedShipments.length > 0 && (
@@ -195,7 +257,7 @@ export function MyClaimsNew(): JSX.Element {
                 disabled={!selectedShipmentId || !description.trim()}
                 onClick={() => void handleCreateClaim()}
               >
-                Next: Add evidence
+                File claim &amp; next: add evidence
               </Button>
             )}
           </div>
@@ -210,15 +272,16 @@ export function MyClaimsNew(): JSX.Element {
           </Banner>
           <EvidenceUploader
             getPresignedUrl={(f) => presignedUploadApi.getUrl(claimId, f.name, f.type, f.size)}
+            confirmUpload={(evidenceId) => presignedUploadApi.confirm(claimId, evidenceId)}
             onUploaded={(ev) => setUploadedEvidence((prev) => [...prev, ev])}
           />
           <div className={styles.formActions}>
             <Button variant="ghost" onClick={() => setStep('review')}>Skip — add later</Button>
-            <Button
+              <Button
               variant="primary"
               onClick={() => setStep('review')}
-            >
-              {uploadedEvidence.length > 0 ? `Next: Review (${uploadedEvidence.length} file(s))` : 'Next: Review'}
+              >
+              {uploadedEvidence.length > 0 ? `Next: Review (${plural(uploadedEvidence.length, 'file')})` : 'Next: Review'}
             </Button>
           </div>
         </div>
@@ -228,19 +291,19 @@ export function MyClaimsNew(): JSX.Element {
       {step === 'review' && (
         <div className={styles.formCard}>
           <Banner variant="success">
-            Your claim has been filed. Review the details below and submit.
+            Your claim has been filed and queued for inspection. Here is a summary of what we received.
           </Banner>
-          <div style={{ fontSize: '0.875rem', lineHeight: 1.6 }}>
-            <p><strong>Shipment:</strong> {selectedShipment?.reference ?? selectedShipment?.id.slice(0, 8)} — Container {selectedShipment?.container_number ?? '—'}</p>
+          <div style={{ fontSize: 'var(--text-md)', lineHeight: 'var(--leading-body)' }}>
+            <p><strong>Shipment:</strong> {selectedShipment?.reference ?? 'Shipment'} — Container {selectedShipment?.container_number ?? 'not assigned yet'}</p>
             <p><strong>Description:</strong> {description}</p>
             {cartonsAffected.length > 0 && (
               <p><strong>Cartons affected:</strong> {cartonsAffected.join(', ')}</p>
             )}
-            <p><strong>Evidence files:</strong> {uploadedEvidence.length > 0 ? `${uploadedEvidence.length} file(s) uploaded` : 'None'}</p>
+            <p><strong>Evidence files:</strong> {uploadedEvidence.length > 0 ? `${plural(uploadedEvidence.length, 'file')} uploaded` : 'None'}</p>
           </div>
           <div className={styles.formActions}>
             <Button variant="ghost" onClick={() => setStep('evidence')}>Back</Button>
-            <Button variant="success" onClick={handleDone}>
+              <Button variant="primary" onClick={handleDone}>
               Done — view my claims
             </Button>
           </div>

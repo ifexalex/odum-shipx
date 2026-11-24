@@ -1,6 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../auth/SessionContext'
@@ -58,28 +57,22 @@ describe('AppSidebar', () => {
   it("renders the tenant admin's nav and marks the current path active", () => {
     renderAt(makeContextValue({ session: makeSession('tenant_admin'), status: 'authenticated' }), '/admin/users')
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
-    expect(screen.getByText('Users')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Staff' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByText('Operations')).toBeInTheDocument()
   })
 
   it('shows the platform admin onboarding-requests nav entry', () => {
     renderAt(makeContextValue({ session: makeSession('platform_admin'), status: 'authenticated' }), '/platform/dashboard')
-    expect(screen.getByText('Onboarding Requests')).toBeInTheDocument()
+    expect(screen.getByText('Onboarding requests')).toBeInTheDocument()
     expect(screen.getByText('Tenants')).toBeInTheDocument()
   })
 
-  it('calls logout when the logout button is clicked', async () => {
-    const logout = vi.fn()
-    renderAt(makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated', logout }), '/containers')
-    await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
-    expect(logout).toHaveBeenCalledOnce()
-  })
-
-  it('shows china_office_staff Operations/Packing lists/Coordination nav groups, not admin nav', () => {
-    renderAt(makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated' }), '/containers')
-    expect(screen.getByText('Operations')).toBeInTheDocument()   // group label
-    expect(screen.getByText('All packing lists')).toBeInTheDocument() // updated nav label
+  it('shows china_office_staff Operations/Coordination nav groups, not admin nav', () => {
+    renderAt(makeContextValue({ session: makeSession('china_office_staff'), status: 'authenticated' }), '/packing-lists/new')
+    expect(screen.getByText('Operations')).toBeInTheDocument() // group label
+    expect(screen.getByRole('button', { name: 'Packing lists' })).toHaveAttribute('aria-current', 'page') // the list, for its create page
     expect(screen.getByText('Coordination')).toBeInTheDocument() // group label
-    expect(screen.queryByText('Users')).toBeNull()
+    expect(screen.queryByText('Staff')).toBeNull()
+    expect(screen.queryByText(/^Create /)).toBeNull()
   })
 })

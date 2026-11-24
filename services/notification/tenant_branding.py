@@ -17,12 +17,14 @@ producer did not supply, so every email header, every `{company_name}:` SMS
 prefix and every WhatsApp parameter was the literal word "Logistics".
 """
 
+import re
 from typing import Any
 
 # Last resort only. Reaching this means the tenant row had no company name at
 # all, which should be impossible — `company_name` is NOT NULL on `tenant`.
 _FALLBACK_COMPANY_NAME = "Logistics"
 _FALLBACK_PRIMARY_COLOR = "#1A5276"
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def extract_branding(event_body: dict[str, Any]) -> dict[str, Any]:
@@ -50,7 +52,10 @@ def get_company_name(branding: dict[str, Any]) -> str:
 
 def get_primary_color(branding: dict[str, Any]) -> str:
     """The tenant's brand colour, used for the email header and CTA button."""
-    return _first(branding, "primary_color") or _FALLBACK_PRIMARY_COLOR
+    color = _first(branding, "primary_color")
+    if color and _HEX_COLOR_RE.match(color):
+        return color
+    return _FALLBACK_PRIMARY_COLOR
 
 
 def get_tagline(branding: dict[str, Any]) -> str:

@@ -179,6 +179,13 @@ export const manifestApi = {
       body: { filename, content_type: contentType, size_bytes: sizeBytes, label },
     }),
 
+  /** After the upload: the API checks the stored size and lists the file on the manifest. */
+  confirmEvidence: (id: string, evidenceId: string) =>
+    apiRequest<ManifestEvidence>({ method: 'POST', path: `/v1/manifests/${id}/evidence/${evidenceId}/confirm` }),
+
   export: (id: string, format: Exclude<ExportFormat, 'pdf'>) =>
     apiDownloadFile(`/v1/manifests/${id}/export`, format, `manifest-${id}.${format}`),
+
+  /** The manifest as a branded PDF (FD-39), opened in a new tab. */
+  pdf: (id: string) => apiDownloadFile(`/v1/manifests/${id}/pdf`, 'pdf', `manifest-${id}.pdf`),
 }

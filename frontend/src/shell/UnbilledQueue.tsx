@@ -9,6 +9,7 @@ import { Banner, Button, Card, Mono, Table } from '../design/components'
 import { STALE_30S } from '../lib/queryClient'
 import { SectionHead } from './SectionHead'
 import styles from './UnbilledQueue.module.css'
+import { toast } from '../design/toast'
 
 function customersLabel(names: string[]): string {
   if (names.length <= 3) return names.join(', ')
@@ -43,6 +44,7 @@ export function UnbilledQueue(): JSX.Element | null {
     try {
       // A successful POST /v1/billing refreshes every billing query, this one included.
       await billingApi.generateForContainer(containerId)
+      toast.success('Invoices generated')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not generate the invoices.')
     } finally {
@@ -52,7 +54,7 @@ export function UnbilledQueue(): JSX.Element | null {
 
   return (
     <div className={styles.wrap}>
-      <Card padding={0}>
+      <Card padding="none">
         <div className={styles.header}>
           <SectionHead
             title="Customers not invoiced"

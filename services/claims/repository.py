@@ -17,7 +17,7 @@ import logging
 from datetime import UTC, date
 from typing import Any
 
-from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.db import execute_with_tenant, execute_write_with_tenant, take_tenant_counter
 from shared.pagination import build_paginated_query, extract_page
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -81,6 +81,22 @@ def get_billing_by_id(tenant_id: str, billing_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def get_billing_for_claim(tenant_id: str, customer_id: str, container_id: str) -> dict[str, Any] | None:
+    """Return the active (non-cancelled, non-waived) billing record for a customer on a container."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT * FROM billing
+        WHERE tenant_id = %s AND customer_id = %s AND container_id = %s
+          AND status NOT IN ('cancelled', 'waived')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (tenant_id, customer_id, container_id),
+    )
+    return rows[0] if rows else None
+
+
 def get_tenant_config_value(tenant_id: str, config_key: str) -> dict[str, Any] | None:
     """Return the JSONB config_value dict for a given key, or None."""
     rows = execute_with_tenant(
@@ -135,16 +151,17 @@ def get_container_status(tenant_id: str, container_id: str) -> str | None:
 
 
 def customer_has_cargo_in_container(tenant_id: str, customer_id: str, container_id: str) -> bool:
-    """True if this customer has at least one packing list on this container.
+    """True if this customer has at least one non-draft, non-rejected packing list on this container.
 
     Guards file_claim: without it, a customer could file (and staff would
     then investigate) a damage claim against any container in the tenant by
-    guessing or enumerating container numbers, not only their own cargo.
+    guessing or enumerating container numbers, or via a rejected/draft list.
     """
     rows = execute_with_tenant(
         tenant_id,
         "SELECT 1 FROM packing_list WHERE tenant_id = %(tenant_id)s"
-        " AND customer_id = %(customer_id)s AND container_id = %(container_id)s LIMIT 1",
+        " AND customer_id = %(customer_id)s AND container_id = %(container_id)s"
+        " AND status NOT IN ('draft', 'rejected') LIMIT 1",
         {"tenant_id": tenant_id, "customer_id": customer_id, "container_id": container_id},
     )
     return bool(rows)
@@ -215,18 +232,12 @@ def get_claim_outcome(tenant_id: str, claim_id: str) -> dict[str, Any] | None:
 
 
 def get_next_claim_reference(tenant_id: str) -> str:
-    """Generate the next DC reference for this tenant in DC-YYYYMMDD-NNN format."""
+    """Generate the next atomic DC reference for this tenant in DC-YYYYMMDD-NNN format."""
     from datetime import datetime
 
     date_str = datetime.now(tz=UTC).strftime("%Y%m%d")
-    prefix = f"DC-{date_str}-"
-    rows = execute_with_tenant(
-        tenant_id,
-        "SELECT COUNT(*) AS cnt FROM damage_claim WHERE tenant_id = %s AND reference LIKE %s",
-        (tenant_id, prefix + "%"),
-    )
-    seq = (int(rows[0]["cnt"]) + 1) if rows else 1
-    return f"{prefix}{seq:03d}"
+    seq = take_tenant_counter(tenant_id, f"damage_claim:{date_str}")
+    return f"DC-{date_str}-{seq:03d}"
 
 
 def list_damage_claims(
@@ -283,6 +294,7 @@ def get_claim_stats(tenant_id: str) -> dict[str, int]:
         SELECT
             COUNT(*)                                                              AS total,
             COUNT(*) FILTER (WHERE status IN ('filed', 'under_inspection',
+                                              'inspection_complete',
                                               'pending_resolution'))              AS open,
             COUNT(*) FILTER (WHERE status = 'under_inspection')                   AS under_inspection,
             COUNT(*) FILTER (WHERE status = 'resolved'
@@ -364,26 +376,37 @@ def create_claim_resolution(tenant_id: str, data: dict[str, Any]) -> dict[str, A
 def create_refund_request_for_claim(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     """Insert a refund_request created from a resolved damage claim.
 
-    Ground-truth gap found live: this never set refund_type, though migration
-    009 added the column (and its CHECK constraint) with exactly this case in
-    mind — 'damage_or_loss' is one of its three allowed values. Every
-    claim-triggered refund had refund_type NULL, and the frontend's
-    refundTypeLabel() switch has no fallback for that, so RefundDetail.tsx's
-    page title silently rendered blank for every one of them.
+    Links damage_claim_id and requested_by so audit/deduplication/segregation-of-duties
+    checks in the refunds service can trace back to the claim and actor.
     """
+    params = {
+        "damage_claim_id": None,
+        "requested_by": None,
+        **data,
+    }
     return execute_write_with_tenant(
         tenant_id,
         """
         INSERT INTO refund_request (
-            tenant_id, customer_id, billing_id,
-            amount_ngn, reason, status, refund_type
+            tenant_id, customer_id, billing_id, damage_claim_id,
+            amount_ngn, reason, status, refund_type, requested_by
         ) VALUES (
-            %(tenant_id)s, %(customer_id)s, %(billing_id)s,
-            %(amount_ngn)s, %(reason)s, 'pending_review', 'damage_or_loss'
+            %(tenant_id)s, %(customer_id)s, %(billing_id)s, %(damage_claim_id)s,
+            %(amount_ngn)s, %(reason)s, 'pending_review', 'damage_or_loss', %(requested_by)s
         ) RETURNING *
         """,
-        data,
+        params,
     )
+
+
+def count_claim_evidence(claim_id: str) -> int:
+    """Count evidence rows (confirmed or pending) attached to a claim."""
+    rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT COUNT(*) AS cnt FROM claim_evidence WHERE damage_claim_id = %s",
+        (claim_id,),
+    )
+    return int(rows[0]["cnt"]) if rows else 0
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +435,7 @@ def create_claim_evidence(data: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def list_claim_evidence(claim_id: str) -> list[dict[str, Any]]:
-    """The evidence files recorded against a claim, oldest first.
+    """The confirmed evidence files recorded against a claim, oldest first (an unconfirmed upload is not listed).
 
     claim_evidence has no RLS: the caller must already have established that the claim belongs to its tenant (it
     loads the claim through `get_damage_claim_by_id`, which is tenant-scoped) before asking for its evidence.
@@ -422,10 +445,47 @@ def list_claim_evidence(claim_id: str) -> list[dict[str, Any]]:
         """
         SELECT id, file_key, file_name, file_type, file_size_bytes, created_at
         FROM claim_evidence
-        WHERE damage_claim_id = %s
+        WHERE damage_claim_id = %s AND confirmed_at IS NOT NULL
         ORDER BY created_at ASC
         """,
         (claim_id,),
+    )
+
+
+def get_claim_evidence(claim_id: str, evidence_id: str) -> dict[str, Any] | None:
+    """One evidence row of a claim, confirmed or not. The caller has checked the claim belongs to its tenant."""
+    rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT * FROM claim_evidence WHERE damage_claim_id = %s AND id = %s",
+        (claim_id, evidence_id),
+    )
+    return rows[0] if rows else None
+
+
+def confirm_claim_evidence(claim_id: str, evidence_id: str, size_bytes: int) -> dict[str, Any] | None:
+    """Record the checked size and list the file. Confirming twice keeps the first time."""
+    return execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        UPDATE claim_evidence
+        SET file_size_bytes = %s, confirmed_at = COALESCE(confirmed_at, NOW())
+        WHERE damage_claim_id = %s AND id = %s
+        RETURNING *
+        """,
+        (size_bytes, claim_id, evidence_id),
+    )
+
+
+def delete_unconfirmed_claim_evidence(claim_id: str, evidence_id: str) -> dict[str, Any] | None:
+    """Drop the row of an upload that was refused at confirmation. A confirmed row is never deleted here."""
+    return execute_write_with_tenant(
+        PLATFORM_TENANT_ID,
+        """
+        DELETE FROM claim_evidence
+        WHERE damage_claim_id = %s AND id = %s AND confirmed_at IS NULL
+        RETURNING id
+        """,
+        (claim_id, evidence_id),
     )
 
 
@@ -440,24 +500,29 @@ def list_missing_items(
     limit: int = 50,
     cursor: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    conditions = ["tenant_id = %(tenant_id)s"]
+    conditions = ["m.tenant_id = %(tenant_id)s"]
     extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("container_id"):
-        # missing_item links to manifest; filter via subquery
-        conditions.append(
-            "manifest_id IN (SELECT id FROM manifest WHERE container_id = %(container_id)s AND tenant_id = %(tenant_id)s)"
-        )
+        # missing_item links to manifest; filter via joined manifest
+        conditions.append("mf.container_id = %(container_id)s")
         extra["container_id"] = filters["container_id"]
     if filters.get("customer_id"):
-        conditions.append("customer_id = %(customer_id)s")
+        conditions.append("m.customer_id = %(customer_id)s")
         extra["customer_id"] = filters["customer_id"]
     if filters.get("status"):
-        conditions.append("status = %(status)s")
+        conditions.append("m.status = %(status)s")
         extra["status"] = filters["status"]
 
-    base = f"SELECT * FROM missing_item WHERE {' AND '.join(conditions)}"
-    query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
+    base = (
+        "SELECT m.*, c.name AS customer_name, ctn.container_number AS container_number "
+        "FROM missing_item m "
+        "LEFT JOIN customer c ON c.id = m.customer_id AND c.tenant_id = m.tenant_id "
+        "LEFT JOIN manifest mf ON mf.id = m.manifest_id AND mf.tenant_id = m.tenant_id "
+        "LEFT JOIN container ctn ON ctn.id = mf.container_id AND ctn.tenant_id = m.tenant_id "
+        f"WHERE {' AND '.join(conditions)}"
+    )
+    query, params = build_paginated_query(base, cursor, limit, sort_field="m.created_at")
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
     return extract_page(rows, limit)
@@ -469,21 +534,27 @@ def list_seized_items(
     limit: int = 50,
     cursor: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    conditions = ["tenant_id = %(tenant_id)s"]
+    conditions = ["s.tenant_id = %(tenant_id)s"]
     extra: dict[str, Any] = {"tenant_id": tenant_id}
 
     if filters.get("container_id"):
-        conditions.append("container_id = %(container_id)s")
+        conditions.append("s.container_id = %(container_id)s")
         extra["container_id"] = filters["container_id"]
     if filters.get("customer_id"):
-        conditions.append("customer_id = %(customer_id)s")
+        conditions.append("s.customer_id = %(customer_id)s")
         extra["customer_id"] = filters["customer_id"]
     if filters.get("status"):
-        conditions.append("recovery_status = %(status)s")
+        conditions.append("s.recovery_status = %(status)s")
         extra["status"] = filters["status"]
 
-    base = f"SELECT * FROM seized_item WHERE {' AND '.join(conditions)}"
-    query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
+    base = (
+        "SELECT s.*, c.name AS customer_name, ctn.container_number AS container_number "
+        "FROM seized_item s "
+        "LEFT JOIN customer c ON c.id = s.customer_id AND c.tenant_id = s.tenant_id "
+        "LEFT JOIN container ctn ON ctn.id = s.container_id AND ctn.tenant_id = s.tenant_id "
+        f"WHERE {' AND '.join(conditions)}"
+    )
+    query, params = build_paginated_query(base, cursor, limit, sort_field="s.created_at")
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
     return extract_page(rows, limit)
@@ -548,8 +619,13 @@ def update_missing_item_status(
     status: str,
     notes: str | None = None,
     actor_id: str | None = None,
+    expected_status: str | None = None,
 ) -> dict[str, Any] | None:
     params: dict[str, Any] = {"status": status, "tenant_id": tenant_id, "id": item_id}
+    guard = ""
+    if expected_status is not None:
+        guard = " AND status = %(expected_status)s"
+        params["expected_status"] = expected_status
     extra_clause = ""
     if notes is not None:
         extra_clause += ", notes = %(notes)s"
@@ -563,7 +639,7 @@ def update_missing_item_status(
         f"""
         UPDATE missing_item
         SET status = %(status)s, updated_at = NOW(){extra_clause}
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s{guard}
         RETURNING *
         """,
         params,
@@ -608,8 +684,13 @@ def update_seized_item_status(
     recovery_status: str,
     notes: str | None = None,
     actor_id: str | None = None,
+    expected_status: str | None = None,
 ) -> dict[str, Any] | None:
     params: dict[str, Any] = {"recovery_status": recovery_status, "tenant_id": tenant_id, "id": item_id}
+    guard = ""
+    if expected_status is not None:
+        guard = " AND recovery_status = %(expected_status)s"
+        params["expected_status"] = expected_status
     extra_clause = ""
     if notes is not None:
         extra_clause += ", notes = %(notes)s"
@@ -623,7 +704,7 @@ def update_seized_item_status(
         f"""
         UPDATE seized_item
         SET recovery_status = %(recovery_status)s, updated_at = NOW(){extra_clause}
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s{guard}
         RETURNING *
         """,
         params,

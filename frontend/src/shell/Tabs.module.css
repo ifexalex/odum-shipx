@@ -1,8 +1,8 @@
 .tabs {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--color-line);
-  margin-bottom: var(--space-lg);
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--color-line-soft);
+  margin-bottom: var(--space-5);
   /* More tabs than a phone is wide scroll sideways here, never the page. */
   overflow-x: auto;
   scrollbar-width: none;
@@ -14,28 +14,54 @@
 .tab {
   flex-shrink: 0;
   white-space: nowrap;
-  padding: 12px 16px;
+  padding: var(--space-3) var(--space-4);
   background: transparent;
   border: none;
   font-family: var(--font-body);
   font-weight: 500;
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
   border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  margin-bottom: calc(-1 * var(--space-0-5));
   cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
 }
 .tab:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus-ring);
 }
 .tab:hover {
-  color: var(--color-primary);
-  transition: color 0.14s;
+  color: var(--color-ink);
 }
 
 .tabActive {
-  font-weight: 700;
-  color: var(--color-primary);
+  font-weight: 600;
+  color: var(--color-primary-text);
   border-bottom-color: var(--color-primary);
+}
+.tabActive:hover {
+  color: var(--color-primary-text);
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  min-width: 18px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-muted);
+  color: var(--color-ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.tabActive .count {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-on-soft);
 }

@@ -62,6 +62,6 @@ describe('WebhookConfig', () => {
         webhook_config: { endpoint_url: 'https://new.example.com/h', enabled: true, events: ['container.status_updated'] },
       }),
     )
-    expect(await screen.findByText('Webhook configuration saved.')).toBeInTheDocument()
+    expect(await screen.findByText('Webhook settings saved')).toBeInTheDocument()
   })
 })

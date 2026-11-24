@@ -66,7 +66,7 @@ export function AuthCallback(): JSX.Element {
         <Banner variant="error" title="Couldn't sign in">
           {error}
         </Banner>
-        <div style={{ marginTop: 24 }}>
+        <div style={{ marginTop: 'var(--space-6)' }}>
           <Button variant="primary" size="lg" full onClick={() => navigate('/login', { replace: true })}>
             Back to sign in
           </Button>
@@ -78,7 +78,7 @@ export function AuthCallback(): JSX.Element {
   return (
     <AuthShell>
       <FormHead title="Signing you in…" sub="Completing your Microsoft Entra sign-in." />
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-6) 0' }}>
         <div
           aria-label="Signing in"
           role="status"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { UserRole } from '../auth/types'
-import { navConfig, roleForPath, visualRoleFor } from './navConfig'
+import { activeNavPath, navConfig, roleForPath, visualRoleFor } from './navConfig'
 import { routeTable } from './routeTable'
 
 const ALL_ROLES: UserRole[] = [
@@ -67,8 +67,8 @@ describe('roleForPath', () => {
 describe('Nigeria office menu', () => {
   const labels = navConfig.nigeria_office_staff.flatMap((g) => g.items.map((i) => i.label))
 
-  it('offers Containers, Packing Lists and Manifests', () => {
-    expect(labels).toEqual(expect.arrayContaining(['Containers', 'Packing Lists', 'Manifests']))
+  it('offers Containers, Packing lists and Manifests', () => {
+    expect(labels).toEqual(expect.arrayContaining(['Containers', 'Packing lists', 'Manifests']))
   })
 
   it('lists each entry once', () => {
@@ -85,9 +85,51 @@ describe('Nigeria office menu', () => {
 })
 
 describe('China office menu (UX-08)', () => {
-  it('lists Missing items under Coordination, beside Manifests and CBM disputes', () => {
+  it('lists Missing items under Coordination, beside CBM disputes (Manifests is under Operations)', () => {
     const coordination = navConfig.china_office_staff.find((group) => group.group === 'Coordination')
-    expect(coordination?.items.map((item) => item.label)).toEqual(['Manifests', 'CBM disputes', 'Missing items'])
+    expect(coordination?.items.map((item) => item.label)).toEqual(['CBM disputes', 'Missing items'])
     expect(coordination?.items.at(-1)?.path).toBe('/claims/missing-items')
+  })
+})
+
+describe('the menu (FD-15)', () => {
+  const sample = (path: string): string => path.replace(/:\w+/g, 'x1')
+  const itemPaths = (role: UserRole): string[] => navConfig[role].flatMap((g) => g.items.map((i) => i.path))
+
+  it.each(ALL_ROLES)('lights at most one item on every route %s can open', (role) => {
+    for (const route of routeTable.filter((r) => r.allow !== 'public' && r.allow.includes(role))) {
+      const path = sample(route.path)
+      const lit = itemPaths(role).filter((p) => p === activeNavPath(path, itemPaths(role)))
+      expect(lit.length, path).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('lights the deepest item: a sub-page is not also its parent section', () => {
+    const admin = itemPaths('tenant_admin')
+    expect(activeNavPath('/claims/missing-items', admin)).toBe('/claims/missing-items')
+    expect(activeNavPath('/claims/c1', admin)).toBe('/claims')
+    expect(activeNavPath('/packing-lists/new', admin)).toBe('/packing-lists')
+    expect(activeNavPath('/billing/disputes/d1', itemPaths('china_office_staff'))).toBe('/billing/disputes')
+    expect(activeNavPath('/profile', admin)).toBeNull()
+  })
+
+  it.each(ALL_ROLES)('gives every item of %s its own icon', (role) => {
+    const icons = navConfig[role].flatMap((g) => g.items.map((i) => i.icon))
+    expect(icons.every(Boolean)).toBe(true)
+    expect(new Set(icons).size).toBe(icons.length)
+  })
+
+  it.each(ALL_ROLES)('uses sentence case for %s, and offers no "Create" page as a menu item', (role) => {
+    for (const group of navConfig[role]) {
+      for (const label of [group.group, ...group.items.map((i) => i.label)].filter(Boolean) as string[]) {
+        expect(label, label).not.toMatch(/^\S+ [A-Z][a-z]/) // "Packing Lists"
+        expect(label).not.toMatch(/^Create\b/)
+      }
+      for (const item of group.items) expect(item.path).not.toMatch(/\/(new|import)$/)
+    }
+  })
+
+  it('groups the tenant admin’s menu as Overview, Operations, Billing and claims, Admin', () => {
+    expect(navConfig.tenant_admin.map((g) => g.group)).toEqual(['Overview', 'Operations', 'Billing and claims', 'Admin'])
   })
 })

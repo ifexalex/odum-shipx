@@ -1,7 +1,6 @@
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../../api/client'
 import {
-  CONTAINER_STATUS_LABELS,
   containerAdvanceRequirementHint,
 } from '../../../api/containerRules'
 import {
@@ -10,14 +9,18 @@ import {
   type ContainerStatus,
   type ContainerStatusUpdate,
 } from '../../../api/tracking'
-import { Banner, Button, Field, Mono, DialogGuard } from '../../../design/components'
+import { Banner, Button, Field, Modal, Mono, DateField } from '../../../design/components'
 import styles from '../ContainerDetail.module.css'
+import { statusLabel } from '../../../design/status'
+import { toast } from '../../../design/toast'
 
 export interface AdvanceModalProps {
   container: Container
   target: ContainerStatus
   /** Distinct customers with cargo on this container (from its packing lists). */
   customerCount: number
+  /** Approved packing lists currently on this container (used to warn before sealing empty). */
+  approvedCount?: number
   onClose: () => void
   onAdvanced: (updated: ContainerStatusUpdate) => void
 }
@@ -53,6 +56,7 @@ export function AdvanceStatusModal({
   container,
   target,
   customerCount,
+  approvedCount,
   onClose,
   onAdvanced,
 }: AdvanceModalProps): JSX.Element {
@@ -64,6 +68,7 @@ export function AdvanceStatusModal({
   const requirementHint = containerAdvanceRequirementHint(target)
   const requiresShipDate = target === 'in_transit'
   const impact = customerImpactFor(target, customerCount)
+  const sealingWithoutApproved = target === 'sealed' && approvedCount === 0
 
   async function handleConfirm(): Promise<void> {
     setSubmitting(true)
@@ -74,6 +79,7 @@ export function AdvanceStatusModal({
         ship_date: shipDate || undefined,
         notes: notes || undefined,
       })
+      toast.success(`Container moved to ${statusLabel('container', updated.status)}`, updated.container_number)
       onAdvanced(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update the container status.')
@@ -83,37 +89,68 @@ export function AdvanceStatusModal({
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onClose}>
-      <DialogGuard onClose={onClose} />
-      <div
-        className={styles.modalPanel}
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <h3 className={styles.modalTitle}>
-          {step === 'form'
-            ? `Advance to ${CONTAINER_STATUS_LABELS[target]}`
-            : `Confirm — ${CONTAINER_STATUS_LABELS[target]}`}
-        </h3>
-        {error && (
-          <div className={styles.modalBanner}>
-            <Banner variant="error">{error}</Banner>
-          </div>
-        )}
+    <Modal
+      open
+      onClose={onClose}
+      title={
+        step === 'form'
+          ? `Advance to ${statusLabel('container', target)}`
+          : `Confirm — ${statusLabel('container', target)}`
+      }
+      size="sm"
+      footer={
+        step === 'form' ? (
+          <>
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              trailingIcon="arrowright"
+              disabled={requiresShipDate && !shipDate}
+              onClick={() => setStep('confirm')}
+            >
+              Continue
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              variant="ghost"
+              icon="arrowleft"
+              onClick={() => setStep('form')}
+              disabled={submitting}
+            >
+              Back
+            </Button>
+            <Button
+              variant="primary"
+              icon="check"
+              loading={submitting}
+              onClick={() => void handleConfirm()}
+            >
+              {impact ? 'Confirm & notify' : 'Confirm'}
+            </Button>
+          </>
+        )
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error">{error}</Banner>}
 
         {step === 'form' && (
           <>
-            {requirementHint && (
-              <div className={styles.modalBanner}>
-                <Banner variant="info">{requirementHint}</Banner>
-              </div>
+            {sealingWithoutApproved && (
+              <Banner variant="warning" title="No approved packing lists yet">
+                Approve at least one packing list on this container before sealing — otherwise the
+                server will refuse sealing or generate an empty manifest.
+              </Banner>
             )}
+            {requirementHint && <Banner variant="info">{requirementHint}</Banner>}
             {requiresShipDate && (
-              <Field
+              <DateField
                 label="Ship date"
                 name="shipDate"
-                type="date"
                 required
                 value={shipDate}
                 onChange={(event) => setShipDate(event.target.value)}
@@ -127,19 +164,6 @@ export function AdvanceStatusModal({
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
             />
-            <div className={styles.modalActions}>
-              <Button variant="ghost" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                trailingIcon="arrowright"
-                disabled={requiresShipDate && !shipDate}
-                onClick={() => setStep('confirm')}
-              >
-                Continue
-              </Button>
-            </div>
           </>
         )}
 
@@ -148,44 +172,24 @@ export function AdvanceStatusModal({
             <div className={styles.advanceSummary}>
               <Mono>{container.container_number}</Mono>
               <span className={styles.advanceSummaryArrow}>
-                {CONTAINER_STATUS_LABELS[container.status]} →{' '}
-                <strong>{CONTAINER_STATUS_LABELS[target]}</strong>
+                {statusLabel('container', container.status)} →{' '}
+                <strong>{statusLabel('container', target)}</strong>
               </span>
               {shipDate && <span className={styles.advanceSummaryMeta}>Ship date: {shipDate}</span>}
             </div>
-            <div className={styles.modalBanner}>
-              {impact ? (
-                <Banner variant={impact.variant} icon="bell" title="Customers will be contacted">
-                  {impact.text}
-                </Banner>
-              ) : (
-                <Banner variant="info">
-                  No customer notifications are sent at this stage — customers see the updated
-                  tracking status only.
-                </Banner>
-              )}
-            </div>
-            <div className={styles.modalActions}>
-              <Button
-                variant="ghost"
-                icon="arrowleft"
-                onClick={() => setStep('form')}
-                disabled={submitting}
-              >
-                Back
-              </Button>
-              <Button
-                variant="primary"
-                icon="check"
-                loading={submitting}
-                onClick={() => void handleConfirm()}
-              >
-                {impact ? 'Confirm & notify' : 'Confirm'}
-              </Button>
-            </div>
+            {impact ? (
+              <Banner variant={impact.variant} icon="bell" title="Customers will be contacted">
+                {impact.text}
+              </Banner>
+            ) : (
+              <Banner variant="info">
+                No customer notifications are sent at this stage — customers see the updated
+                tracking status only.
+              </Banner>
+            )}
           </>
         )}
       </div>
-    </div>
+    </Modal>
   )
 }

@@ -32,7 +32,8 @@ def claim(world, admin):
         )
         for name in ("a-photo.jpg", "b-video.mp4"):
             cur.execute(
-                "INSERT INTO claim_evidence (damage_claim_id, file_key, file_name, file_type) VALUES (%s, %s, %s, 'image/jpeg')",
+                "INSERT INTO claim_evidence (damage_claim_id, file_key, file_name, file_type, confirmed_at) "
+                "VALUES (%s, %s, %s, 'image/jpeg', NOW())",
                 (claim_id, f"{world['tenant']}/claims/{claim_id}/{name}", name),
             )
         cur.execute(
@@ -94,7 +95,7 @@ class TestService:
 
     def _read(self, world, claim, ctx):
         storage = MagicMock()
-        storage.presigned_get_url.side_effect = lambda key, expires_in: f"https://files.example/{key}"
+        storage.presigned_get_url.side_effect = lambda key, expires_in, **_kw: f"https://files.example/{key}"
         with patch.object(service, "get_storage_provider", return_value=storage):
             return service.get_claim(world["tenant"], claim, ctx)
 

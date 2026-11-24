@@ -6,11 +6,13 @@ Split out of ``service.py`` (audit BE-13); ``service`` re-exports every public f
 """
 
 import logging
+import math
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from shared.audit import log_audit
 from shared.cbm_rate import get_cbm_rate_config, get_min_cbm_per_item
+from shared.db import tenant_transaction
 from shared.exceptions import (
     BusinessRuleViolationError,
     DuplicateResourceError,
@@ -175,33 +177,37 @@ def update_cbm_rate(
         "bale_rate": float(bale_rate),
         "effective_from": datetime.now(UTC).isoformat(),
     }
-    repo.upsert_config(tenant_id, "cbm_rate_per_unit", new_value, updated_by=actor_id)
+    effective_min_cbm = (
+        float(req.min_cbm_per_item) if req.min_cbm_per_item is not None else float(current.get("min_cbm_per_item", 0.0))
+    )
+    history_value = {**new_value, "min_cbm_per_item": effective_min_cbm}
 
-    # Minimum billable CBM floor — its own config key, updated only when supplied.
-    if req.min_cbm_per_item is not None:
-        repo.upsert_config(
-            tenant_id,
-            "min_cbm_per_item",
-            {"value": float(req.min_cbm_per_item)},
-            updated_by=actor_id,
-        )
+    with tenant_transaction(tenant_id):
+        repo.upsert_config(tenant_id, "cbm_rate_per_unit", new_value, updated_by=actor_id)
 
-    try:
+        # Minimum billable CBM floor — its own config key, updated only when supplied.
+        if req.min_cbm_per_item is not None:
+            repo.upsert_config(
+                tenant_id,
+                "min_cbm_per_item",
+                {"value": float(req.min_cbm_per_item)},
+                updated_by=actor_id,
+            )
+
         repo.append_rate_history(
             tenant_id=tenant_id,
             rate_type="cbm_rate",
-            rate_value=new_value,
+            rate_value=history_value,
             previous_value={
                 "currency": current["currency"],
                 "rate_mode": current["rate_mode"],
                 "carton_rate": float(current["carton_rate"]),
                 "bag_rate": float(current["bag_rate"]),
                 "bale_rate": float(current["bale_rate"]),
+                "min_cbm_per_item": float(current.get("min_cbm_per_item", 0.0)),
             },
             changed_by=actor_id,
         )
-    except Exception as exc:
-        logger.warning("rate_history append failed: %s", exc)
 
     log_audit(
         tenant_id=tenant_id,
@@ -211,7 +217,7 @@ def update_cbm_rate(
         actor_id=actor_id,
         actor_role="tenant_admin",
         before_state={"cbm_rate_per_unit": current},
-        after_state={"cbm_rate_per_unit": new_value},
+        after_state={"cbm_rate_per_unit": history_value},
         ip_address=ip_address,
     )
     return {**new_value, "min_cbm_per_item": float(get_min_cbm_per_item(tenant_id))}
@@ -240,11 +246,40 @@ def _serialize_charge_type(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _charge_type_write_fields(data: dict[str, Any]) -> dict[str, Any]:
-    """Translate inbound wire fields to DB column names (amount_ngn -> default_amount_ngn)."""
-    mapped = {k: v for k, v in data.items() if k in ("name", "description", "is_active")}
+def _charge_type_write_fields(data: dict[str, Any], *, require_name: bool = False) -> dict[str, Any]:
+    """Validate and translate inbound wire fields to DB column names (amount_ngn -> default_amount_ngn)."""
+    mapped: dict[str, Any] = {}
+    if require_name or "name" in data:
+        raw_name = data.get("name")
+        name = raw_name.strip() if isinstance(raw_name, str) else ""
+        if not name:
+            raise ValidationError("Charge type name is required", field_errors={"name": "name is required"})
+        if len(name) > 100:
+            raise ValidationError("Charge type name must be at most 100 characters", field_errors={"name": "too long"})
+        mapped["name"] = name
+    if "description" in data:
+        mapped["description"] = data["description"]
+    if "is_active" in data:
+        if not isinstance(data["is_active"], bool):
+            raise ValidationError("is_active must be a boolean", field_errors={"is_active": "must be a boolean"})
+        mapped["is_active"] = data["is_active"]
     if "amount_ngn" in data:
-        mapped["default_amount_ngn"] = data["amount_ngn"]
+        from decimal import Decimal, InvalidOperation
+
+        raw_amt = data["amount_ngn"]
+        if raw_amt is not None:
+            try:
+                amt = Decimal(str(raw_amt))
+            except (InvalidOperation, TypeError, ValueError) as exc:
+                raise ValidationError("amount_ngn must be a number", field_errors={"amount_ngn": "must be a number"}) from exc
+            if not amt.is_finite() or amt < 0:
+                raise ValidationError(
+                    "amount_ngn must be a finite non-negative number",
+                    field_errors={"amount_ngn": "must be >= 0"},
+                )
+            mapped["default_amount_ngn"] = raw_amt
+        else:
+            mapped["default_amount_ngn"] = None
     return mapped
 
 
@@ -254,7 +289,8 @@ def create_charge_type(
     actor_id: str,
     ip_address: str | None = None,
 ) -> dict[str, Any]:
-    charge_type = repo.create_charge_type(tenant_id, {**_charge_type_write_fields(data), "created_by": actor_id})
+    fields = _charge_type_write_fields(data, require_name=True)
+    charge_type = repo.create_charge_type(tenant_id, {**fields, "created_by": actor_id})
     if charge_type is None:
         raise RuntimeError("create_charge_type returned None unexpectedly")
     log_audit(
@@ -423,12 +459,12 @@ def update_container_capacity(
         repo.upsert_config(tenant_id, _CAPACITY_OVERRIDES_KEY, overrides, updated_by=actor_id)
         log_audit(
             tenant_id=tenant_id,
-            entity_type="container_capacity",
-            entity_id=capacity_id,
+            entity_type="tenant_config",
+            entity_id=tenant_id,
             action="UPDATE",
             actor_id=actor_id,
             actor_role="tenant_admin",
-            after_state={"recommended_cbm": recommended},
+            after_state={"preset": capacity_id, "recommended_cbm": recommended},
             ip_address=ip_address,
         )
         item = _serialize_container_capacity(default, is_custom=False)
@@ -456,7 +492,12 @@ def update_container_capacity(
     if "recommended_cbm" in data:
         updates["recommended_cbm"] = recommended
     effective_capacity = updates.get("capacity_cbm", float(existing["capacity_cbm"]))
-    if updates.get("recommended_cbm") is not None and updates["recommended_cbm"] > effective_capacity:
+    effective_recommended = (
+        updates["recommended_cbm"]
+        if "recommended_cbm" in updates
+        else (float(existing["recommended_cbm"]) if existing.get("recommended_cbm") is not None else None)
+    )
+    if effective_recommended is not None and effective_recommended > effective_capacity:
         raise ValidationError("recommended_cbm cannot exceed capacity_cbm")
 
     try:
@@ -550,6 +591,8 @@ def _positive_cbm(value: Any, field: str) -> float:
         num = float(value)
     except (TypeError, ValueError) as exc:
         raise ValidationError(f"{field} must be a number") from exc
+    if not math.isfinite(num):
+        raise ValidationError(f"{field} must be a finite number")
     if num <= 0:
         raise ValidationError(f"{field} must be greater than 0")
     if num > 1000:

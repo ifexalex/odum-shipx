@@ -38,7 +38,7 @@ export function SessionTimeoutModal({ deadline, onContinue, onSignOut }: Session
     <Modal
       open
       title="Still there?"
-      width={480}
+      size="sm"
       footer={
         <>
           <Button variant="ghost" onClick={onSignOut}>

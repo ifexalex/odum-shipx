@@ -13,11 +13,13 @@
 import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import { configApi, type BankTransferConfig, type PaystackConfig } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono } from '../../design/components'
+import { Banner, Button, Card, ConfirmDialog, Field, Icon, Mono, PageSkeleton } from '../../design/components'
 import { useTenantConfig } from '../../hooks/useConfig'
 import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './PaymentGatewayConfig.module.css'
+import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 const EMPTY_BANK_FORM = { bank_name: '', account_name: '', account_number: '', sort_code: '', instructions: '' }
 
@@ -44,7 +46,6 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   const canSave = form.bank_name.trim() && form.account_name.trim() && form.account_number.trim()
 
@@ -52,7 +53,6 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
     if (!canSave) return
     setSaving(true)
     setSaveError(null)
-    setSaveSuccess(false)
     try {
       const updated = await configApi.updateConfig({
         bank_transfer_config: {
@@ -64,8 +64,7 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
         },
       })
       setConfig(updated.bank_transfer_config ?? null)
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
+      toast.success('Bank details saved', 'Customers paying by transfer see the new account.')
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not save these bank details.')
     } finally {
@@ -74,7 +73,7 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
   }
 
   return (
-    <Card padding={24} style={{ marginBottom: 16 }}>
+    <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
       <SectionHead
         title="Manual bank transfer"
         sub="Shown to your customers when they choose to pay by bank transfer. Get this right — it's where their money goes."
@@ -85,7 +84,7 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
         }
       />
       {!config && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="warning" title="No bank account configured">
             Until you save one, customers who choose "Manual bank transfer" won't be shown any account
             details — that option is effectively unusable for them.
@@ -93,13 +92,8 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
         </div>
       )}
       {saveError && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{saveError}</Banner>
-        </div>
-      )}
-      {saveSuccess && (
-        <div style={{ marginBottom: 16 }}>
-          <Banner variant="success">Bank details saved.</Banner>
         </div>
       )}
       <div className={styles.bankGrid}>
@@ -132,7 +126,7 @@ function BankTransferSettings({ initial }: { initial: BankTransferConfig | null 
           onChange={(e) => setForm({ ...form, sort_code: e.target.value })}
         />
       </div>
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 'var(--space-4)' }}>
         <Field
           label="Extra instructions"
           name="instructions"
@@ -162,7 +156,6 @@ export function PaymentGatewayConfig(): JSX.Element {
   const [newKey, setNewKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -178,14 +171,12 @@ export function PaymentGatewayConfig(): JSX.Element {
     if (!KEY_PATTERN.test(newKey)) return
     setSaving(true)
     setSaveError(null)
-    setSaveSuccess(false)
     setTestResult(null)
     try {
       const updated = await configApi.updatePaystackConfig(newKey)
       setConfig(updated)
       setNewKey('')
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
+      toast.success('Paystack key saved', 'Online payments use the new key.')
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not save this key.')
     } finally {
@@ -213,6 +204,7 @@ export function PaymentGatewayConfig(): JSX.Element {
     setDisconnecting(true)
     try {
       await configApi.deletePaystackConfig()
+      toast.success('Paystack disconnected')
       setConfig(null)
       setTestResult(null)
       setShowDisconnectConfirm(false)
@@ -223,26 +215,27 @@ export function PaymentGatewayConfig(): JSX.Element {
     }
   }
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading…</div>
+  if (loading) return <PageSkeleton kind="form" label="Loading the page" />
 
   const connected = config?.enabled === true
 
   return (
     <div>
+      <PageHeader
+        title="Payments"
+        meta="Bank transfer details for customer payments, plus optional instant online payment via Paystack."
+      />
       {saveError && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{saveError}</Banner>
         </div>
       )}
-      {saveSuccess && (
-        <div style={{ marginBottom: 16 }}>
-          <Banner variant="success">Paystack key saved.</Banner>
-        </div>
-      )}
 
-      <Card padding={24} style={{ marginBottom: 16 }}>
+      <BankTransferSettings initial={tenantConfig.data?.bank_transfer_config ?? null} />
+
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead
-          title="Paystack"
+          title="Paystack (optional online checkout)"
           sub="Customer payments go straight to your own Paystack account — ShipX never holds or touches your funds."
           action={
             connected ? (
@@ -266,12 +259,12 @@ export function PaymentGatewayConfig(): JSX.Element {
         )}
 
         {testResult && (
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 'var(--space-3)' }}>
             <Banner variant={testResult.success ? 'success' : 'error'}>{testResult.message}</Banner>
           </div>
         )}
 
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 'var(--space-4)' }}>
           <Field
             label={connected ? 'Replace secret key' : 'Secret key'}
             name="secret_key"
@@ -291,7 +284,7 @@ export function PaymentGatewayConfig(): JSX.Element {
 
         <div className={styles.footer}>
           {connected && (
-            <Button variant="danger-outline" onClick={() => setShowDisconnectConfirm(true)}>
+            <Button variant="danger-ghost" onClick={() => setShowDisconnectConfirm(true)}>
               Disconnect
             </Button>
           )}
@@ -313,34 +306,17 @@ export function PaymentGatewayConfig(): JSX.Element {
         </Banner>
       )}
 
-      <BankTransferSettings initial={tenantConfig.data?.bank_transfer_config ?? null} />
-
-      {showDisconnectConfirm && (
-        <div className={styles.modalOverlay} onClick={() => setShowDisconnectConfirm(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h3 className={styles.modalTitle}>Disconnect Paystack</h3>
-              <button type="button" className={styles.closeBtn} onClick={() => setShowDisconnectConfirm(false)}>
-                <Icon name="x" size={18} />
-              </button>
-            </div>
-            <div className={styles.modalBody}>
-              <Banner variant="warning" icon="warn" title="Online payment will stop working immediately">
-                Customers won&apos;t see the &quot;Pay online&quot; option until you reconnect a key. Bank
-                transfer stays available the whole time.
-              </Banner>
-            </div>
-            <div className={styles.modalFooter}>
-              <Button variant="secondary" onClick={() => setShowDisconnectConfirm(false)} disabled={disconnecting}>
-                Cancel
-              </Button>
-              <Button variant="danger" loading={disconnecting} onClick={() => void handleDisconnect()}>
-                Disconnect
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showDisconnectConfirm}
+        title="Disconnect Paystack"
+        confirmLabel="Disconnect"
+        undo="You can reconnect a Paystack key at any time. Bank transfer stays available."
+        busy={disconnecting}
+        onConfirm={() => void handleDisconnect()}
+        onCancel={() => setShowDisconnectConfirm(false)}
+      >
+        Online payment will stop working immediately. Customers won&apos;t see the &quot;Pay online&quot; option until you reconnect a key.
+      </ConfirmDialog>
     </div>
   )
 }

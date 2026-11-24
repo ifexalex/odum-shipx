@@ -1,5 +1,6 @@
 """The shared upload helper (audit BE-12): one set of rules for every direct-to-storage upload."""
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -50,7 +51,11 @@ class TestContentTypes:
 
 class TestKeys:
     def test_key_is_under_the_tenant_prefix_with_a_safe_name(self):
-        assert uploads.upload_key(TENANT, ("claims", "c1"), "../../etc/pass wd.png") == f"{TENANT}/claims/c1/pass wd.png"
+        key = uploads.upload_key(TENANT, ("claims", "c1"), "../../etc/pass wd.png")
+        assert re.fullmatch(f"{TENANT}/claims/c1/[0-9a-f]{{32}}-pass wd.png", key)
+
+    def test_two_uploads_of_one_name_get_different_keys(self):
+        assert uploads.upload_key(TENANT, ("claims", "c1"), "a.png") != uploads.upload_key(TENANT, ("claims", "c1"), "a.png")
 
     @pytest.mark.parametrize("segment", ["", "a/b", "..", "a\\b", "x..y"])
     def test_a_segment_that_could_change_the_key_structure_is_refused(self, segment):
@@ -71,12 +76,13 @@ class TestPresign:
                 uploads.CONTAINER_DOCUMENT, TENANT, ("containers", "k1"), "bl.pdf", "application/pdf", 2048
             )
         storage.presigned_upload.assert_called_once_with(
-            f"{TENANT}/containers/k1/bl.pdf",
+            upload.key,
             content_type="application/pdf",
             expires_in=uploads.CONTAINER_DOCUMENT.expires_in,
             content_length=2048,
         )
-        assert upload.key == f"{TENANT}/containers/k1/bl.pdf"
+        assert re.fullmatch(f"{TENANT}/containers/k1/[0-9a-f]{{32}}-bl.pdf", upload.key)
+        assert upload.filename == "bl.pdf"
         assert upload.as_response()["upload_url"] == "https://storage.test/put"
 
     def test_a_refused_type_never_reaches_storage(self):
@@ -198,3 +204,43 @@ class TestSizeLimit:
         ):
             service.process_manifest_import(TENANT, f"{TENANT}/imports/x.xlsx", actor_id="u1", ctx=MagicMock())
         storage.get_object.assert_not_called()
+
+
+class TestConfirmStoredUpload:
+    """The check that holds on Azure, where the upload URL cannot bind the file's length."""
+
+    def test_returns_the_stored_size(self):
+        storage = _storage()
+        storage.object_size.return_value = 2048
+        with patch("shared.uploads.get_storage_provider", return_value=storage):
+            assert uploads.confirm_stored_upload(uploads.EVIDENCE, "k") == 2048
+        storage.delete_object.assert_not_called()
+
+    def test_a_missing_file_is_refused_and_nothing_is_deleted(self):
+        storage = _storage()
+        storage.object_size.return_value = None
+        with (
+            patch("shared.uploads.get_storage_provider", return_value=storage),
+            pytest.raises(BusinessRuleViolationError) as caught,
+        ):
+            uploads.confirm_stored_upload(uploads.EVIDENCE, "k")
+        assert caught.value.rule_id == "UPLOAD_NOT_FOUND"
+        storage.delete_object.assert_not_called()
+
+    def test_a_file_over_the_limit_is_deleted_and_refused(self):
+        storage = _storage()
+        storage.object_size.return_value = uploads.MAX_UPLOAD_BYTES + 1
+        with (
+            patch("shared.uploads.get_storage_provider", return_value=storage),
+            pytest.raises(BusinessRuleViolationError) as caught,
+        ):
+            uploads.confirm_stored_upload(uploads.CONTAINER_DOCUMENT, "k")
+        assert caught.value.rule_id == "FILE_TOO_LARGE"
+        storage.delete_object.assert_called_once_with("k")
+
+    def test_a_file_exactly_at_the_limit_is_kept(self):
+        storage = _storage()
+        storage.object_size.return_value = uploads.MAX_UPLOAD_BYTES
+        with patch("shared.uploads.get_storage_provider", return_value=storage):
+            assert uploads.confirm_stored_upload(uploads.EVIDENCE, "k") == uploads.MAX_UPLOAD_BYTES
+        storage.delete_object.assert_not_called()

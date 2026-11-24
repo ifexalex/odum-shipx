@@ -31,8 +31,11 @@ from shared.db import (
     next_tenant_counter,
     tenant_transaction,
 )
-from shared.list_filters import billing_filter
+from shared.list_filters import billing_filter, overdue_condition
 from shared.tenant_context import PLATFORM_TENANT_ID
+
+# Owed for over 30 days: a fixed SQL fragment (no input), shared with the invoice list's `overdue` filter.
+_OVERDUE = overdue_condition()
 
 logger = logging.getLogger(__name__)
 
@@ -117,13 +120,13 @@ def get_tenant_config_value(tenant_id: str, config_key: str) -> dict[str, Any] |
 
 
 def get_cbm_and_carton_totals(tenant_id: str, customer_id: str, container_id: str) -> dict[str, Any]:
-    """Sum CBM and count cartons from approved packing lists for customer+container."""
+    """Sum CBM and carton quantities from approved packing lists for customer+container."""
     rows = execute_with_tenant(
         tenant_id,
         """
         SELECT
-            COALESCE(SUM(pli.cbm), 0) AS total_cbm,
-            COUNT(pli.id)              AS total_cartons
+            COALESCE(SUM(pli.cbm), 0)                        AS total_cbm,
+            COALESCE(SUM(COALESCE(pli.quantity, 1)), 0)::int AS total_cartons
         FROM packing_list_item pli
         JOIN packing_list pl ON pl.id = pli.packing_list_id
         WHERE pl.tenant_id    = %s
@@ -322,8 +325,9 @@ def create_invoice(
 
     In a single transaction this allocates the next invoice number from the
     tenant counter, inserts the invoice, marks the carryovers it absorbed as
-    applied and takes what it used from each credit. Either all of that happens
-    or none of it does.
+    applied and takes what it used from each credit, recording each use in
+    ``billing_credit_application`` so a cancellation can give it back. Either all
+    of that happens or none of it does.
 
     A credit is spent only as far as the invoice needed it: what is left stays
     ``applied_as_credit`` for the next invoice, and the credit becomes
@@ -428,6 +432,20 @@ def create_invoice(
                 )
                 if cur.fetchone() is None:
                     raise LedgerConflictError("a credit was applied by another request")
+                # Which credit this invoice used, and how much: what cancelling the invoice gives back (migration 070).
+                cur.execute(
+                    """
+                    INSERT INTO billing_credit_application (tenant_id, billing_id, refund_request_id, amount_ngn)
+                    VALUES (%(tenant_id)s, %(billing_id)s, %(refund_id)s, %(amount)s)
+                    RETURNING id
+                    """,
+                    {
+                        "tenant_id": tenant_id,
+                        "billing_id": invoice["id"],
+                        "refund_id": credit.refund_id,
+                        "amount": credit.amount_ngn,
+                    },
+                )
             return invoice, True
     except _AlreadyBilled:
         existing_row = get_live_invoice(tenant_id, data["customer_id"], data["container_id"])
@@ -494,6 +512,65 @@ def list_billing_all(
     return extract_page(rows, limit, sort_field)
 
 
+#: How many containers the report page lists: the largest by amount billed. The export has every container.
+REPORT_CONTAINER_ROWS = 200
+
+
+def get_container_billing(
+    tenant_id: str,
+    created_after: str | None,
+    created_before: str | None,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Billing for the period summed per container, largest amount billed first.
+
+    Backs the report page's "CBM & billing by container" table (the top `REPORT_CONTAINER_ROWS`) and its export
+    (every container; the caller passes one more than its row limit to learn whether the period has more).
+
+    Args:
+        tenant_id: Owning tenant.
+        created_after: Earliest billing `created_at` to include, or None for no lower bound.
+        created_before: Latest billing `created_at` to include, or None for no upper bound.
+        limit: Most rows to return.
+
+    Returns:
+        One row per container: number, customer count, CBM, amounts billed, collected and outstanding, and the
+        average CBM rate and dollar rate its invoices used.
+    """
+    params: dict[str, Any] = {"tenant_id": tenant_id, "limit": limit}
+    where = "b.tenant_id = %(tenant_id)s AND b.status <> 'cancelled'"
+    if created_after:
+        where += " AND b.created_at >= %(created_after)s"
+        params["created_after"] = created_after
+    if created_before:
+        where += " AND b.created_at <= %(created_before)s"
+        params["created_before"] = created_before
+    return execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT
+            COALESCE(c.container_number, b.container_id::text) AS container_number,
+            COUNT(DISTINCT b.customer_id)                      AS customers,
+            COALESCE(SUM(b.total_cbm), 0)                      AS cbm,
+            COALESCE(SUM(b.total_ngn), 0)                      AS billed,
+            COALESCE(SUM(b.amount_paid_ngn), 0)                AS collected,
+            COALESCE(SUM(GREATEST(b.balance_ngn, 0)) FILTER (
+                WHERE b.status NOT IN ('paid', 'overpaid', 'waived', 'cancelled')), 0) AS outstanding,
+            -- Averages kept at the columns' own 4 places, not AVG's 16.
+            COALESCE(ROUND(AVG(NULLIF(b.cbm_rate_usd, 0)), 4), 0)      AS cbm_rate_usd,
+            COALESCE(ROUND(AVG(NULLIF(b.exchange_rate_ngn, 0)), 4), 0) AS dollar_rate
+        FROM billing b
+        LEFT JOIN container c ON c.id = b.container_id AND c.tenant_id = b.tenant_id
+        WHERE {where}
+        GROUP BY COALESCE(c.container_number, b.container_id::text)
+        ORDER BY billed DESC, container_number
+        LIMIT %(limit)s
+        """,  # noqa: S608 - only the fixed date predicates are interpolated; every value is a bound parameter
+        params,
+    )
+
+
 def get_tenant_report(
     tenant_id: str,
     created_after: str | None = None,
@@ -528,14 +605,14 @@ def get_tenant_report(
         SELECT
             COALESCE(SUM(total_ngn), 0)                                          AS total_revenue_ngn,
             COALESCE(SUM(total_cbm), 0)                                          AS total_cbm,
-            COALESCE(SUM(total_ngn) FILTER (WHERE status = 'paid'), 0)           AS revenue_paid,
+            COALESCE(SUM(total_ngn) FILTER (WHERE status IN ('paid', 'overpaid')), 0) AS revenue_paid,
             COALESCE(SUM(total_ngn) FILTER (WHERE status = 'partially_paid'), 0) AS revenue_partially_paid,
             COALESCE(SUM(total_ngn) FILTER (WHERE status = 'unpaid'), 0)         AS revenue_unpaid,
             COALESCE(SUM(total_ngn) FILTER (
                 WHERE status = 'released_with_outstanding'), 0)                  AS revenue_released_with_outstanding,
             COALESCE(SUM(total_ngn) FILTER (WHERE status = 'waived'), 0)         AS revenue_waived
         FROM billing
-        WHERE {bare}
+        WHERE {bare} AND status <> 'cancelled'
         """,
         params,
     )
@@ -547,7 +624,7 @@ def get_tenant_report(
         SELECT COALESCE(cu.name, 'Unknown') AS name, SUM(b.total_ngn) AS amount
         FROM billing b
         LEFT JOIN customer cu ON cu.id = b.customer_id AND cu.tenant_id = b.tenant_id
-        WHERE {aliased}
+        WHERE {aliased} AND b.status <> 'cancelled'
         GROUP BY COALESCE(cu.name, 'Unknown')
         ORDER BY amount DESC
         LIMIT 20
@@ -555,27 +632,7 @@ def get_tenant_report(
         params,
     )
 
-    container_billing = execute_with_tenant(
-        tenant_id,
-        f"""
-        SELECT
-            COALESCE(c.container_number, b.container_id::text) AS container_number,
-            COUNT(DISTINCT b.customer_id)                      AS customers,
-            COALESCE(SUM(b.total_cbm), 0)                      AS cbm,
-            COALESCE(SUM(b.total_ngn), 0)                      AS billed,
-            COALESCE(SUM(b.amount_paid_ngn), 0)               AS collected,
-            COALESCE(SUM(b.balance_ngn), 0)                   AS outstanding,
-            COALESCE(AVG(NULLIF(b.cbm_rate_usd, 0)), 0)       AS cbm_rate_usd,
-            COALESCE(AVG(NULLIF(b.exchange_rate_ngn, 0)), 0)  AS dollar_rate
-        FROM billing b
-        LEFT JOIN container c ON c.id = b.container_id AND c.tenant_id = b.tenant_id
-        WHERE {aliased}
-        GROUP BY COALESCE(c.container_number, b.container_id::text)
-        ORDER BY billed DESC
-        LIMIT 200
-        """,
-        params,
-    )
+    container_billing = get_container_billing(tenant_id, created_after, created_before, limit=REPORT_CONTAINER_ROWS)
 
     # Cross-table period counts (tenant-scoped via RLS).
     containers_processed = execute_with_tenant(
@@ -592,6 +649,7 @@ def get_tenant_report(
         SELECT
             COUNT(*)                                                     AS total,
             COUNT(*) FILTER (WHERE status IN ('filed', 'under_inspection',
+                                              'inspection_complete',
                                               'pending_resolution'))     AS open,
             COUNT(*) FILTER (WHERE status = 'resolved')                  AS resolved
         FROM damage_claim WHERE {bare}
@@ -679,14 +737,13 @@ def get_billing_stats(tenant_id: str) -> dict[str, Any]:
         tenant_id,
         """
         SELECT
-            COALESCE(SUM(balance_ngn) FILTER (
-                WHERE status NOT IN ('paid', 'waived', 'cancelled')), 0)          AS outstanding_ngn,
+            COALESCE(SUM(GREATEST(balance_ngn, 0)) FILTER (
+                WHERE status NOT IN ('paid', 'overpaid', 'waived', 'cancelled')), 0) AS outstanding_ngn,
             COALESCE(SUM(amount_paid_ngn) FILTER (
-                WHERE billed_at >= date_trunc('month', now())), 0)                AS paid_this_month_ngn,
-            COUNT(*) FILTER (
-                WHERE status NOT IN ('paid', 'waived', 'cancelled')
-                  AND balance_ngn > 0
-                  AND billed_at < now() - interval '30 days')                     AS overdue,
+                WHERE status <> 'cancelled' AND billed_at >= date_trunc('month', now())), 0) AS paid_this_month_ngn,
+            COUNT(*) FILTER (WHERE """
+        + _OVERDUE
+        + """)                                                                    AS overdue,
             COUNT(*)                                                              AS total,
             COUNT(*) FILTER (WHERE status = 'unpaid')                             AS unpaid,
             COUNT(*) FILTER (WHERE status = 'partially_paid')                     AS partially_paid,
@@ -791,34 +848,131 @@ def get_active_release_note_count(tenant_id: str, billing_id: str) -> int:
     return int(rows[0]["cnt"]) if rows else 0
 
 
+def get_credit_applications(tenant_id: str, billing_id: str) -> list[dict[str, Any]]:
+    """The credits an invoice used and has not given back, oldest first."""
+    return execute_with_tenant(
+        tenant_id,
+        """
+        SELECT id, refund_request_id, amount_ngn, created_at
+          FROM billing_credit_application
+         WHERE tenant_id = %s AND billing_id = %s AND reversed_at IS NULL
+         ORDER BY created_at, id
+        """,
+        (tenant_id, billing_id),
+    )
+
+
+@dataclass(frozen=True)
+class CancelledInvoice:
+    """An invoice cancelled, with what the cancellation gave back.
+
+    Attributes:
+        row: The billing row, now ``cancelled``.
+        credits_restored: ``(refund_request_id, amount_ngn)`` for each credit returned to the customer.
+        carryovers_reopened: Carryover ledger rows put back to ``outstanding`` for the next invoice.
+    """
+
+    row: dict[str, Any]
+    credits_restored: list[tuple[str, Decimal]]
+    carryovers_reopened: list[str]
+
+
 def cancel_billing(
     tenant_id: str,
     billing_id: str,
     actor_id: str,
     cancel_reason: str,
-) -> dict[str, Any] | None:
-    """Mark billing as cancelled; returns updated row or None on miss."""
-    return execute_write_with_tenant(
-        tenant_id,
-        """
-        UPDATE billing
-        SET status        = 'cancelled',
-            cancel_reason = %(cancel_reason)s,
-            cancelled_by  = %(actor_id)s,
-            cancelled_at  = NOW(),
-            updated_at    = NOW()
-        WHERE tenant_id = %(tenant_id)s
-          AND id        = %(id)s
-          AND status    = 'unpaid'
-        RETURNING *
-        """,
-        {
-            "tenant_id": tenant_id,
-            "id": billing_id,
-            "actor_id": actor_id,
-            "cancel_reason": cancel_reason,
-        },
-    )
+) -> CancelledInvoice | None:
+    """Cancel an unpaid invoice and undo what issuing it took, in one transaction.
+
+    - The credits it used go back to their ``refund_request``: ``credit_applied_ngn`` falls by the amount, and a
+      credit it had used up (``processed``) is ``applied_as_credit`` again. Each ``billing_credit_application`` row is
+      stamped ``reversed_at``.
+    - The earlier balances it carried over (``carryover_ledger`` rows ``applied`` to it) are ``outstanding`` again,
+      so the customer's next invoice picks them up rather than the debt disappearing.
+
+    Returns:
+        What was cancelled and given back, or None if no unpaid invoice with that id exists (another request
+        changed it first: nothing is written).
+
+    Raises:
+        LedgerConflictError: A credit could not be given back as recorded; everything rolls back.
+    """
+    with tenant_transaction(tenant_id) as cur:
+        cur.execute(
+            """
+            UPDATE billing
+            SET status        = 'cancelled',
+                cancel_reason = %(cancel_reason)s,
+                cancelled_by  = %(actor_id)s,
+                cancelled_at  = NOW(),
+                updated_at    = NOW()
+            WHERE tenant_id = %(tenant_id)s
+              AND id        = %(id)s
+              AND (
+                  status = 'unpaid'
+                  OR (status = 'paid' AND amount_paid_ngn <= 0 AND credits_applied_ngn > 0)
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM payment_record pr
+                  WHERE pr.tenant_id = billing.tenant_id AND pr.billing_id = billing.id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM release_note rn
+                  WHERE rn.tenant_id = billing.tenant_id AND rn.billing_id = billing.id
+                    AND rn.status NOT IN ('expired', 'cancelled')
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM cbm_dispute cd
+                  WHERE cd.tenant_id = billing.tenant_id AND cd.billing_id = billing.id
+                    AND cd.status NOT IN ('closed', 'resolved_adjusted', 'resolved_no_change', 'rejected')
+              )
+            RETURNING *
+            """,
+            {"tenant_id": tenant_id, "id": billing_id, "actor_id": actor_id, "cancel_reason": cancel_reason},
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+
+        cur.execute(
+            """
+            UPDATE billing_credit_application
+               SET reversed_at = NOW()
+             WHERE tenant_id = %s AND billing_id = %s AND reversed_at IS NULL
+            RETURNING refund_request_id, amount_ngn
+            """,
+            (tenant_id, billing_id),
+        )
+        restored = [(str(r["refund_request_id"]), Decimal(str(r["amount_ngn"]))) for r in cur.fetchall()]
+        for refund_id, amount in restored:
+            cur.execute(
+                """
+                UPDATE refund_request
+                   SET credit_applied_ngn = credit_applied_ngn - %(amount)s,
+                       status = CASE WHEN status = 'processed' THEN 'applied_as_credit' ELSE status END,
+                       updated_at = NOW()
+                 WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+                   AND status IN ('applied_as_credit', 'processed')
+                   AND credit_applied_ngn >= %(amount)s
+                RETURNING id
+                """,
+                {"tenant_id": tenant_id, "id": refund_id, "amount": amount},
+            )
+            if cur.fetchone() is None:
+                raise LedgerConflictError("a credit used by this invoice could not be given back")
+
+        cur.execute(
+            """
+            UPDATE carryover_ledger
+               SET status = 'outstanding', target_billing_id = NULL, applied_at = NULL, updated_at = NOW()
+             WHERE tenant_id = %s AND target_billing_id = %s AND status = 'applied'
+            RETURNING id
+            """,
+            (tenant_id, billing_id),
+        )
+        reopened = [str(r["id"]) for r in cur.fetchall()]
+        return CancelledInvoice(row=dict(row), credits_restored=restored, carryovers_reopened=reopened)
 
 
 # ---------------------------------------------------------------------------
@@ -971,7 +1125,7 @@ def set_dispute_acknowledged(tenant_id: str, dispute_id: str, actor_id: str) -> 
         SET status          = 'acknowledged',
             acknowledged_at = NOW(),
             updated_at      = NOW()
-        WHERE tenant_id = %s AND id = %s
+        WHERE tenant_id = %s AND id = %s AND status = 'submitted'
         RETURNING *
         """,
         (tenant_id, dispute_id),
@@ -1043,7 +1197,7 @@ def get_carryover_by_id(tenant_id: str, carryover_id: str) -> dict[str, Any] | N
 
 
 def exempt_carryover(tenant_id: str, carryover_id: str, actor_id: str, notes: str | None = None) -> dict[str, Any] | None:
-    """Mark a carryover as exempted and record who did it."""
+    """Mark an outstanding carryover as exempted and record who did it (CAS-guarded)."""
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -1053,7 +1207,7 @@ def exempt_carryover(tenant_id: str, carryover_id: str, actor_id: str, notes: st
             exempted_at  = NOW(),
             notes        = COALESCE(%(notes)s, notes),
             updated_at   = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'outstanding'
         RETURNING *
         """,
         {"tenant_id": tenant_id, "id": carryover_id, "actor_id": actor_id, "notes": notes},
@@ -1062,18 +1216,26 @@ def exempt_carryover(tenant_id: str, carryover_id: str, actor_id: str, notes: st
 
 def create_carryover(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     """Insert a new outstanding carryover_ledger entry (roll-forward)."""
+    params = {
+        "due_date": None,
+        "granted_by": None,
+        "release_note_id": None,
+        **data,
+    }
     return execute_write_with_tenant(
         tenant_id,
         """
         INSERT INTO carryover_ledger (
             tenant_id, customer_id, source_billing_id,
-            carryover_amount_ngn, status, notes, created_by
+            carryover_amount_ngn, status, notes, created_by,
+            due_date, granted_by, release_note_id
         ) VALUES (
             %(tenant_id)s, %(customer_id)s, %(source_billing_id)s,
-            %(carryover_amount_ngn)s, 'outstanding', %(notes)s, %(created_by)s
+            %(carryover_amount_ngn)s, 'outstanding', %(notes)s, %(created_by)s,
+            %(due_date)s, %(granted_by)s, %(release_note_id)s
         ) RETURNING *
         """,
-        data,
+        params,
     )
 
 
@@ -1102,6 +1264,7 @@ def add_misc_charge(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | No
 def add_misc_charge_to_billing(tenant_id: str, data: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Add a misc charge and move the invoice total, atomically.
 
+    Locks the invoice first and refuses ``cancelled`` / ``waived`` invoices.
     The charge row, the new total and the recomputed status commit together. A
     ``paid`` invoice that gains a charge becomes ``partially_paid`` instead of
     staying ``paid`` while owing.
@@ -1110,13 +1273,19 @@ def add_misc_charge_to_billing(tenant_id: str, data: dict[str, Any]) -> tuple[di
         ``(charge, updated_invoice)``.
     """
     amount = Decimal(str(data["amount_ngn"]))
+    billing_id = str(data["billing_id"])
     with tenant_transaction(tenant_id):
+        locked = lock_billing(tenant_id, billing_id)
+        if locked is None:
+            raise RuntimeError(f"billing {billing_id} not found in tenant")
+        if locked["status"] in {"cancelled", "waived"}:
+            raise BillingStatusConflict(str(locked["status"]))
         charge = add_misc_charge(tenant_id, data)
         if charge is None:
             raise RuntimeError("misc_charge insert returned nothing")
-        billing = adjust_billing(tenant_id, str(data["billing_id"]), amount, amount)
+        billing = adjust_billing(tenant_id, billing_id, amount, amount)
         if billing is None:
-            raise RuntimeError(f"billing {data['billing_id']} not found in tenant")
+            raise RuntimeError(f"billing {billing_id} not found in tenant")
     return charge, billing
 
 
@@ -1161,9 +1330,13 @@ def delete_misc_charge_from_billing(
         if deleted is None:
             raise RecordNotFound(charge_id)
         amount = Decimal(str(deleted["amount_ngn"]))
-        updated = adjust_billing(tenant_id, billing_id, -amount, -amount)
-        if updated is None:
-            raise RuntimeError(f"billing {billing_id} not found in tenant")
+        updated, _ = adjust_billing_and_refund_overpayment(
+            tenant_id,
+            billing_id,
+            -amount,
+            f"Overpayment after removing misc charge {charge_id}",
+            misc_delta=-amount,
+        )
     return updated
 
 
@@ -1176,9 +1349,9 @@ def apply_carryover_to_billing(
     """Apply an outstanding carryover to an invoice, atomically.
 
     Under the invoice lock: re-check the invoice can take it, mark the carryover
-    applied only if it is still ``outstanding`` and the customer's, add the amount
-    and recompute the status. Two requests applying the same carryover cannot both
-    succeed.
+    applied only if it is still ``outstanding``, belongs to this customer, and does
+    not originate from the same invoice (preventing self-carryover), add the amount
+    to ``total_ngn`` (without drifting ``misc_charges_ngn``) and recompute status.
 
     Returns:
         ``(updated_invoice, carryover_amount)``.
@@ -1198,7 +1371,11 @@ def apply_carryover_to_billing(
             """
             UPDATE carryover_ledger
                SET status = 'applied', target_billing_id = %(billing_id)s, applied_at = NOW(), updated_at = NOW()
-             WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND status = 'outstanding' AND customer_id = %(customer_id)s
+             WHERE tenant_id = %(tenant_id)s
+               AND id = %(id)s
+               AND status = 'outstanding'
+               AND customer_id = %(customer_id)s
+               AND source_billing_id <> %(billing_id)s
             RETURNING carryover_amount_ngn
             """,
             {"tenant_id": tenant_id, "billing_id": billing_id, "id": carryover_id, "customer_id": customer_id},
@@ -1206,7 +1383,7 @@ def apply_carryover_to_billing(
         if applied is None:
             raise RecordNotFound(carryover_id)
         amount = Decimal(str(applied["carryover_amount_ngn"]))
-        updated = adjust_billing(tenant_id, billing_id, amount, amount)
+        updated = adjust_billing(tenant_id, billing_id, amount, Decimal("0"))
         if updated is None:
             raise RuntimeError(f"billing {billing_id} not found in tenant")
     return updated, amount
@@ -1224,22 +1401,25 @@ def resolve_dispute_with_adjustment(
 ) -> tuple[dict[str, Any], dict[str, Any], Decimal]:
     """Resolve a CBM dispute and re-price the invoice, atomically.
 
-    Under the invoice lock: set the new CBM and subtotals, move the total by the
-    difference measured against the *current* subtotal, recompute the status, open
-    a refund for any new overpayment, and move the dispute to ``resolved_adjusted``
-    only if it is still in one of ``allowed_from``. A payment that lands during the
-    resolution is kept, not overwritten, and a dispute resolved twice reprices once.
+    Under the invoice lock: refuse cancelled/waived invoices, set the new CBM and
+    subtotals, move the total by the difference measured against the *current*
+    subtotal, recompute the status, open a ``cbm_correction`` refund for any new
+    overpayment, and move the dispute to ``resolved_adjusted`` only if it is still
+    in one of ``allowed_from``.
 
     Returns:
         ``(dispute, updated_invoice, overpayment_refunded)``.
 
     Raises:
+        BillingStatusConflict: The invoice is cancelled or waived.
         RecordNotFound: The dispute is no longer in a resolvable status.
     """
     with tenant_transaction(tenant_id):
         billing = lock_billing(tenant_id, billing_id)
         if billing is None:
             raise RuntimeError(f"billing {billing_id} not found in tenant")
+        if billing["status"] in {"cancelled", "waived"}:
+            raise BillingStatusConflict(str(billing["status"]))
         dispute = set_dispute_status(tenant_id, dispute_id, "resolved_adjusted", dispute_extra, allowed_from=allowed_from)
         if dispute is None:
             raise RecordNotFound(dispute_id)
@@ -1255,7 +1435,11 @@ def resolve_dispute_with_adjustment(
             {"tenant_id": tenant_id, "id": billing_id, "cbm": new_cbm, "usd": new_subtotal_usd, "ngn": new_subtotal_ngn},
         )
         updated, overpayment = adjust_billing_and_refund_overpayment(
-            tenant_id, billing_id, delta, f"CBM dispute overpayment — dispute {dispute_id}"
+            tenant_id,
+            billing_id,
+            delta,
+            f"CBM dispute overpayment — dispute {dispute_id}",
+            refund_type="cbm_correction",
         )
     return dispute, updated, overpayment
 
@@ -1308,6 +1492,8 @@ def waive_storage_fees_for_billing(
         billing = lock_billing(tenant_id, billing_id)
         if billing is None:
             return None, Decimal("0")
+        if billing["status"] in {"cancelled", "waived"}:
+            raise BillingStatusConflict(str(billing["status"]))
         waived_rows = execute_write_with_tenant_many(
             tenant_id,
             """

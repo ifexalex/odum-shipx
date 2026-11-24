@@ -185,6 +185,7 @@ jobs:
           name: playwright-local-stack-report
           path: |
             frontend/playwright-report/
+            frontend/test-results/
             flask.log
             frontend/vite.log
           retention-days: 7
