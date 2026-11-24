@@ -179,20 +179,19 @@ test.describe('release note — count-based generation with warehouse and docume
     await expect(page).toHaveURL(/\/release-notes\//)
     // The document's content (document number, invoice numbers, signature lines, terms) is checked where it is
     // made: tests/unit/test_pdf_documents.py.
-    // Export is the single PDF action on the release-note detail header; inline PDFs open a new tab or trigger a download.
-    const outcome = Promise.race([
-      context.waitForEvent('page', { timeout: 10_000 }).then(async (tab) => {
-        await tab.waitForURL(/release_note.*\.pdf/i, { timeout: 10_000 })
-        await tab.close()
-        return 'page'
-      }),
-      page.waitForEvent('download', { timeout: 10_000 }).then((dl) => {
-        expect(dl.suggestedFilename()).toMatch(/release_note.*\.pdf$/i)
-        return 'download'
-      }),
-    ])
+    // Export is the single PDF action on the release-note detail header. Headless Chromium may detach a popup
+    // tab as soon as it converts an inline PDF into a download, so assert the 200 PDF response and URL directly.
+    const pdfResponse = page.waitForResponse(
+      (r) => /\/v1\/release-notes\/[^/]+\/pdf/.test(r.url()) && r.status() === 200,
+      { timeout: 10_000 },
+    )
+    const popupPromise = context.waitForEvent('page', { timeout: 5_000 }).catch(() => null)
     await page.getByRole('button', { name: /^export$/i }).click()
-    await outcome
+    const resp = await pdfResponse
+    const body = (await resp.json()) as { data?: { url?: string; download_url?: string } }
+    expect(body.data?.download_url ?? body.data?.url ?? '').toMatch(/release_note.*\.pdf/i)
+    const tab = await popupPromise
+    if (tab && !tab.isClosed()) await tab.close()
   })
 
   test('PDF export opens a document from the release-note detail page', async ({ page, context }) => {
@@ -205,19 +204,16 @@ test.describe('release note — count-based generation with warehouse and docume
     // ExportButton is configured with a single format (pdf) on this page, so
     // its primary button (not a dropdown item) is labeled "Export" and
     // triggers the pdf export directly — see ExportButton.tsx's defaultFormat.
-    // Inline Content-Disposition opens either a new tab or a download depending on browser PDF handling.
-    const outcome = Promise.race([
-      context.waitForEvent('page', { timeout: 10_000 }).then(async (tab) => {
-        await tab.waitForURL(/release_note.*\.pdf/i, { timeout: 10_000 })
-        await tab.close()
-        return 'page'
-      }),
-      page.waitForEvent('download', { timeout: 10_000 }).then((dl) => {
-        expect(dl.suggestedFilename()).toMatch(/release_note.*\.pdf$/i)
-        return 'download'
-      }),
-    ])
+    const pdfResponse = page.waitForResponse(
+      (r) => /\/v1\/release-notes\/[^/]+\/pdf/.test(r.url()) && r.status() === 200,
+      { timeout: 10_000 },
+    )
+    const popupPromise = context.waitForEvent('page', { timeout: 5_000 }).catch(() => null)
     await page.getByRole('button', { name: /^export$/i }).click()
-    await outcome
+    const resp = await pdfResponse
+    const body = (await resp.json()) as { data?: { url?: string; download_url?: string } }
+    expect(body.data?.download_url ?? body.data?.url ?? '').toMatch(/release_note.*\.pdf/i)
+    const tab = await popupPromise
+    if (tab && !tab.isClosed()) await tab.close()
   })
 })

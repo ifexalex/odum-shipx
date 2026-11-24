@@ -39,6 +39,15 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/__storage/, ''),
       },
+      // Same-origin proxy for local Moto Cognito-IDP requests (used by
+      // auth-logout.spec.ts and local /login): Moto's OPTIONS preflight on
+      // http://localhost:5100/ omits Access-Control-Allow-Origin in newer
+      // Chromium/Linux environments, causing CORS preflight failures.
+      '/__cognito': {
+        target: process.env.VITE_COGNITO_PROXY_TARGET ?? 'http://localhost:5100',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/__cognito/, '') || '/',
+      },
     },
   },
   test: {
