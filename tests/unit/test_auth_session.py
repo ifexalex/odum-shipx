@@ -223,3 +223,20 @@ class TestRouting:
         event = _event("POST", "/v1/auth/session", body={"refresh_token": REFRESH_TOKEN})
         resp = handler.lambda_handler(event, None)
         assert resp["headers"]["Cache-Control"] == "no-store"
+
+
+class TestCognitoClientIsBounded:
+    """A failing Cognito call inside a user's request must cost seconds, not minutes (2026-11-24)."""
+
+    def test_retries_and_timeouts_are_bounded(self):
+        config = cognito_refresh._CLIENT_CONFIG
+        assert config.retries == {"max_attempts": 2, "mode": "standard"}
+        assert config.connect_timeout == 3
+        assert config.read_timeout == 5
+
+    def test_the_client_is_built_with_that_config(self, monkeypatch):
+        monkeypatch.setenv("AWS_REGION", "eu-west-1")
+        monkeypatch.setattr(cognito_refresh, "_client", None)
+        with patch("services.auth.cognito_refresh.boto3.client") as client:
+            cognito_refresh._cognito_client()
+        assert client.call_args.kwargs["config"] is cognito_refresh._CLIENT_CONFIG

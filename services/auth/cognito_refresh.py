@@ -18,6 +18,7 @@ import os
 from typing import Any, TypedDict
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from shared.exceptions import AuthenticationRequiredError, ExternalServiceError, LogisticsBaseError
@@ -51,10 +52,17 @@ def password_grant(username: str, password: str) -> dict[str, Any]:
 _client: Any = None
 
 
+#: Bounded: these calls sit inside a user's request (a refresh, a logout), so a struggling Cognito must cost seconds,
+#: not minutes. botocore's defaults (legacy mode, five attempts, 60-second reads) let one best-effort RevokeToken that
+#: kept failing hold a logout for over two minutes; on the single-threaded local server that blocked every request
+#: queued behind it (found 2026-11-24 when e2e tests timed out waiting for an unrelated page).
+_CLIENT_CONFIG = Config(retries={"max_attempts": 2, "mode": "standard"}, connect_timeout=3, read_timeout=5)
+
+
 def _cognito_client() -> Any:
     global _client
     if _client is None:
-        _client = boto3.client("cognito-idp", region_name=os.environ["AWS_REGION"])
+        _client = boto3.client("cognito-idp", region_name=os.environ["AWS_REGION"], config=_CLIENT_CONFIG)
     return _client
 
 
