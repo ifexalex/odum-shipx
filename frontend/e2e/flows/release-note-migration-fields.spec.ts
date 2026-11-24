@@ -179,13 +179,23 @@ test.describe('release note — count-based generation with warehouse and docume
     await expect(page).toHaveURL(/\/release-notes\//)
     // The document's content (document number, invoice numbers, signature lines, terms) is checked where it is
     // made: tests/unit/test_pdf_documents.py.
-    await page.getByRole('button', { name: 'More release note actions' }).click()
-    const [tab] = await Promise.all([context.waitForEvent('page'), page.getByRole('menuitem', { name: 'Print' }).click()])
-    await tab.waitForURL(/release_note.*\.pdf/)
-    await tab.close()
+    // Export is the single PDF action on the release-note detail header; inline PDFs open a new tab or trigger a download.
+    const outcome = Promise.race([
+      context.waitForEvent('page', { timeout: 10_000 }).then(async (tab) => {
+        await tab.waitForURL(/release_note.*\.pdf/i, { timeout: 10_000 })
+        await tab.close()
+        return 'page'
+      }),
+      page.waitForEvent('download', { timeout: 10_000 }).then((dl) => {
+        expect(dl.suggestedFilename()).toMatch(/release_note.*\.pdf$/i)
+        return 'download'
+      }),
+    ])
+    await page.getByRole('button', { name: /^export$/i }).click()
+    await outcome
   })
 
-  test('PDF export opens a document from the release-note detail page', async ({ page }) => {
+  test('PDF export opens a document from the release-note detail page', async ({ page, context }) => {
     const row = await findReleaseNoteRow(page)
     test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
@@ -195,15 +205,19 @@ test.describe('release note — count-based generation with warehouse and docume
     // ExportButton is configured with a single format (pdf) on this page, so
     // its primary button (not a dropdown item) is labeled "Export" and
     // triggers the pdf export directly — see ExportButton.tsx's defaultFormat.
-    // apiDownloadFile opens the signed URL via window.open(url, '_blank'),
-    // but Chromium (acceptDownloads: 'accept' in this project's config) has
-    // no PDF viewer plugin available and so treats the navigation as a file
-    // download rather than a popup page — confirmed via trace inspection
-    // (BrowserContext "download" event, no "popup" page ever created).
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 10_000 }),
-      page.getByRole('button', { name: /^export$/i }).click(),
+    // Inline Content-Disposition opens either a new tab or a download depending on browser PDF handling.
+    const outcome = Promise.race([
+      context.waitForEvent('page', { timeout: 10_000 }).then(async (tab) => {
+        await tab.waitForURL(/release_note.*\.pdf/i, { timeout: 10_000 })
+        await tab.close()
+        return 'page'
+      }),
+      page.waitForEvent('download', { timeout: 10_000 }).then((dl) => {
+        expect(dl.suggestedFilename()).toMatch(/release_note.*\.pdf$/i)
+        return 'download'
+      }),
     ])
-    expect(download.suggestedFilename()).toMatch(/release_note.*\.pdf$/i)
+    await page.getByRole('button', { name: /^export$/i }).click()
+    await outcome
   })
 })

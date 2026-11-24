@@ -220,6 +220,6 @@ test.describe('manifest verify + container advance', () => {
     // banner inside the still-open modal instead — fail loudly on that rather
     // than timing out ambiguously.
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 })
-    await expect(page.locator('main').getByText('Sealed', { exact: true })).toBeVisible()
+    await expect(page.locator('main').getByText('Sealed', { exact: true }).first()).toBeVisible()
   })
 })

@@ -103,6 +103,9 @@ export function LoginScreen(): JSX.Element {
         navigate(`/reset-password?first=1&email=${encodeURIComponent(email)}`)
         return
       }
+      if (import.meta.env.DEV) {
+        console.error('[LoginScreen] signIn failed:', err)
+      }
       setError(loginErrorMessage(err))
     }
   }

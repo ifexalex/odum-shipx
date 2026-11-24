@@ -28,11 +28,25 @@ async function claimInviteAndLogin(page: import('@playwright/test').Page): Promi
   await page.getByRole('button', { name: /create account/i }).click()
   await expect(page.getByText('Account created.')).toBeVisible({ timeout: 10_000 })
 
+  const consoleErrors: string[] = []
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text())
+  })
+  page.on('requestfailed', (req) => {
+    consoleErrors.push(`REQUEST_FAILED ${req.method()} ${req.url()}: ${req.failure()?.errorText ?? 'unknown'}`)
+  })
+
   await page.goto('/login')
   await page.getByLabel(/email address/i).fill(email)
   await page.getByLabel(/^password/i).fill(STRONG_PASSWORD)
   await page.getByRole('button', { name: /sign in/i }).click()
-  await expect(page).toHaveURL(/\/my-shipments/, { timeout: 10_000 })
+  try {
+    await expect(page).toHaveURL(/\/my-shipments/, { timeout: 10_000 })
+  } catch (err) {
+    throw new Error(
+      `Login failed to navigate to /my-shipments. Console/network errors: ${consoleErrors.join(' | ') || '(none)'}\n${String(err)}`,
+    )
+  }
 
   return email
 }

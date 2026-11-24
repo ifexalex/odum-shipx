@@ -119,14 +119,19 @@ test.describe('billing payment and release note', () => {
     // earlier run, the backend's duplicate guard (generate_release_note's
     // get_active_release_note_carton_tags check) rejects it with an error
     // alert — treat that as the "already done" case rather than a failure.
-    const failedAlready = dialog.getByRole('alert')
+    // Exclude the warning banner ("Releasing with unpaid balance") which is
+    // already rendered as role="alert" before submission.
+    const failedAlready = dialog.getByRole('alert').filter({ hasNotText: /releasing with unpaid balance/i })
     await Promise.race([
       expect(dialog).not.toBeVisible({ timeout: 10_000 }),
       expect(failedAlready).toBeVisible({ timeout: 10_000 }),
     ])
 
-    if (await becomesVisible(dialog)) {
-      await dialog.getByRole('button', { name: /cancel/i }).click()
+    if (await dialog.isVisible().catch(() => false)) {
+      const cancelBtn = dialog.getByRole('button', { name: /cancel/i })
+      if (await cancelBtn.isEnabled().catch(() => false)) {
+        await cancelBtn.click()
+      }
     }
 
   })
