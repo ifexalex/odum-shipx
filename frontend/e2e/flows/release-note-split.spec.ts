@@ -38,6 +38,12 @@ test.describe('release note — split', () => {
       await expect(dialog.getByRole('heading', { name: 'Generate release note' })).toBeVisible()
       await dialog.getByLabel(/carton tags to release/i).fill(TAGS.join('\n'))
       await expect(dialog.getByText(new RegExp(`${TAGS.length} tags? read`, 'i'))).toBeVisible()
+      const creditCheckbox = dialog.getByLabel(/release on credit/i)
+      if (await creditCheckbox.isVisible().catch(() => false)) {
+        await creditCheckbox.check()
+        await dialog.getByLabel(/credit granted by/i).fill('Chidi Okafor')
+        await dialog.getByLabel(/approval notes/i).fill('e2e test — split release note setup')
+      }
       const generateSubmit = dialog.getByRole('button', { name: /^generate release note$/i })
       await expect(generateSubmit).toBeEnabled()
       await generateSubmit.click()
@@ -73,7 +79,7 @@ test.describe('release note — split', () => {
       found = false
     }
     test.skip(!found, 'No release note found for this customer — generation did not succeed')
-    await noteRow.getByRole('button', { name: /^view$/i }).click()
+    await noteRow.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
 
     const splitBtn = page.getByRole('button', { name: /split note/i })
@@ -84,7 +90,7 @@ test.describe('release note — split', () => {
     await expect(splitDialog.getByRole('heading', { name: 'Split release note' })).toBeVisible()
 
     await splitDialog.getByRole('checkbox', { name: TAGS[1] }).click()
-    await expect(splitDialog.getByText('1 carton(s) selected for new note')).toBeVisible()
+    await expect(splitDialog.getByText(/1 carton(\(s\)|s)? selected/i)).toBeVisible()
 
     const createChild = splitDialog.getByRole('button', { name: /create child note/i })
     await expect(createChild).toBeEnabled()

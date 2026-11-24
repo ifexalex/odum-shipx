@@ -200,7 +200,7 @@ test.describe('manifest verify + container advance', () => {
     await approvePackingListsFor(page, TEST_CONTAINER)
     await ensureManifestVerified(page, TEST_CONTAINER)
 
-    const advanceBtn = page.getByRole('button', { name: /advance to sealed/i })
+    const advanceBtn = page.getByRole('button', { name: /seal container|advance to sealed/i })
     await expect(advanceBtn).toBeVisible()
     await advanceBtn.click()
 

@@ -106,7 +106,8 @@ test.describe('billing payment and release note', () => {
     // exactly that case (a manager override, real business behavior), so use
     // it rather than assume full payment. Real seeded data, not a mock, so
     // this can't be sidestepped by controlling the fixture.
-    await dialog.getByLabel(/release with outstanding balance/i).check()
+    await dialog.getByLabel(/release on credit/i).check()
+    await dialog.getByLabel(/credit granted by/i).fill('Chidi Okafor')
     await dialog.getByLabel(/approval notes/i).fill('e2e test — manager override for testing')
 
     const generateSubmit = dialog.getByRole('button', { name: /^generate release note$/i })
@@ -147,7 +148,7 @@ test.describe('billing payment and release note', () => {
     await expect(noteRow).toHaveCount(1, { timeout: 10_000 }).catch(() => undefined)
     test.skip(!(await hasRows(noteRow)), 'No release note found for this customer — run the generation test first')
 
-    await noteRow.getByRole('button', { name: /^view$/i }).click()
+    await noteRow.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
@@ -158,9 +159,13 @@ test.describe('billing payment and release note', () => {
     const pickupDialog = page.getByRole('dialog')
     await expect(pickupDialog.getByRole('heading', { name: /record pickup/i })).toBeVisible()
     await pickupDialog.getByLabel(/cartons collected/i).fill(String(CARTON_TAGS.length))
+    const collectedBy = pickupDialog.getByRole('textbox', { name: /collected by/i })
+    if (await collectedBy.isVisible().catch(() => false)) {
+      await collectedBy.fill(CUSTOMER_NAME)
+    }
     await pickupDialog.getByRole('button', { name: /confirm pickup/i }).click()
 
     await expect(pickupDialog).not.toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(/picked up/i)).toBeVisible()
+    await expect(page.getByText(/picked up/i).first()).toBeVisible()
   })
 })

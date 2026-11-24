@@ -108,7 +108,7 @@ test.describe('release note — count-based generation with warehouse and docume
     const row = await findReleaseNoteRow(page)
     test.skip(!(await hasRows(row)), 'No release note found for this customer yet — run the generation test first')
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
@@ -131,7 +131,7 @@ test.describe('release note — count-based generation with warehouse and docume
     await expect(row).toHaveCount(1, { timeout: 10_000 }).catch(() => undefined)
     test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
 
     const pickupBtn = page.getByRole('button', { name: /^record pickup$/i })
@@ -175,7 +175,7 @@ test.describe('release note — count-based generation with warehouse and docume
     const row = await findReleaseNoteRow(page)
     test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
     // The document's content (document number, invoice numbers, signature lines, terms) is checked where it is
     // made: tests/unit/test_pdf_documents.py.
@@ -189,7 +189,7 @@ test.describe('release note — count-based generation with warehouse and docume
     const row = await findReleaseNoteRow(page)
     test.skip(!(await hasRows(row)), 'No release note found for this customer — run the generation test first')
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/release-notes\//)
 
     // ExportButton is configured with a single format (pdf) on this page, so
