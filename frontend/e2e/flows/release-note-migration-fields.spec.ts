@@ -86,7 +86,7 @@ test.describe('release note — count-based generation with warehouse and docume
     await dialog.getByLabel(/physical document number/i).fill(PHYSICAL_DOC_NUMBER)
     await dialog.getByLabel(/packing list invoice numbers/i).fill(INVOICE_NUMBER)
 
-    const generateSubmit = dialog.getByRole('button', { name: /^generate$/i })
+    const generateSubmit = dialog.getByRole('button', { name: /^generate release note$/i })
     await expect(generateSubmit).toBeEnabled()
     await generateSubmit.click()
 

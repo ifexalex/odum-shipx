@@ -1359,7 +1359,7 @@ def update_shipment_tracking_for_customer(
           AND EXISTS (
               SELECT 1
               FROM packing_list_item pli
-              JOIN packing_list pl ON pl.id = pli.packing_list_id AND pl.tenant_id = pli.tenant_id
+              JOIN packing_list pl ON pl.id = pli.packing_list_id
               WHERE pl.tenant_id    = %(tenant_id)s
                 AND pl.customer_id  = %(customer_id)s
                 AND pl.container_id = %(container_id)s

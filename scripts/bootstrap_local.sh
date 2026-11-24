@@ -140,6 +140,7 @@ CLIENT_ID=$(aws --endpoint-url="${ENDPOINT}" --region "${REGION}" \
   --user-pool-id "${POOL_ID}" \
   --client-name "logistics-local-client" \
   --no-generate-secret \
+  --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_USER_SRP_AUTH ALLOW_REFRESH_TOKEN_AUTH \
   --output text --query 'UserPoolClient.ClientId' | tr -d '[:space:]')
 echo "    Created app client: ${CLIENT_ID}"
 

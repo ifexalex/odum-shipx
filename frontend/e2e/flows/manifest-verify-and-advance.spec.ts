@@ -152,7 +152,7 @@ test.describe('manifest verify + container advance', () => {
     // not run — which is the only remaining honest reason to skip.
     test.skip(!(await hasRows(row)), `${TEST_CONTAINER} not found — run manifest-import.spec.ts first`)
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/manifests\//)
     await expect(page.getByRole('heading', { name: TEST_CONTAINER })).toBeVisible()
 
@@ -190,9 +190,8 @@ test.describe('manifest verify + container advance', () => {
     const row = page.locator('table tbody tr').filter({ hasText: TEST_CONTAINER })
     test.skip(!(await hasRows(row)), `${TEST_CONTAINER} not found — run manifest-import.spec.ts first`)
 
-    // ContainerList.tsx rows use KebabBtn ("Open {container_number}"), not
-    // ViewLink's "View" — a different action component than packing lists use.
-    await row.getByRole('button', { name: `Open ${TEST_CONTAINER}` }).click()
+    // ContainerList.tsx rows use Table's first-cell openButton ("Open container {container_number}").
+    await row.getByRole('button', { name: new RegExp(`open.*${TEST_CONTAINER}`, 'i') }).click()
     await expect(page).toHaveURL(/\/containers\//)
 
     const currentStatus = await page.locator('main').getByText(/^(Loading|Sealed)$/).first().textContent()

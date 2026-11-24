@@ -86,6 +86,8 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   const [delegateIdNumber, setDelegateIdNumber] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const pickupCodeRef = useRef<HTMLInputElement>(null)
+  const cartonsRef = useRef<HTMLInputElement>(null)
 
   const cartonsNum = Number(cartons)
   const cartonsValid = cartons.trim().length > 0 && Number.isInteger(cartonsNum) && cartonsNum >= 1 && cartonsNum <= maxCartons
@@ -103,6 +105,16 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
   const codeLocked = note.pickup_code_locked === true
   const codeGiven = !codeRequired || pickupCode.trim().length > 0
   const canSubmit = cartonsValid && delegateFilled && collectorNamed && codeGiven && !codeLocked && !submitting
+
+  // Focus the primary input after DialogGuard mounts (and after React StrictMode effect replays),
+  // so pressing Enter submits the pickup form rather than activating the header "View full note" link.
+  useEffect(() => {
+    if (codeRequired && !codeLocked) {
+      pickupCodeRef.current?.focus()
+    } else {
+      cartonsRef.current?.focus()
+    }
+  }, [codeRequired, codeLocked])
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>): Promise<void> {
     event?.preventDefault()
@@ -186,6 +198,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
         {codeRequired && !codeLocked && (
           <Field
             // The first thing to ask the collector, so the sheet opens on it.
+            ref={pickupCodeRef}
             autoFocus
             label="Pickup code"
             name="pickup_code"
@@ -201,6 +214,7 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
 
         <div>
           <Field
+            ref={cartonsRef}
             autoFocus={!codeRequired || codeLocked}
             label="Cartons collected"
             name="cartons_released"

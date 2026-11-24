@@ -8,10 +8,10 @@ import { expect, test } from '@playwright/test'
 import { switchRole } from '../support/roleSwitch'
 
 test.describe('role-appropriate landing pages', () => {
-  test('china_office_staff lands on /containers', async ({ page }) => {
+  test('china_office_staff lands on /work-queue', async ({ page }) => {
     await switchRole(page, 'china_office_staff')
-    await expect(page).toHaveURL(/\/containers/)
-    await expect(page.getByRole('heading', { name: /containers/i })).toBeVisible()
+    await expect(page).toHaveURL(/\/work-queue/)
+    await expect(page.getByRole('heading', { name: /work queue/i })).toBeVisible()
   })
 
   test('nigeria_office_staff lands on /dashboard', async ({ page }) => {

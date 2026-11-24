@@ -98,7 +98,7 @@ test.describe('billing payment and release note', () => {
     await expect(dialog.getByRole('heading', { name: 'Generate release note' })).toBeVisible()
 
     await dialog.getByLabel(/carton tags to release/i).fill(CARTON_TAGS.join('\n'))
-    await expect(dialog.getByText(`${CARTON_TAGS.length} tag(s) parsed`)).toBeVisible()
+    await expect(dialog.getByText(new RegExp(`${CARTON_TAGS.length} tags? read`, 'i'))).toBeVisible()
 
     // This billing record's accumulated test payments (test 1 above nudges it
     // forward each run) may or may not cover the requested cartons in full —
@@ -109,7 +109,7 @@ test.describe('billing payment and release note', () => {
     await dialog.getByLabel(/release with outstanding balance/i).check()
     await dialog.getByLabel(/approval notes/i).fill('e2e test — manager override for testing')
 
-    const generateSubmit = dialog.getByRole('button', { name: /^generate$/i })
+    const generateSubmit = dialog.getByRole('button', { name: /^generate release note$/i })
     await expect(generateSubmit).toBeEnabled()
     await generateSubmit.click()
 

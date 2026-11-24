@@ -151,7 +151,7 @@ def get_container_status(tenant_id: str, container_id: str) -> str | None:
 
 
 def customer_has_cargo_in_container(tenant_id: str, customer_id: str, container_id: str) -> bool:
-    """True if this customer has at least one approved packing list on this container.
+    """True if this customer has at least one non-draft, non-rejected packing list on this container.
 
     Guards file_claim: without it, a customer could file (and staff would
     then investigate) a damage claim against any container in the tenant by
@@ -161,7 +161,7 @@ def customer_has_cargo_in_container(tenant_id: str, customer_id: str, container_
         tenant_id,
         "SELECT 1 FROM packing_list WHERE tenant_id = %(tenant_id)s"
         " AND customer_id = %(customer_id)s AND container_id = %(container_id)s"
-        " AND status = 'approved' LIMIT 1",
+        " AND status NOT IN ('draft', 'rejected') LIMIT 1",
         {"tenant_id": tenant_id, "customer_id": customer_id, "container_id": container_id},
     )
     return bool(rows)

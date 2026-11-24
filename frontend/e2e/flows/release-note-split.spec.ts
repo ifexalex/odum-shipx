@@ -37,8 +37,8 @@ test.describe('release note — split', () => {
       const dialog = page.getByRole('dialog')
       await expect(dialog.getByRole('heading', { name: 'Generate release note' })).toBeVisible()
       await dialog.getByLabel(/carton tags to release/i).fill(TAGS.join('\n'))
-      await expect(dialog.getByText(`${TAGS.length} tag(s) parsed`)).toBeVisible()
-      const generateSubmit = dialog.getByRole('button', { name: /^generate$/i })
+      await expect(dialog.getByText(new RegExp(`${TAGS.length} tags? read`, 'i'))).toBeVisible()
+      const generateSubmit = dialog.getByRole('button', { name: /^generate release note$/i })
       await expect(generateSubmit).toBeEnabled()
       await generateSubmit.click()
       await Promise.race([

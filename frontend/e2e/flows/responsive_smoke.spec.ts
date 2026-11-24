@@ -61,7 +61,7 @@ test('PackingListList bulk-selection bar does not overflow at phone width', asyn
   test.skip(!(await hasRows(cardCheckbox)), 'No packing lists seeded')
   await cardCheckbox.click()
 
-  const bulkBar = page.getByText(/packing list\(s\) selected/i)
+  const bulkBar = page.getByText(/packing lists? selected/i)
   await expect(bulkBar).toBeVisible()
   await assertNoHorizontalOverflow(page, 'PackingListList (bulk bar active)')
 })
@@ -90,7 +90,7 @@ test('customer-portal hamburger drawer opens, navigates, and closes at phone wid
   await expect(hamburger).toBeVisible()
   await hamburger.click()
 
-  const drawerAccountLink = page.getByRole('button', { name: /account/i }).last()
+  const drawerAccountLink = page.locator('header').getByRole('button', { name: /^account$/i }).last()
   await expect(drawerAccountLink).toBeVisible()
   await drawerAccountLink.click()
 
