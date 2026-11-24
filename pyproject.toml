@@ -46,7 +46,7 @@ container = [
 # Dev/test/lint/local-dev tooling (PEP 735 groups — not shipped to Lambda).
 # `uv sync` installs these by default.
 dev = [
-    "alembic==1.13.0",
+    "alembic==1.20.1",
     "bandit==1.9.4",
     "flask==3.1.3",
     "flask-cors==6.0.5",
@@ -65,7 +65,7 @@ dev = [
 # Extra packages the shared Lambda layer bundles beyond `dependencies` (alembic
 # for the migrate Lambda). The layer = project runtime deps + this group; the CI
 # layer build does `uv export --group layer` then installs for arm64.
-layer = ["alembic==1.13.0"]
+layer = ["alembic==1.20.1"]
 
 [tool.uv]
 # This is a deployed application, not a distributable package — uv manages the

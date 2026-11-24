@@ -8,16 +8,16 @@ resolution-markers = [
 
 [[package]]
 name = "alembic"
-version = "1.13.0"
+version = "1.20.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mako" },
     { name = "sqlalchemy" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/cb/4395235f149786a3d473621f51e689aac7a0b80c13956c4c27d7680a2fb9/alembic-1.13.0.tar.gz", hash = "sha256:ab4b3b94d2e1e5f81e34be8a9b7b7575fc9dd5398fccb0bef351ec9b14872623", size = 1208438, upload-time = "2023-12-01T15:25:07.627Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/1c/00909e0fbebad2121d916fdcab044cae988146680e9ee4387ba25fef8747/alembic-1.20.1.tar.gz", hash = "sha256:83490def1f723413db5096591f7609ac52544805be93849170088ed04f5a2e0b", size = 2103576, upload-time = "2026-10-22T03:24:35.93Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/d8/fc331ad9aa5f2a551042582c3ededd70ee4e72b032089b1784150a5704ac/alembic-1.13.0-py3-none-any.whl", hash = "sha256:a23974ea301c3ee52705db809c7413cecd165290c6679b9998dd6c74342ca23a", size = 230563, upload-time = "2023-12-01T15:25:10.781Z" },
+    { url = "https://files.pythonhosted.org/packages/11/3c/8740f5b4e1bd57333e4f84265b9b6363da4f7cf70f5622dd1e2fde7a0bd5/alembic-1.20.1-py3-none-any.whl", hash = "sha256:9970712cfb81ea26c8658d378aaa5b8f6ff9146e5bb111d70497c164016cf598", size = 270355, upload-time = "2026-10-22T03:24:37.667Z" },
 ]
 
 [[package]]
@@ -1440,7 +1440,7 @@ provides-extras = ["azure", "container"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "alembic", specifier = "==1.13.0" },
+    { name = "alembic", specifier = "==1.20.1" },
     { name = "bandit", specifier = "==1.9.4" },
     { name = "flask", specifier = "==3.1.3" },
     { name = "flask-cors", specifier = "==6.0.5" },
@@ -1456,7 +1456,7 @@ dev = [
     { name = "ruff", specifier = "==0.17.4" },
     { name = "safety", specifier = "==3.8.1" },
 ]
-layer = [{ name = "alembic", specifier = "==1.13.0" }]
+layer = [{ name = "alembic", specifier = "==1.20.1" }]
 
 [[package]]
 name = "mako"
