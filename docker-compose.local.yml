@@ -23,7 +23,10 @@ services:
   # Free open-source AWS emulator — replaces LocalStack Community (deprecated Mar 2026)
   # Docs: https://docs.getmoto.org/en/latest/docs/server_mode.html
   moto:
-    image: motoserver/moto:latest
+    # Pinned, not :latest (2026-11-24): moto 5.2.6 answers the browser's CORS preflight with a 500 (an internal
+    # AssertionError), so the frontend's direct Cognito sign-in never leaves the browser. CI pulls the image fresh
+    # on every run, so that release broke every real-login e2e test. 5.2.5 matches the moto pin in pyproject.toml.
+    image: motoserver/moto:5.2.5
     container_name: shipx_moto
     ports:
       - "5100:5100"
