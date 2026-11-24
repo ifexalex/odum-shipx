@@ -6,8 +6,8 @@ export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 export const MAX_UPLOAD_LABEL = '5 MB'
 
 /** The logo's limit, the same as the API's (`shared/uploads.py` `TENANT_LOGO`). */
-export const MAX_LOGO_BYTES = 1024 * 1024
-export const MAX_LOGO_LABEL = '1 MB'
+export const MAX_LOGO_BYTES = MAX_UPLOAD_BYTES
+export const MAX_LOGO_LABEL = MAX_UPLOAD_LABEL
 /** The logo types the API accepts. No SVG: it can carry script. */
 export const LOGO_CONTENT_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
 

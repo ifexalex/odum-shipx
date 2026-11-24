@@ -1092,7 +1092,7 @@
                 "upload-url"
               ]
             },
-            "description": "FD-29. tenant_admin. PNG, JPEG or WebP (no SVG: it can carry script), at most 1 MB (size_bytes required). Returns file_key under {tenant_id}/branding/logo/ plus upload_url, upload_method, upload_headers. PUT the file there, then call Set Logo. 201.",
+            "description": "FD-29. tenant_admin. PNG, JPEG or WebP (no SVG: it can carry script), at most 5 MB (size_bytes required). Returns file_key under {tenant_id}/branding/logo/ plus upload_url, upload_method, upload_headers. PUT the file there, then call Set Logo. 201.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"filename\": \"acme-logo.png\",\n  \"content_type\": \"image/png\",\n  \"size_bytes\": 20480\n}",

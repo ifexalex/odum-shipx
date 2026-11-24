@@ -527,7 +527,7 @@ export const configApi = {
   getConfig: () =>
     apiRequest<TenantConfig>({ method: 'GET', path: '/v1/tenant/config' }),
 
-  /** Presign the logo upload (FD-29): PNG, JPEG or WebP, at most 1 MB. */
+  /** Presign the logo upload (FD-29): PNG, JPEG or WebP, at most 5 MB. */
   getLogoUploadUrl: (body: { filename: string; content_type: string; size_bytes: number }) =>
     apiRequest<PresignedUpload>({ method: 'POST', path: '/v1/tenant/config/logo/upload-url', body }),
 

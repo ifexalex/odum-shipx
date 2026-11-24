@@ -2557,8 +2557,8 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 
 ## Tenant logo (FD-29, 2026-11-21)
 
-- `tests/unit/test_tenant_logo.py` (new, 20): the policy (PNG/JPEG/WebP accepted; SVG, PDF, HTML refused; over 1 MB refused); presign under `{tenant}/branding/logo/`; set stores the key, keeps the rest, returns a link not the key, audits, deletes the replaced file; set refuses another tenant's key, a non-logo key, a path that walks out, a nested key, an upload that never landed, and deletes an oversize one; remove drops the key and deletes the file; readers get a link and a foreign key is never signed; a branding save keeps the stored logo and ignores one sent by the client.
-- `CompanySettings.test.tsx` (+5): no forward-looking copy; upload to storage then set; SVG and over-1 MB refused before sending; the uploaded logo shows and Remove confirms first; a branding save never sends `logo_url`.
+- `tests/unit/test_tenant_logo.py` (new, 20): the policy (PNG/JPEG/WebP accepted; SVG, PDF, HTML refused; over 5 MB refused (1 MB until 2026-11-24)); presign under `{tenant}/branding/logo/`; set stores the key, keeps the rest, returns a link not the key, audits, deletes the replaced file; set refuses another tenant's key, a non-logo key, a path that walks out, a nested key, an upload that never landed, and deletes an oversize one; remove drops the key and deletes the file; readers get a link and a foreign key is never signed; a branding save keeps the stored logo and ignores one sent by the client.
+- `CompanySettings.test.tsx` (+5): no forward-looking copy; upload to storage then set; SVG and over-5 MB refused before sending; the uploaded logo shows and Remove confirms first; a branding save never sends `logo_url`.
 - Verified live against a second local API on :3011 (2026-11-21): presign, PUT to Moto S3, set, fetch through `logo_url`, a branding save keeping the logo, staff 403, foreign key 422, remove.
 
 ## Sign-up entry points (FD-30, 2026-11-21)
@@ -2589,3 +2589,7 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Receipts (FD-43, 2026-11-21)
 
 - `pages/nigeria/billingDetail/Breakdown.test.tsx` (new, 2): a receipt per payment, named by amount and date, opening that payment's receipt; a failure names itself. `PaymentSuccess.test.tsx` (+2): the receipt of the payment just confirmed (matched by reference); no button when it is not on the invoice yet. `design/toastRules.test.ts` reads `…Pdf` API methods as reads.
+
+## Logo limit raised to 5 MB (2026-11-24)
+
+- `test_tenant_logo.py`: over 5 MB refused, exactly 5 MB accepted, a 6 MB stored file deleted and refused. `CompanySettings.test.tsx`: a file over 5 MB is refused in the browser with "The limit is 5 MB.".

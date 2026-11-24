@@ -37,10 +37,13 @@ class TestPolicy:
             uploads.TENANT_LOGO.check(content_type, 50_000)
         assert caught.value.rule_id == "INVALID_CONTENT_TYPE"
 
-    def test_over_one_megabyte_is_refused(self):
+    def test_over_five_megabytes_is_refused(self):
         with pytest.raises(BusinessRuleViolationError) as caught:
-            uploads.TENANT_LOGO.check("image/png", 1024 * 1024 + 1)
+            uploads.TENANT_LOGO.check("image/png", 5 * 1024 * 1024 + 1)
         assert caught.value.rule_id == "FILE_TOO_LARGE"
+
+    def test_a_logo_up_to_five_megabytes_is_accepted(self):
+        uploads.TENANT_LOGO.check("image/png", 5 * 1024 * 1024)
 
 
 class TestUpload:
@@ -103,7 +106,7 @@ class TestSetLogo:
 
     def test_deletes_and_refuses_an_oversize_file(self):
         key = f"{PREFIX}abc-logo.png"
-        storage = _storage(2 * 1024 * 1024)
+        storage = _storage(6 * 1024 * 1024)
         with (
             patch("shared.uploads.get_storage_provider", return_value=storage),
             pytest.raises(BusinessRuleViolationError) as caught,

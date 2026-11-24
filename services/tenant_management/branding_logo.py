@@ -8,7 +8,7 @@ presigned link, in place of the key.
 
 Upload follows the shared three steps (``shared.uploads``): presign under the tenant prefix, the browser PUTs the file,
 then ``set_logo`` confirms it landed within the size limit and stores the key. Raster images only (PNG, JPEG, WebP), at
-most 1 MB; SVG is refused because it can carry script.
+most 5 MB; SVG is refused because it can carry script.
 """
 
 import json
@@ -88,7 +88,7 @@ def create_logo_upload(tenant_id: str, filename: str, content_type: str, size_by
     """Presign the logo upload under the tenant's prefix.
 
     Raises:
-        BusinessRuleViolationError: ``INVALID_CONTENT_TYPE`` (not PNG, JPEG or WebP) or ``FILE_TOO_LARGE`` (over 1 MB).
+        BusinessRuleViolationError: ``INVALID_CONTENT_TYPE`` (not PNG, JPEG or WebP) or ``FILE_TOO_LARGE`` (over 5 MB).
         ValidationError: No usable ``size_bytes``.
     """
     upload = uploads.presign_upload(uploads.TENANT_LOGO, tenant_id, _LOGO_SEGMENTS, filename, content_type, size_bytes)

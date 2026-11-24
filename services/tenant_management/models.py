@@ -226,7 +226,7 @@ class LogoUploadRequest(BaseModel):
 
     filename: str = Field(min_length=1, max_length=255)
     content_type: str = Field(min_length=1, max_length=100)
-    #: The file's size in bytes; at most 1 MB (shared.uploads.TENANT_LOGO), checked by the upload policy.
+    #: The file's size in bytes; at most 5 MB (shared.uploads.TENANT_LOGO), checked by the upload policy.
     size_bytes: int | None = None
 
 

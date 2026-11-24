@@ -180,7 +180,7 @@ describe('CompanySettings logo (FD-29)', () => {
 
   it.each([
     ['an SVG', png(2_000, 'image/svg+xml', 'logo.svg'), 'Use a PNG, JPEG or WebP image.'],
-    ['a file over 1 MB', png(1024 * 1024 + 1), 'The limit is 1 MB.'],
+    ['a file over 5 MB', png(5 * 1024 * 1024 + 1), 'The limit is 5 MB.'],
   ])('refuses %s before sending anything', async (_label, file, message) => {
     renderPage()
     await screen.findByDisplayValue('Acme Logistics Ltd')

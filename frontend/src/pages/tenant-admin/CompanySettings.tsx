@@ -11,7 +11,7 @@
  *
  * Renders inside ConfigLayout (persistent config sub-nav rail — routes.tsx).
  *
- * The logo (FD-29) is an uploaded image (PNG, JPEG or WebP, up to 1 MB) through
+ * The logo (FD-29) is an uploaded image (PNG, JPEG or WebP, up to 5 MB) through
  * the tenant-scoped logo endpoints, saved as soon as it is chosen rather than with
  * the form; until one is uploaded, the initials on the brand colour stand in.
  * `TenantLogo` draws it here, in the live preview and on the printed documents.
@@ -220,7 +220,7 @@ function LogoBlock({
           {logoUrl
             ? 'Shown on your packing lists and release notes.'
             : 'Until you upload one, your initials on your brand colour are used.'}{' '}
-          PNG, JPEG or WebP, up to 1 MB. Saved as soon as you choose it.
+          PNG, JPEG or WebP, up to 5 MB. Saved as soon as you choose it.
         </div>
         {problem && (
           <p className={styles.logoProblem} role="alert">
