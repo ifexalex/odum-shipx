@@ -12,13 +12,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
 import { configApi, type DollarRateConfig as DollarRateConfigShape } from '../../api/tenantManagement'
 import { DollarRateConfig } from './DollarRateConfig'
+import { withQuery } from '../../test/queryWrapper'
 
 function renderPage(): ReturnType<typeof render> {
-  return render(
+  return render(withQuery(
     <MemoryRouter>
       <DollarRateConfig />
     </MemoryRouter>,
-  )
+  ))
 }
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
@@ -41,6 +42,7 @@ function rate(overrides: Partial<DollarRateConfigShape> = {}): DollarRateConfigS
     markup_type: 'flat',
     markup_value: 15,
     source: 'bybit_p2p',
+    rate_source: 'live',
     fetched_at: new Date().toISOString(),
     currency_pair: 'USD_NGN',
     effective_from: '2026-09-18T09:00:00Z',
@@ -58,9 +60,35 @@ describe('DollarRateConfig', () => {
     vi.mocked(configApi.getDollarRate).mockResolvedValue(rate())
     renderPage()
 
-    expect(await screen.findByText(/₦1,573.2 per \$1/)).toBeInTheDocument()
+    expect(await screen.findByText(/₦1,573.20 per \$1/)).toBeInTheDocument()
     expect(screen.getByText('₦15 per $1')).toBeInTheDocument()
-    expect(screen.getByText('₦1,588.2 per $1 USD')).toBeInTheDocument()
+    expect(screen.getByText('₦1,588.20 per $1 USD')).toBeInTheDocument()
+  })
+
+  it('says plainly when the feed is down and the last known rate is in use (audit BE-11)', async () => {
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString()
+    vi.mocked(configApi.getDollarRate).mockResolvedValue(rate({ rate_source: 'last_known', fetched_at: twoDaysAgo }))
+    renderPage()
+
+    expect(await screen.findByText(/last known rate, fetched/)).toBeInTheDocument()
+    expect(screen.getByText(/invoices use the last known rate shown here/)).toBeInTheDocument()
+  })
+
+  it('never calls the built-in default "updated just now" (audit BE-11)', async () => {
+    vi.mocked(configApi.getDollarRate).mockResolvedValue(rate({ rate_source: 'hardcoded', fetched_at: null }))
+    renderPage()
+
+    expect(await screen.findByText(/built-in default, never fetched/)).toBeInTheDocument()
+    expect(screen.queryByText(/updated/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Invoices are not issued until a market rate is available/)).toBeInTheDocument()
+  })
+
+  it('shows no warning for a live rate', async () => {
+    vi.mocked(configApi.getDollarRate).mockResolvedValue(rate())
+    renderPage()
+
+    expect(await screen.findByText(/updated/)).toBeInTheDocument()
+    expect(screen.queryByText(/last known|built-in default/)).not.toBeInTheDocument()
   })
 
   it('formats a percentage markup distinctly from a flat one', async () => {
@@ -102,7 +130,7 @@ describe('DollarRateConfig', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Update markup' }))
 
     await waitFor(() => expect(configApi.updateDollarRate).toHaveBeenCalledWith({ markup_type: 'flat', markup_value: 20 }))
-    expect(await screen.findByText('Markup updated successfully.')).toBeInTheDocument()
+    expect(await screen.findByText('Dollar rate markup updated')).toBeInTheDocument()
     expect(screen.getByText('₦20 per $1')).toBeInTheDocument()
   })
 
@@ -123,7 +151,7 @@ describe('DollarRateConfig', () => {
     )
     renderPage()
 
-    expect(await screen.findByText('Boom')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
   })
 
   it('shows an error banner when updating the markup fails', async () => {

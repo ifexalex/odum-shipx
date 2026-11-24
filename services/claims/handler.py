@@ -8,9 +8,11 @@ Routes:
   PATCH /v1/claims/{id}/resolve             — nigeria_office_staff, tenant_admin
 
   POST  /v1/uploads/presigned-url           — customer, nigeria_office_staff
+  POST  /v1/claims/{id}/evidence/{evidence_id}/confirm — customer, nigeria_office_staff
 
   POST  /v1/claims/missing-items            — nigeria_office_staff
-  PATCH /v1/claims/missing-items/{id}       — nigeria_office_staff
+  PATCH /v1/claims/missing-items/{id}       — nigeria_office_staff (any status, compensation); china_office_staff
+                                              (investigating / found_and_shipping and notes only)
   POST  /v1/claims/seized-items             — nigeria_office_staff
   PATCH /v1/claims/seized-items/{id}        — nigeria_office_staff
 """
@@ -19,16 +21,17 @@ import json
 import logging
 import time
 import uuid
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from shared.auth import get_tenant_context
-from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.client_ip import client_ip
+from shared.exceptions import LogisticsBaseError, ResourceNotFoundError, ValidationError
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.pagination import parse_pagination_params
 from shared.responses import created, error_response, paginated, success
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
@@ -38,7 +41,9 @@ from .models import (
     FileDamageClaimRequest,
     LogMissingItemRequest,
     LogSeizedItemRequest,
+    MissingItemStatus,
     ResolveClaimRequest,
+    SeizedItemStatus,
     StartInspectionRequest,
 )
 
@@ -82,7 +87,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
@@ -99,15 +104,30 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Idempotency for POST /claims only
         idempotency_key = None
         if method == "POST" and path.rstrip("/").endswith("/claims"):
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
 
         if idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -177,6 +197,9 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
 # ---------------------------------------------------------------------------
 
 
+_CLAIM_SORT_FIELDS = frozenset({"created_at", "updated_at", "status", "reference"})
+
+
 def _claim_routes(
     event: dict[str, Any], parts: list[str], method: str, ctx: Any, request_id: str, ip_address: str | None, claim_id: str | None
 ) -> dict[str, Any]:
@@ -189,7 +212,7 @@ def _claim_routes(
             ctx.assert_role(*_CLAIM_ROLES)
             body = _parse_body(event)
             req = parse_validated(FileDamageClaimRequest, body)
-            customer_id_override = body.get("customer_id") if ctx.role != UserRole.CUSTOMER else None
+            customer_id_override = body.get("customer_id") if not ctx.is_customer_only else None
             result = service.file_claim(
                 tenant_id,
                 req,
@@ -197,6 +220,7 @@ def _claim_routes(
                 ctx=ctx,
                 customer_id_override=customer_id_override,
                 request_id=request_id,
+                ip_address=ip_address,
             )
             return created(
                 result,
@@ -220,9 +244,10 @@ def _claim_routes(
                 filters["created_after"] = _qp(event, "created_after")
             if _qp(event, "created_before"):
                 filters["created_before"] = _qp(event, "created_before")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             sort_field = _qp(event, "sort") or "created_at"
+            if sort_field not in _CLAIM_SORT_FIELDS:
+                raise ValidationError(f"Invalid sort field: {sort_field}", field_errors={"sort": "unsupported sort field"})
             sort_direction = _qp(event, "direction") or "desc"
             page, next_cursor, has_more = service.list_claims(
                 tenant_id,
@@ -255,7 +280,14 @@ def _claim_routes(
                     req,
                     actor_id=ctx.user_id,
                     ip_address=ip_address,
+                    actor_role=str(ctx.role),
                 )
+                return success(result, request_id=request_id)
+
+            # POST /v1/claims/{id}/evidence/{evidence_id}/confirm — the browser finished the upload
+            if action == "evidence" and len(parts) == 6 and parts[5] == "confirm" and method == "POST":
+                ctx.assert_role(*_UPLOAD_ROLES)
+                result = service.confirm_evidence(tenant_id, claim_id, parts[4], ctx, ip_address=ip_address)
                 return success(result, request_id=request_id)
 
             # PATCH /v1/claims/{id}/resolve
@@ -292,11 +324,18 @@ def _upload_routes(
         claim_id = body.get("claim_id", "")
         filename = body.get("filename", "")
         content_type = body.get("content_type", "")
-        if not claim_id or not filename or not content_type:
+        if (
+            not isinstance(claim_id, str)
+            or not isinstance(filename, str)
+            or not isinstance(content_type, str)
+            or not claim_id.strip()
+            or not filename.strip()
+            or not content_type.strip()
+        ):
             from shared.exceptions import BusinessRuleViolationError
 
             raise BusinessRuleViolationError(
-                "claim_id, filename, and content_type are required",
+                "claim_id, filename, and content_type are required strings",
                 rule_id="MISSING_PRESIGNED_URL_FIELDS",
             )
         result = service.generate_presigned_url(
@@ -304,7 +343,8 @@ def _upload_routes(
             claim_id,
             filename,
             content_type,
-            actor_id=ctx.user_id,
+            ctx=ctx,
+            size_bytes=body.get("size_bytes"),
         )
         return success(result, request_id=request_id)
 
@@ -317,6 +357,31 @@ def _upload_routes(
 
 
 _ITEM_READ_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
+# The China office records the supply and loading check on a missing item (PRD FR-DC-005/006, audit UX-08), so it
+# reads missing items and may update their investigation. It does not read seized items, and the service refuses it
+# any compensation or any decision.
+_MISSING_ITEM_READ_ROLES = (*_ITEM_READ_ROLES, UserRole.CHINA_OFFICE_STAFF)
+_MISSING_ITEM_UPDATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.CHINA_OFFICE_STAFF)
+
+
+def _compensation_amount(body: dict[str, Any]) -> Decimal | None:
+    """Parse the optional ``refund_amount_ngn`` of a missing/seized item update.
+
+    A non-numeric, non-finite or non-positive amount is a 422 here rather than a 500 from
+    the refund_request CHECK constraint later.
+    """
+    raw_amount = body.get("refund_amount_ngn")
+    if raw_amount is None or raw_amount == "":
+        return None
+    try:
+        amount = Decimal(str(raw_amount))
+    except InvalidOperation:
+        amount = None
+    if amount is None or not amount.is_finite() or amount <= 0:
+        raise ValidationError(
+            "refund_amount_ngn must be a positive number", field_errors={"refund_amount_ngn": "must be greater than 0"}
+        )
+    return amount
 
 
 def _missing_item_routes(
@@ -328,7 +393,7 @@ def _missing_item_routes(
     if item_id is None:
         # GET /v1/claims/missing-items
         if method == "GET":
-            ctx.assert_role(*_ITEM_READ_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_READ_ROLES)
             filters = {}
             if _qp(event, "container_id"):
                 filters["container_id"] = _qp(event, "container_id")
@@ -336,8 +401,7 @@ def _missing_item_routes(
                 filters["customer_id"] = _qp(event, "customer_id")
             if _qp(event, "status"):
                 filters["status"] = _qp(event, "status")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_missing_items(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -346,7 +410,7 @@ def _missing_item_routes(
             ctx.assert_role(*_STAFF_ROLES)
             body = _parse_body(event)
             req = parse_validated(LogMissingItemRequest, body)
-            result = service.log_missing_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
+            result = service.log_missing_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx, ip_address=ip_address)
             return created(
                 result,
                 location=f"/v1/claims/missing-items/{result['id']}",
@@ -355,13 +419,13 @@ def _missing_item_routes(
     else:
         # GET /v1/claims/missing-items/{id}
         if method == "GET":
-            ctx.assert_role(*_ITEM_READ_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_READ_ROLES)
             result = service.get_missing_item(tenant_id, item_id)
             return success(result, request_id=request_id)
 
         # PATCH /v1/claims/missing-items/{id}
         if method == "PATCH":
-            ctx.assert_role(*_STAFF_ROLES)
+            ctx.assert_role(*_MISSING_ITEM_UPDATE_ROLES)
             body = _parse_body(event)
             status = body.get("status", "")
             notes = body.get("notes")
@@ -369,10 +433,19 @@ def _missing_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("status is required", rule_id="MISSING_STATUS")
-            raw_amount = body.get("refund_amount_ngn")
-            refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
+            if status not in MissingItemStatus:
+                raise ValidationError(
+                    f"status must be one of: {', '.join(MissingItemStatus)}", field_errors={"status": "invalid status"}
+                )
             result = service.update_missing_item(
-                tenant_id, item_id, status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
+                tenant_id,
+                item_id,
+                status,
+                notes,
+                actor_id=ctx.user_id,
+                ctx=ctx,
+                refund_amount_ngn=_compensation_amount(body),
+                ip_address=ip_address,
             )
             return success(result, request_id=request_id)
 
@@ -401,8 +474,7 @@ def _seized_item_routes(
                 filters["customer_id"] = _qp(event, "customer_id")
             if _qp(event, "status"):
                 filters["status"] = _qp(event, "status")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_seized_items(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -411,7 +483,7 @@ def _seized_item_routes(
             ctx.assert_role(*_STAFF_ROLES)
             body = _parse_body(event)
             req = parse_validated(LogSeizedItemRequest, body)
-            result = service.log_seized_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
+            result = service.log_seized_item(tenant_id, req, actor_id=ctx.user_id, ctx=ctx, ip_address=ip_address)
             return created(
                 result,
                 location=f"/v1/claims/seized-items/{result['id']}",
@@ -434,10 +506,20 @@ def _seized_item_routes(
                 from shared.exceptions import BusinessRuleViolationError
 
                 raise BusinessRuleViolationError("recovery_status is required", rule_id="MISSING_STATUS")
-            raw_amount = body.get("refund_amount_ngn")
-            refund_amount_ngn = Decimal(str(raw_amount)) if raw_amount is not None else None
+            if recovery_status not in SeizedItemStatus:
+                raise ValidationError(
+                    f"recovery_status must be one of: {', '.join(SeizedItemStatus)}",
+                    field_errors={"recovery_status": "invalid status"},
+                )
             result = service.update_seized_item(
-                tenant_id, item_id, recovery_status, notes, actor_id=ctx.user_id, ctx=ctx, refund_amount_ngn=refund_amount_ngn
+                tenant_id,
+                item_id,
+                recovery_status,
+                notes,
+                actor_id=ctx.user_id,
+                ctx=ctx,
+                refund_amount_ngn=_compensation_amount(body),
+                ip_address=ip_address,
             )
             return success(result, request_id=request_id)
 

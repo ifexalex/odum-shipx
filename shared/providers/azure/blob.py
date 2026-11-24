@@ -83,7 +83,12 @@ class BlobStorageProvider:
         blob_url: str = self._container_client().get_blob_client(key).url
         return f"{blob_url}?{sas}"
 
-    def presigned_upload(self, key: str, *, content_type: str, expires_in: int) -> UploadTicket:
+    def presigned_upload(
+        self, key: str, *, content_type: str, expires_in: int, content_length: int | None = None
+    ) -> UploadTicket:
+        # A SAS cannot bind the upload's length; `content_length` is checked where the file is used
+        # (shared.uploads.check_stored_size).
+        del content_length
         from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 
         account_name, account_key = self._shared_key()
@@ -125,6 +130,14 @@ class BlobStorageProvider:
         except ResourceNotFoundError:
             return None
         return int(props.size)
+
+    def delete_object(self, key: str) -> None:
+        from azure.core.exceptions import ResourceNotFoundError
+
+        try:
+            self._container_client().delete_blob(key, delete_snapshots="include")
+        except ResourceNotFoundError:
+            return
 
     def delete_prefix(self, prefix: str) -> int:
         """Delete every blob under `prefix` (plus snapshots) and return the count.

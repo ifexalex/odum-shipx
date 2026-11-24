@@ -163,3 +163,26 @@ Constants exported from `src/lib/queryClient.ts`: `STALE_FOREVER`, `STALE_5_MIN`
 - [x] Optimistic updates not implemented — all mutations wait for server confirmation (correct for state-machine + money operations)
 - [x] No page calls `apiRequest`/api modules directly — **done (2026-07-10)**: all list pages now consume domain query hooks (`useContainerList`/`usePackingListList`/`useManifestList`/`useDisputeList`/`useReleaseNoteList`/`useRefundList`/`useMissing/SeizedItemList`/`useCustomerList`/`useStaffList`/`usePlatformTenantList`). NotificationLog migrated to `useNotifLogPolling`. Remaining direct calls are one-shot mutations inside mutation handlers (correct).
 - [x] Notification polling pauses when tab is backgrounded — **done (2026-07-10)**: `useCursorPagination` gained a `refetchIntervalMs` option whose `refetchInterval` callback returns `false` while `document.hidden` (plus `refetchIntervalInBackground: false`). `useNotifLogPolling` uses it (60s). Unit-tested in `useNotifLogPolling.test.tsx`.
+
+## No page loads server data in a `useEffect` (audit FE-05, 2026-11-16)
+
+The last 16 files (about 20 effects) that fetched by hand now read through React Query hooks in `src/hooks/`. `shell/noFetchInEffect.test.ts` fails if an effect in `pages/`, `shell/` or `design/` calls an API module, directly or through a function in the same file. **One documented exception:** `PaymentSuccess` POSTs the Paystack reference once on landing so the server can verify and record the payment; that is a write, and a query would retry and refetch it.
+
+| Page | Was | Now |
+|---|---|---|
+| `ManifestList`, `ReleaseNoteList` (stats rows) | `xApi.stats()` in an effect | `useManifestStats`, `useReleaseNoteStats` (new `stats()` keys under each domain root) |
+| `PrintPackingList`, `PrintReleaseNote` | `get(id)` in an effect | `usePackingList`, `useReleaseNote` (share the detail page's cache entry, so the print view opens from it) |
+| `CbmRateConfig`, `DollarRateConfig`, `RateHistoryTable` | load + `setState` | `useCbmRate`/`useDollarRate` with `freshOnOpen`, `useRateHistory` (new `configKeys.rateHistory`, so saving a rate now refreshes its history table, which it did not before) |
+| `PaymentGatewayConfig` (two panels), `WebhookConfig` | each panel fetched `GET /v1/tenant/config` itself | `useTenantConfig({ freshOnOpen })`; the bank-transfer panel takes the loaded value as a prop, so the page makes **one** request, not two |
+| `PlatformSettings` (General, Providers, Plans) | three effects | `usePlatformGeneralSettings`, `usePlatformGateways`, `usePlatformPlans` (new `platformSettingsKeys`) |
+| `PlatformDashboard` | `Promise.all` + audit log in an effect | `usePlatformDashboardStats` (new `platformDashboardKeys`), `usePlatformTenantList`, `useRecentPlatformActivity` (`platformAuditKeys.recent`, not `list`, which the audit-log page pages through as an infinite query) |
+| tenant `Dashboard` (six queues) | three effects, six fetches | `hooks/useDashboard.ts`, each under its domain's `lookup` key, so approving a packing list, recording a payment or a pickup now refreshes the queue (before, it showed whatever was true when the dashboard opened) |
+| `BillingDetail` Add-charge dialog | `listChargeTypes()` in an effect | `useChargeTypes` |
+| `Account` | `customersApi.list()` in an effect | `useOwnCustomer` |
+| `ImportPackingLists`, `CreatePackingList` | pickers, rates and the draft in one large effect | `useContainerLookup`, `useCustomerLookup`, `useWarehouses`, the two rate hooks, `usePackingListForEdit` |
+
+**Forms: read fresh, copy once.** A settings or edit form must not be filled from a cached copy that someone else has since changed, and a background refetch must not overwrite what the user is typing. `FRESH_ON_OPEN` (`staleTime: 0, refetchOnMount: 'always'`) makes the form's read ignore the cache's age, and `useSeedOnce(query, seed)` copies the freshly fetched value into the form's own state exactly once (`hooks/useSeedOnce.ts`). After a save the page writes the response into the cache with `setQueryData`; the write also invalidates the domain through the central rules.
+
+**Invalidation.** Every key the migrated reads use sits under a root with a rule in `api/cacheInvalidation.ts`. New rules: platform settings and plan writes invalidate `platformSettingsKeys`, the tenant list and the audit feed; tenant writes also invalidate the platform dashboard totals and the audit feed. `api/cacheInvalidation.test.ts` pins them and that each `lookup` key is a child of its domain root.
+
+**Tests.** Pages that now use a query needed a provider in their tests (`withQuery`). `PlatformSettings` and `WebhookConfig` had no tests and now do. Four tests had a latent race (a synchronous read immediately after the first await) that the new timing exposed; they now wait for the row. Checked in a real browser: all fourteen migrated pages render with no error boundary and no repeated data request.

@@ -1,11 +1,12 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MAX_ITEM_QUANTITY, packingListApi, type PackingList } from '../../api/packingList'
 import { containersApi, type Container } from '../../api/tracking'
 import { configApi, customersApi, type Customer } from '../../api/tenantManagement'
 import { warehousesApi } from '../../api/warehouses'
+import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import { CreatePackingList } from './CreatePackingList'
 
 vi.mock('../../api/packingList', async (importOriginal) => {
@@ -19,6 +20,7 @@ vi.mock('../../api/tracking', () => ({
   containersApi: { list: vi.fn() },
 }))
 import { ApiError } from '../../api/client'
+import { withQuery } from '../../test/queryWrapper'
 
 vi.mock('../../api/warehouses', () => ({
   warehousesApi: {
@@ -78,11 +80,11 @@ const containerStub: Container = {
 }
 
 function renderPage() {
-  return render(
+  return render(withQuery(
     <MemoryRouter>
       <CreatePackingList />
     </MemoryRouter>,
-  )
+  ))
 }
 
 // The customer + container pickers are searchable Comboboxes (a button that
@@ -269,13 +271,13 @@ describe('CreatePackingList', () => {
     }
     vi.mocked(packingListApi.get).mockResolvedValue(draft)
     vi.mocked(packingListApi.update).mockResolvedValue(draft)
-    render(
+    render(withQuery(
       <MemoryRouter initialEntries={['/packing-lists/pl-draft/edit']}>
         <Routes>
           <Route path="/packing-lists/:id/edit" element={<CreatePackingList />} />
         </Routes>
       </MemoryRouter>,
-    )
+    ))
     expect(await screen.findByText('Edit draft packing list')).toBeInTheDocument()
     // Customer/container pickers are present but fixed.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Customer' })).toBeDisabled())
@@ -601,13 +603,13 @@ describe('CreatePackingList — reopening a saved draft', () => {
       customer_id: customerStub.id,
       items,
     } as never)
-    render(
+    render(withQuery(
       <MemoryRouter initialEntries={['/packing-lists/pl1/edit']}>
         <Routes>
           <Route path="/packing-lists/:id/edit" element={<CreatePackingList />} />
         </Routes>
       </MemoryRouter>,
-    )
+    ))
     // The wizard opens on step 1 even when editing; the items table lives on
     // step 2.
     const next = await screen.findByText('Next: Add items')
@@ -762,3 +764,138 @@ describe('CreatePackingList — saving twice must not make two lists', () => {
   })
 })
 
+
+describe('CreatePackingList — missing prerequisites and the tab draft (FD-25)', () => {
+  beforeEach(() => {
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  it('names a missing container at the top of the step and says who can create one', async () => {
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    renderPage()
+    // Outside a session nobody may open the create page, so the callout says whom to ask instead of linking.
+    const callout = (await screen.findByText(/Ask the China office to create one/)).closest('[role="alert"]')
+    expect(callout).toHaveTextContent('No container is loading')
+  })
+
+  it('shows no prerequisite callout when a container is loading', async () => {
+    renderPage()
+    await selectFromCombobox('Container', 'MSCU1234567')
+    expect(screen.queryByText(/there is none yet/)).toBeNull()
+  })
+
+  it('keeps the input in the tab and restores it when the wizard is opened again', async () => {
+    const first = renderPage()
+    await pickCustomerAndContainer()
+    expect(await screen.findByText(/Draft saved in this tab/)).toBeInTheDocument()
+    first.unmount()
+
+    renderPage()
+    expect(await screen.findByText('Picked up where you left off')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next: Add items' })).toBeEnabled())
+  })
+
+  it('stores nothing for a form that was opened and left untouched', async () => {
+    const first = renderPage()
+    await screen.findByRole('button', { name: 'Customer' })
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(screen.queryByText(/Draft saved in this tab/)).toBeNull()
+    first.unmount()
+    renderPage()
+    await screen.findByRole('button', { name: 'Customer' })
+    expect(screen.queryByText('Picked up where you left off')).toBeNull()
+  })
+
+  it('starts over from a restored draft', async () => {
+    const first = renderPage()
+    await pickCustomerAndContainer()
+    await screen.findByText(/Draft saved in this tab/)
+    first.unmount()
+
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Start over' }))
+    expect(screen.queryByText('Picked up where you left off')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Next: Add items' })).toBeDisabled()
+  })
+})
+
+describe('CreatePackingList — prerequisite links for a China office user (FD-25)', () => {
+  it('links to creating a container, which returns to the wizard', async () => {
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    const session = { session: { tenantId: 't1', userId: 'u1', roles: ['china_office_staff'] } } as unknown as SessionContextValue
+    render(
+      withQuery(
+        <SessionContext.Provider value={session}>
+          <MemoryRouter>
+            <CreatePackingList />
+          </MemoryRouter>
+        </SessionContext.Provider>,
+      ),
+    )
+    const link = await screen.findByRole('link', { name: 'Create a container' })
+    expect(link).toHaveAttribute('href', '/containers/new?return=%2Fpacking-lists%2Fnew')
+  })
+})
+
+describe('CreatePackingList — leaving with unsaved input (FD-54)', () => {
+  beforeEach(() => {
+    vi.mocked(customersApi.list).mockResolvedValue({
+      data: [customerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(containersApi.list).mockResolvedValue({
+      data: [containerStub],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+  })
+
+  function renderInApp() {
+    const router = createMemoryRouter(
+      [
+        { path: '/packing-lists/new', element: <CreatePackingList /> },
+        { path: '/packing-lists', element: <p>Packing list index</p> },
+      ],
+      { initialEntries: ['/packing-lists/new'] },
+    )
+    render(withQuery(<RouterProvider router={router} />))
+    return router
+  }
+
+  it('asks before leaving a half-filled wizard, and the input is there on return', async () => {
+    const router = renderInApp()
+    await pickCustomerAndContainer()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Leave this packing list?' })
+    expect(dialog).toHaveTextContent('It stays in this tab')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Leave' }))
+    expect(await screen.findByText('Packing list index')).toBeInTheDocument()
+
+    await router.navigate('/packing-lists/new')
+    expect(await screen.findByText('Picked up where you left off')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Next: Add items' })).toBeEnabled())
+  })
+
+  it('leaves an untouched wizard without asking', async () => {
+    renderInApp()
+    await screen.findByRole('button', { name: 'Customer' })
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByText('Packing list index')).toBeInTheDocument()
+  })
+})

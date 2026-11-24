@@ -39,7 +39,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from shared.exceptions import ExternalServiceError
@@ -51,6 +51,41 @@ _PAYSTACK_INITIALIZE_URL = "https://api.paystack.co/transaction/initialize"
 _PAYSTACK_VERIFY_URL = "https://api.paystack.co/transaction/verify/"
 _PAYSTACK_TEST_URL = "https://api.paystack.co/transaction?perPage=1"
 _TIMEOUT_SECONDS = 15
+
+#: Invoices are in naira and every checkout we open asks for naira, so that is the only currency a charge is applied in.
+SETTLEMENT_CURRENCY = "NGN"
+_KOBO_PER_NAIRA = Decimal("100")
+
+
+def charge_amount_ngn(data: dict[str, Any]) -> Decimal | None:
+    """The naira value of a Paystack charge, or ``None`` if the charge must not be applied to an invoice.
+
+    Paystack reports ``amount`` in the smallest unit of ``currency``. Reading it as kobo without looking at the
+    currency turned a charge of 100.00 in any other currency into ₦100.00 paid. A charge in another currency, with no
+    currency, or with an amount that is not a positive number is refused here and logged; both the webhook and the
+    verify call read the amount through this function.
+
+    Args:
+        data: The ``data`` object of a ``charge.success`` webhook or of a verify response.
+
+    Returns:
+        The amount in naira, or ``None`` when the charge is not a positive naira amount.
+    """
+    # Values below come from a payload that may not have been authenticated yet: log them cut short and quoted.
+    gateway_id = str(data.get("id", ""))[:40]
+    currency = str(data.get("currency") or "").strip().upper()
+    if currency != SETTLEMENT_CURRENCY:
+        logger.warning("Ignoring Paystack charge %r: currency %r is not %s", gateway_id, currency[:8], SETTLEMENT_CURRENCY)
+        return None
+    try:
+        amount_kobo = Decimal(str(data.get("amount")))
+    except InvalidOperation:
+        logger.warning("Ignoring Paystack charge %r: amount is not a number", gateway_id)
+        return None
+    if not amount_kobo.is_finite() or amount_kobo <= 0:
+        logger.warning("Ignoring Paystack charge %r: amount is not positive", gateway_id)
+        return None
+    return amount_kobo / _KOBO_PER_NAIRA
 
 
 def build_reference(billing_id: str) -> str:
@@ -85,7 +120,7 @@ def initialize_transaction(
     Raises:
         ExternalServiceError: Paystack rejected the request or is unreachable.
     """
-    amount_kobo = int(amount_ngn * 100)
+    amount_kobo = int((amount_ngn * _KOBO_PER_NAIRA).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     reference = build_reference(billing_id)
 
     body: dict[str, Any] = {

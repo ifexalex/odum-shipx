@@ -29,6 +29,7 @@ from typing import Any
 from flask import Flask, Response, request
 
 from shared.auth_verify import build_authorizer_claims
+from shared.client_ip import came_through_front_door, front_door_required, resolve_edge_client_ip
 from shared.http_routing import invoke_handler, is_public_route, resolve_service
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 
@@ -56,15 +57,20 @@ def _build_event(claims: dict[str, Any] | None) -> dict[str, Any]:
     """
     body_raw = request.get_data(as_text=True) or None
     authorizer: dict[str, Any] = {"claims": claims} if claims is not None else {}
+    http: dict[str, Any] = {"method": request.method, "path": request.path}
+    identity: dict[str, Any] = {}
+    # Behind Front Door and the Container Apps ingress the socket peer is a proxy, not the user. A request our own
+    # Front Door forwarded carries the address Front Door saw; any other request's proxy headers are not believed,
+    # and the key is left out rather than set to a proxy's address (shared/client_ip.py).
+    address = resolve_edge_client_ip(request.remote_addr or "", request.headers)
+    if address:
+        http["sourceIp"] = identity["sourceIp"] = address
     return {
         "requestContext": {
             "requestId": str(uuid.uuid4()),
-            "http": {
-                "method": request.method,
-                "path": request.path,
-            },
+            "http": http,
             "authorizer": authorizer,
-            "identity": {"sourceIp": request.remote_addr or "127.0.0.1"},
+            "identity": identity,
         },
         "body": body_raw,
         "queryStringParameters": dict(request.args) or {},
@@ -132,6 +138,13 @@ def dispatch(path: str) -> Response:
 
     clear_log_context()
     bind_log_context(request_id=str(uuid.uuid4()))
+
+    # Optional origin lock (REQUIRE_FRONT_DOOR): the API answers only requests our Front Door forwarded, so nothing
+    # can go around it by calling the container app's own hostname. /health is a separate route and stays open for
+    # the platform's probes.
+    if front_door_required() and not came_through_front_door(request.headers):
+        logger.warning("Refused a request that did not come through Front Door")
+        return _json_response(403, {"error": "Forbidden"})
 
     public = is_public_route(method, full_path)
     claims: dict[str, Any] | None = None

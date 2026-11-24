@@ -28,7 +28,7 @@ export type RefundStatus =
   | 'processed'
   | 'applied_as_credit'
 
-export type RefundType = 'overpayment' | 'cbm_correction' | 'damage_or_loss'
+export type RefundType = 'overpayment' | 'cbm_correction' | 'damage_or_loss' | 'missing_item' | 'seized_item'
 
 export type CustomerChoice = 'immediate_refund' | 'credit_next_shipment'
 
@@ -51,22 +51,39 @@ export interface RefundThreshold {
   exceeds_staff_limit: boolean
 }
 
+/**
+ * Where a refund to a bank account is paid. PII: never log it. Staff read it whole; a customer reads the account
+ * number masked (`******6789`). Null when the refund is a credit, or came from a claim decision.
+ */
+export interface BankDetails {
+  bank_name: string | null
+  account_number: string | null
+  account_name: string | null
+}
+
 export interface Refund {
   id: string
   status: RefundStatus
   refund_type: RefundType
   amount_requested_ngn: string
   amount_approved_ngn: string | null
+  /** For a refund taken as credit: how much of it invoices have used so far. The rest is still the customer's. */
+  credit_applied_ngn?: string
   customer_choice: CustomerChoice | null
   customer_id: string | null
   billing_id: string | null
   damage_claim_id: string | null
+  /** What the three ids above are called (FD-17). Sent on the detail read only; absent on list rows. */
+  customer_name?: string | null
+  invoice_number?: string | null
+  claim_reference?: string | null
   reason: string | null
   rejection_reason: string | null
   approval_level: ApprovalLevel | null
   debt_check_passed: boolean | null
   debt_check_notes: string | null
   created_at: string
+  bank_details?: BankDetails | null
   /** Present on detail responses only (absent on list items / route state). Null if threshold config is unavailable. */
   threshold?: RefundThreshold | null
 }
@@ -94,6 +111,10 @@ export interface CreateRefundInput {
   amount_requested_ngn: string
   customer_choice?: CustomerChoice
   notes?: string
+  /** Required for `immediate_refund`, refused for a credit. `account_number` is a 10-digit NUBAN. */
+  bank_name?: string
+  account_number?: string
+  account_name?: string
 }
 
 export interface AccountsReviewInput {

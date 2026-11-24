@@ -15,6 +15,7 @@ import logging
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.list_filters import container_filter
 from shared.pagination import build_paginated_query, extract_page
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -65,7 +66,8 @@ def get_container_by_id(tenant_id: str, container_id: str) -> dict[str, Any] | N
                (SELECT COALESCE(SUM(pli.cbm), 0)
                 FROM packing_list_item pli
                 JOIN packing_list pl2 ON pl2.id = pli.packing_list_id
-                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id) AS total_cbm_packed
+                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id
+                  AND pl2.status <> 'rejected') AS total_cbm_packed
         FROM container c
         LEFT JOIN tenant_user tu ON tu.id = c.created_by AND tu.tenant_id = c.tenant_id
         WHERE c.tenant_id = %s AND c.id = %s LIMIT 1
@@ -83,47 +85,11 @@ def list_containers(
     sort_field: str = "created_at",
     sort_direction: str = "DESC",
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    conditions = ["tenant_id = %(tenant_id)s"]
-    extra: dict[str, Any] = {"tenant_id": tenant_id}
-
-    if filters.get("status"):
-        # Accepts either a single status string or a list (Filters panel's
-        # multi-select sends several) — always parameterized via ANY(), same
-        # idiom as billing/repository.py::mark_carryovers_applied's `id =
-        # ANY(%(ids)s)`. Never string-interpolated.
-        statuses = filters["status"]
-        if isinstance(statuses, str):
-            statuses = [statuses]
-        conditions.append("status = ANY(%(statuses)s)")
-        extra["statuses"] = list(statuses)
-    if filters.get("created_after"):
-        conditions.append("created_at >= %(created_after)s")
-        extra["created_after"] = filters["created_after"]
-    if filters.get("created_before"):
-        conditions.append("created_at <= %(created_before)s")
-        extra["created_before"] = filters["created_before"]
-    if filters.get("eta_after"):
-        conditions.append("estimated_arrival_date >= %(eta_after)s")
-        extra["eta_after"] = filters["eta_after"]
-    if filters.get("eta_before"):
-        conditions.append("estimated_arrival_date <= %(eta_before)s")
-        extra["eta_before"] = filters["eta_before"]
-
-    # Free-text search across container number, vessel name, and voyage number.
-    # Appended separately from `conditions` below (which get blanket-prefixed
-    # with "c.") since this is already a compound multi-column OR expression —
-    # folding it into `conditions` would double-prefix it into invalid SQL
-    # (e.g. "c.(c.container_number ILIKE ...)"). See services/packing_list/
-    # repository.py::list_packing_lists for the same q_clause pattern.
-    q_clause = ""
-    if filters.get("q"):
-        q_clause = " AND (c.container_number ILIKE %(q)s OR c.vessel_name ILIKE %(q)s OR c.voyage_number ILIKE %(q)s)"
-        extra["q"] = f"%{filters['q']}%"
+    where_clause, extra = container_filter(tenant_id, filters)
 
     # Wrap the correlated packing-list aggregates in a subquery so
     # build_paginated_query's cursor condition (AND id > ...) references the
     # outer unambiguous columns instead of clashing with packing_list.id.
-    where_clause = " AND ".join(f"c.{cond}" for cond in conditions)
     inner = f"""
         SELECT c.*,
                (SELECT COUNT(*) FROM packing_list pl
@@ -134,15 +100,16 @@ def list_containers(
                (SELECT COALESCE(SUM(pli.cbm), 0)
                 FROM packing_list_item pli
                 JOIN packing_list pl2 ON pl2.id = pli.packing_list_id
-                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id) AS total_cbm_packed
+                WHERE pl2.container_id = c.id AND pl2.tenant_id = c.tenant_id
+                  AND pl2.status <> 'rejected') AS total_cbm_packed
         FROM container c
-        WHERE {where_clause}{q_clause}
+        WHERE {where_clause}
     """
     base = f"SELECT * FROM ({inner}) AS t WHERE 1=1"
     query, params = build_paginated_query(base, cursor, limit, sort_field=sort_field, sort_direction=sort_direction)
     params.update(extra)
     rows = execute_with_tenant(tenant_id, query, params)
-    return extract_page(rows, limit)
+    return extract_page(rows, limit, sort_field)
 
 
 def get_container_stats(tenant_id: str) -> dict[str, int]:
@@ -192,13 +159,25 @@ def get_container_stats(tenant_id: str) -> dict[str, int]:
     return {k: int(row.get(k) or 0) for k in keys}
 
 
+def lock_container(tenant_id: str, container_id: str) -> dict[str, Any] | None:
+    """Lock a container row FOR UPDATE inside an active tenant_transaction."""
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM container WHERE tenant_id = %s AND id = %s FOR UPDATE",
+        (tenant_id, container_id),
+    )
+    return rows[0] if rows else None
+
+
 def update_container_status(
     tenant_id: str,
     container_id: str,
     status: str,
     extra: dict[str, Any] | None = None,
+    *,
+    expected_status: str | None = None,
 ) -> dict[str, Any] | None:
-    """Update container status + optional date/notes fields.
+    """Update container status + optional date/notes fields with optional CAS guard.
 
     extra keys are restricted to _CONTAINER_EXTRA_FIELDS (allowlist guard).
     """
@@ -210,12 +189,17 @@ def update_container_status(
             extra_clause += f", {key} = %({key})s"
             params[key] = val
 
+    cas_clause = ""
+    if expected_status is not None:
+        cas_clause = " AND status = %(expected_status)s"
+        params["expected_status"] = expected_status
+
     return execute_write_with_tenant(
         tenant_id,
         f"""
         UPDATE container
         SET status = %(status)s, updated_at = NOW(){extra_clause}
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s{cas_clause}
         RETURNING *
         """,
         params,
@@ -258,6 +242,46 @@ def count_approved_packing_lists(tenant_id: str, container_id: str) -> int:
     return int(rows[0]["cnt"]) if rows else 0
 
 
+def count_unapproved_packing_lists(tenant_id: str, container_id: str) -> int:
+    """Count draft or pending_approval packing lists blocking container sealing."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COUNT(*) AS cnt FROM packing_list
+        WHERE tenant_id = %s AND container_id = %s AND status IN ('draft', 'pending_approval')
+        """,
+        (tenant_id, container_id),
+    )
+    return int(rows[0]["cnt"]) if rows else 0
+
+
+def count_unreleased_cartons_for_container(tenant_id: str, container_id: str) -> int:
+    """Count cartons billed on non-cancelled invoices not yet collected via pickup_record."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        WITH billed AS (
+            SELECT customer_id, COALESCE(SUM(total_cartons), 0) AS billed_cartons
+            FROM billing
+            WHERE tenant_id = %s AND container_id = %s AND status <> 'cancelled'
+            GROUP BY customer_id
+        ),
+        picked AS (
+            SELECT rn.customer_id, COALESCE(SUM(pr.cartons_count), 0) AS picked_cartons
+            FROM pickup_record pr
+            JOIN release_note rn ON rn.id = pr.release_note_id AND rn.tenant_id = pr.tenant_id
+            WHERE rn.tenant_id = %s AND rn.container_id = %s
+            GROUP BY rn.customer_id
+        )
+        SELECT COALESCE(SUM(GREATEST(b.billed_cartons - COALESCE(p.picked_cartons, 0), 0)), 0)::int AS unreleased
+        FROM billed b
+        LEFT JOIN picked p ON p.customer_id = b.customer_id
+        """,
+        (tenant_id, container_id, tenant_id, container_id),
+    )
+    return int(rows[0]["unreleased"]) if rows else 0
+
+
 def get_manifest_for_container(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
@@ -274,7 +298,7 @@ def get_manifest_for_container(tenant_id: str, container_id: str) -> dict[str, A
 
 
 def bulk_update_tracking_status(tenant_id: str, container_id: str, tracking_status: str) -> None:
-    """Bulk-update shipment_tracking.status for all codes in this container."""
+    """Bulk-update shipment_tracking.status for all approved packing-list codes in this container."""
     execute_write_with_tenant(
         tenant_id,
         """
@@ -284,7 +308,9 @@ def bulk_update_tracking_status(tenant_id: str, container_id: str, tracking_stat
             SELECT DISTINCT pli.tracking_code
             FROM packing_list_item pli
             JOIN packing_list pl ON pl.id = pli.packing_list_id
-            WHERE pl.container_id = %(container_id)s AND pl.tenant_id = %(tenant_id)s
+            WHERE pl.container_id = %(container_id)s
+              AND pl.tenant_id = %(tenant_id)s
+              AND pl.status = 'approved'
         ) sub
         WHERE shipment_tracking.tracking_code = sub.tracking_code
           AND shipment_tracking.tenant_id     = %(tenant_id)s
@@ -301,10 +327,10 @@ def bulk_insert_tracking_events(
     description: str | None,
     actor_id: str,
 ) -> None:
-    """Insert one tracking_event per affected shipment_tracking row.
+    """Insert one tracking_event per affected approved shipment_tracking row.
 
-    tracking_event has no RLS — use PLATFORM scope so the SET command
-    doesn't interfere with per-row RLS policies.
+    Must be called BEFORE bulk_update_tracking_status so st.status captures the
+    previous status (from_status) rather than the new status.
     """
     execute_write_with_tenant(
         PLATFORM_TENANT_ID,
@@ -323,7 +349,9 @@ def bulk_insert_tracking_events(
             SELECT DISTINCT pli.tracking_code
             FROM packing_list_item pli
             JOIN packing_list pl ON pl.id = pli.packing_list_id
-            WHERE pl.container_id = %(container_id)s AND pl.tenant_id = %(tenant_id)s
+            WHERE pl.container_id = %(container_id)s
+              AND pl.tenant_id = %(tenant_id)s
+              AND pl.status = 'approved'
         ) sub ON sub.tracking_code = st.tracking_code
         WHERE st.tenant_id = %(tenant_id)s
         RETURNING id
@@ -398,10 +426,20 @@ def list_customer_shipments(
     customer_id: str,
     limit: int = 50,
     cursor: dict[str, Any] | None = None,
+    filters: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    """Return shipment_tracking rows for a specific customer (via packing list join)."""
+    """Return shipment_tracking rows for a specific customer (via approved packing list join)."""
     extra: dict[str, Any] = {"tenant_id": tenant_id, "customer_id": customer_id}
-    base = """
+    extra_conds = []
+    if filters:
+        if filters.get("status"):
+            extra_conds.append("st.status = %(status)s")
+            extra["status"] = filters["status"]
+        if filters.get("tracking_code"):
+            extra_conds.append("st.tracking_code = %(tracking_code)s")
+            extra["tracking_code"] = filters["tracking_code"]
+    filter_sql = (" AND " + " AND ".join(extra_conds)) if extra_conds else ""
+    base = f"""
         SELECT st.*
         FROM shipment_tracking st
         WHERE st.tenant_id = %(tenant_id)s
@@ -411,7 +449,8 @@ def list_customer_shipments(
             JOIN packing_list pl ON pl.id = pli.packing_list_id
             WHERE pl.tenant_id   = %(tenant_id)s
               AND pl.customer_id = %(customer_id)s
-          )
+              AND pl.status      = 'approved'
+          ){filter_sql}
     """
     query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
     params.update(extra)
@@ -431,15 +470,8 @@ def get_customer_by_user_id(tenant_id: str, user_id: str) -> dict[str, Any] | No
 def get_shipment_by_tracking_code_and_phone(tracking_code: str, phone_candidates: list[str]) -> dict[str, Any] | None:
     """Public lookup — bypasses RLS via PLATFORM scope.
 
-    Verifies ownership by joining through packing_list → customer.phone.
-
-    Takes a LIST of acceptable phone forms rather than one string. Customer
-    phones are stored E.164 (`shared/phone.py`), but this endpoint is public and
-    the number arrives however the caller typed it — `08012345678` for a row
-    stored as `+2348012345678`. Matching a single exact string meant a customer
-    entering their own number in local format got "not found" (fixed 2026-11-02).
-    Rows predating normalisation may still hold a local-format value, so the
-    caller supplies both the normalised and the raw form.
+    Verifies ownership by joining through approved packing_list → active customer
+    belonging to an active tenant.
     """
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
@@ -449,15 +481,17 @@ def get_shipment_by_tracking_code_and_phone(tracking_code: str, phone_candidates
             t.company_name,
             t.branding_config
         FROM shipment_tracking st
-        JOIN tenant t ON t.id = st.tenant_id
+        JOIN tenant t ON t.id = st.tenant_id AND t.status = 'active'
         JOIN (
             SELECT DISTINCT pli.tracking_code, pl.customer_id, pl.tenant_id
             FROM packing_list_item pli
             JOIN packing_list pl ON pl.id = pli.packing_list_id
+            WHERE pl.status = 'approved'
         ) code_map ON code_map.tracking_code = st.tracking_code
                   AND code_map.tenant_id      = st.tenant_id
         JOIN customer c ON c.id          = code_map.customer_id
                        AND c.tenant_id   = code_map.tenant_id
+                       AND c.anonymised_at IS NULL
         WHERE st.tracking_code = %s
           AND (c.phone = ANY(%s) OR c.whatsapp = ANY(%s))
         LIMIT 1
@@ -562,7 +596,7 @@ def list_container_documents(tenant_id: str, container_id: str) -> list[dict[str
         tenant_id,
         """
         SELECT * FROM container_document
-        WHERE tenant_id = %s AND container_id = %s
+        WHERE tenant_id = %s AND container_id = %s AND confirmed_at IS NOT NULL
         ORDER BY created_at DESC
         """,
         (tenant_id, container_id),
@@ -573,14 +607,45 @@ def get_container_document_by_id(
     tenant_id: str,
     container_id: str,
     doc_id: str,
+    *,
+    include_unconfirmed: bool = False,
 ) -> dict[str, Any] | None:
+    """One document of a container; an unconfirmed upload only when `include_unconfirmed` (to confirm it)."""
     rows = execute_with_tenant(
         tenant_id,
         """
         SELECT * FROM container_document
         WHERE tenant_id = %s AND container_id = %s AND id = %s
+          AND (confirmed_at IS NOT NULL OR %s)
         LIMIT 1
+        """,
+        (tenant_id, container_id, doc_id, include_unconfirmed),
+    )
+    return rows[0] if rows else None
+
+
+def confirm_container_document(tenant_id: str, container_id: str, doc_id: str, size_bytes: int) -> dict[str, Any] | None:
+    """Record the checked size and list the document. Confirming twice keeps the first time."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE container_document
+        SET file_size_bytes = %s, confirmed_at = COALESCE(confirmed_at, NOW())
+        WHERE tenant_id = %s AND container_id = %s AND id = %s
+        RETURNING *
+        """,
+        (size_bytes, tenant_id, container_id, doc_id),
+    )
+
+
+def delete_unconfirmed_container_document(tenant_id: str, container_id: str, doc_id: str) -> dict[str, Any] | None:
+    """Drop the row of an upload that was refused at confirmation. A confirmed row is never deleted here."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        DELETE FROM container_document
+        WHERE tenant_id = %s AND container_id = %s AND id = %s AND confirmed_at IS NULL
+        RETURNING id
         """,
         (tenant_id, container_id, doc_id),
     )
-    return rows[0] if rows else None

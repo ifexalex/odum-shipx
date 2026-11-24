@@ -30,7 +30,7 @@ import logging
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 from shared.circuit_breaker import get_circuit_breaker
@@ -58,6 +58,14 @@ _PLATFORM_SETTING_KEY = "fx_bybit_ngn_rate"
 # 1550 when tenant_config was simply empty; this constant plays the same
 # "never let a missing rate silently corrupt a calculation" role.
 _HARDCODED_FALLBACK_RATE = Decimal("1600")
+
+#: Where a base rate came from (audit BE-11). Invoices record it (`billing.exchange_rate_source`, migration 068).
+#: ``live`` - fetched from Bybit within the cache window (10 minutes).
+#: ``last_known`` - Bybit could not be reached; the last rate that was fetched, however old (see ``fetched_at``).
+#: ``hardcoded`` - no rate has ever been fetched; ``_HARDCODED_FALLBACK_RATE``. Invoicing refuses it.
+RATE_SOURCE_LIVE = "live"
+RATE_SOURCE_LAST_KNOWN = "last_known"
+RATE_SOURCE_HARDCODED = "hardcoded"
 
 _DEFAULT_MARKUP: dict[str, Any] = {"markup_type": "percentage", "markup_value": 0}
 
@@ -119,15 +127,38 @@ def fetch_bybit_ngn_rate() -> Decimal:
         logger.warning("Bybit P2P returned an unparseable response: %s", exc)
         raise ExternalServiceError("Bybit P2P", "malformed response") from exc
 
-    if payload.get("ret_code") != 0:
-        raise ExternalServiceError("Bybit P2P", payload.get("ret_msg", "non-zero ret_code"))
+    if not isinstance(payload, dict):
+        raise ExternalServiceError("Bybit P2P", "malformed response")
 
-    items = (payload.get("result") or {}).get("items") or []
-    if not items:
+    if payload.get("ret_code") != 0:
+        raise ExternalServiceError("Bybit P2P", str(payload.get("ret_msg", "non-zero ret_code")))
+
+    result = payload.get("result")
+    items = result.get("items") if isinstance(result, dict) else None
+    if not isinstance(items, list) or not items:
         raise ExternalServiceError("Bybit P2P", "no online ads returned")
 
     sample = items[:_SAMPLE_SIZE]
-    prices = [Decimal(str(item["price"])) for item in sample]
+    prices: list[Decimal] = []
+    for item in sample:
+        if not isinstance(item, dict) or "price" not in item:
+            raise ExternalServiceError("Bybit P2P", "malformed ad item")
+        try:
+            price = Decimal(str(item["price"]))
+        except (InvalidOperation, ValueError, TypeError) as exc:
+            raise ExternalServiceError("Bybit P2P", "malformed ad price") from exc
+        if not price.is_finite() or price <= Decimal("0"):
+            raise ExternalServiceError("Bybit P2P", "invalid non-positive ad price")
+        prices.append(price)
+
+    # Guard against spoofed/outlier P2P ads (>2x or <0.5x median when >= 3 quotes).
+    if len(prices) >= 3:
+        ordered = sorted(prices)
+        median = ordered[len(ordered) // 2]
+        filtered = [p for p in prices if median * Decimal("0.5") <= p <= median * Decimal("2")]
+        if filtered:
+            prices = filtered
+
     return (sum(prices, Decimal("0")) / len(prices)).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
 
@@ -164,7 +195,10 @@ def _persist_fallback(rate: Decimal, fetched_at: str) -> None:
 
 
 def get_base_market_rate() -> dict[str, Any]:
-    """Return the current platform-wide base rate: {"rate": Decimal, "fetched_at": str}.
+    """Return the current platform-wide base rate: {"rate": Decimal, "fetched_at": str | None, "rate_source": str}.
+
+    ``rate_source`` is one of ``RATE_SOURCE_*``; ``fetched_at`` is when that rate was really fetched, and None for the
+    hard-coded value, which was never fetched.
 
     Priority: warm Redis cache (10 min TTL) -> live Bybit fetch (circuit-
     breaker guarded) -> last successfully-fetched rate persisted in
@@ -177,7 +211,7 @@ def get_base_market_rate() -> dict[str, Any]:
     if cached:
         try:
             data = json.loads(cached)
-            return {"rate": Decimal(str(data["rate"])), "fetched_at": data["fetched_at"]}
+            return {"rate": Decimal(str(data["rate"])), "fetched_at": data["fetched_at"], "rate_source": RATE_SOURCE_LIVE}
         except (ValueError, KeyError, TypeError):
             logger.warning("Discarding unparseable cached fx rate: %r", cached)
 
@@ -187,16 +221,21 @@ def get_base_market_rate() -> dict[str, Any]:
         fetched_at = datetime.now(UTC).isoformat()
         _cache.set(_CACHE_KEY, json.dumps({"rate": str(rate), "fetched_at": fetched_at}), ttl=_CACHE_TTL_SECONDS)
         _persist_fallback(rate, fetched_at)
-        return {"rate": rate, "fetched_at": fetched_at}
+        return {"rate": rate, "fetched_at": fetched_at, "rate_source": RATE_SOURCE_LIVE}
     except ExternalServiceError as exc:
         logger.warning("Bybit P2P fetch failed, falling back to last known rate: %s", exc)
 
     fallback = _read_persisted_fallback()
     if fallback:
-        return {"rate": Decimal(str(fallback["rate"])), "fetched_at": fallback["fetched_at"]}
+        return {
+            "rate": Decimal(str(fallback["rate"])),
+            "fetched_at": fallback["fetched_at"],
+            "rate_source": RATE_SOURCE_LAST_KNOWN,
+        }
 
     logger.error("No Bybit rate has ever been successfully fetched — using hardcoded fallback %s", _HARDCODED_FALLBACK_RATE)
-    return {"rate": _HARDCODED_FALLBACK_RATE, "fetched_at": datetime.now(UTC).isoformat()}
+    # Not stamped "now": this value was never fetched, and a fresh timestamp made it look live.
+    return {"rate": _HARDCODED_FALLBACK_RATE, "fetched_at": None, "rate_source": RATE_SOURCE_HARDCODED}
 
 
 def compute_effective_rate(base_rate: Decimal, markup_type: str, markup_value: Decimal) -> Decimal:
@@ -232,8 +271,8 @@ def get_effective_dollar_rate(tenant_id: str) -> dict[str, Any]:
 
     Returns:
         {"rate": Decimal, "base_rate": Decimal, "markup_type": str,
-         "markup_value": Decimal, "source": "bybit_p2p", "fetched_at": str,
-         "markup_updated_at": str | None}
+         "markup_value": Decimal, "source": "bybit_p2p", "rate_source": "live" | "last_known" | "hardcoded",
+         "fetched_at": str | None, "markup_updated_at": str | None}
     """
     base = get_base_market_rate()
     markup = get_tenant_markup(tenant_id)
@@ -246,6 +285,20 @@ def get_effective_dollar_rate(tenant_id: str) -> dict[str, Any]:
         "markup_type": markup_type,
         "markup_value": markup_value,
         "source": "bybit_p2p",
+        "rate_source": base["rate_source"],
         "fetched_at": base["fetched_at"],
         "markup_updated_at": markup.get("updated_at"),
     }
+
+
+def rate_age_minutes(fetched_at: str | None, now: datetime | None = None) -> float | None:
+    """How old a rate is, in minutes; None when it was never fetched (the hard-coded value) or the time is unreadable."""
+    if not fetched_at:
+        return None
+    try:
+        fetched = datetime.fromisoformat(fetched_at)
+    except ValueError:
+        return None
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=UTC)
+    return ((now or datetime.now(UTC)) - fetched).total_seconds() / 60

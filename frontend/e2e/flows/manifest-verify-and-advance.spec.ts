@@ -152,7 +152,7 @@ test.describe('manifest verify + container advance', () => {
     // not run — which is the only remaining honest reason to skip.
     test.skip(!(await hasRows(row)), `${TEST_CONTAINER} not found — run manifest-import.spec.ts first`)
 
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/manifests\//)
     await expect(page.getByRole('heading', { name: TEST_CONTAINER })).toBeVisible()
 
@@ -190,9 +190,8 @@ test.describe('manifest verify + container advance', () => {
     const row = page.locator('table tbody tr').filter({ hasText: TEST_CONTAINER })
     test.skip(!(await hasRows(row)), `${TEST_CONTAINER} not found — run manifest-import.spec.ts first`)
 
-    // ContainerList.tsx rows use KebabBtn ("Open {container_number}"), not
-    // ViewLink's "View" — a different action component than packing lists use.
-    await row.getByRole('button', { name: `Open ${TEST_CONTAINER}` }).click()
+    // ContainerList.tsx rows use Table's first-cell openButton ("Open container {container_number}").
+    await row.getByRole('button', { name: new RegExp(`open.*${TEST_CONTAINER}`, 'i') }).click()
     await expect(page).toHaveURL(/\/containers\//)
 
     const currentStatus = await page.locator('main').getByText(/^(Loading|Sealed)$/).first().textContent()
@@ -201,7 +200,7 @@ test.describe('manifest verify + container advance', () => {
     await approvePackingListsFor(page, TEST_CONTAINER)
     await ensureManifestVerified(page, TEST_CONTAINER)
 
-    const advanceBtn = page.getByRole('button', { name: /advance to sealed/i })
+    const advanceBtn = page.getByRole('button', { name: /seal container|advance to sealed/i })
     await expect(advanceBtn).toBeVisible()
     await advanceBtn.click()
 
@@ -221,6 +220,6 @@ test.describe('manifest verify + container advance', () => {
     // banner inside the still-open modal instead — fail loudly on that rather
     // than timing out ambiguously.
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 })
-    await expect(page.locator('main').getByText('Sealed', { exact: true })).toBeVisible()
+    await expect(page.locator('main').getByText('Sealed', { exact: true }).first()).toBeVisible()
   })
 })

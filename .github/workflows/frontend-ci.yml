@@ -1,30 +1,18 @@
 name: Frontend CI
 
-# The path filter also covers the files that decide whether the LOCAL STACK
-# comes up at all, not just frontend sources. `e2e-local-stack` runs the real
-# backend, so a backend-only change can break every spec in it — and with a
-# frontend-only filter that job never runs on such a PR, so the break lands on
-# main silently and is first seen by whichever unrelated frontend PR comes next.
-#
-# That is not hypothetical: #126 repointed DATABASE_USER at `logistics_app` and
-# left `.env.local.sample` with two mismatched password placeholders. It touched
-# no frontend file, so this job never ran; the next frontend PR inherited 25
-# failures across specs it had not touched.
-#
-# Deliberately NOT `services/**`: that would put a ~12-minute e2e run on every
-# backend PR. These are the narrower set that governs stack bring-up — env
-# sample, migrations, the dev scripts, the DB layer, compose and the Makefile.
-#
-# The two lists are duplicated on purpose: GitHub Actions' workflow parser does
-# not support YAML anchors, so a `&stack_paths` / `*stack_paths` pair is a
-# parse error here even though every local YAML tool accepts it. Keep them in
-# sync by hand.
+# Path filter covers frontend sources AND the backend/stack files that govern
+# whether the local stack boots for e2e-local-stack (env samples, migrations,
+# dev scripts, DB layer, compose, Makefile, and the shared composite actions).
+# Paths are duplicated between pull_request and push on purpose: GitHub Actions
+# does not support YAML anchors.
 on:
   pull_request:
     branches: [main]
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-ci.yml"
+      - ".github/actions/setup-playwright/**"
+      - ".github/actions/start-local-stack/**"
       - ".env.local.sample"
       - "migrations/**"
       - "scripts/**"
@@ -37,6 +25,8 @@ on:
     paths:
       - "frontend/**"
       - ".github/workflows/frontend-ci.yml"
+      - ".github/actions/setup-playwright/**"
+      - ".github/actions/start-local-stack/**"
       - ".env.local.sample"
       - "migrations/**"
       - "scripts/**"
@@ -49,9 +39,10 @@ concurrency:
   group: frontend-ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: Frontend CI never deploys directly (frontend-deploy.yml owns
+# both AWS and Azure deploys via workflow_run / workflow_dispatch).
 permissions:
   contents: read
-  id-token: write   # needed for OIDC → AWS assume-role on deploy
 
 defaults:
   run:
@@ -75,42 +66,29 @@ jobs:
       - name: Dependency vulnerability scan
         run: npm audit --audit-level=high
 
-      # Security checks — these grep the source tree and fail the build if
-      # a violation is found. They catch regressions that TypeScript can't.
+      # Security & design-system static checks that TypeScript cannot enforce.
       - name: "Security: no localStorage/sessionStorage in auth layer"
         run: |
-          # Flag *actual* reads/writes to real web storage (localStorage.setItem,
-          # window.sessionStorage.getItem, …). Policy comments that merely name
-          # the APIs, and the enforcement test (storage.test.ts, which monkeypatches
-          # window.localStorage.setItem to assert it is never called), legitimately
-          # mention them — so match member access, not the bare string, and skip
-          # *.test.ts(x). Catches a genuine regression; ignores the false positives.
           HITS=$(grep -rnE --include="*.ts" --include="*.tsx" \
             "(window\.)?(localStorage|sessionStorage)\.(getItem|setItem|removeItem|clear|key|length)" \
             src/auth/ | grep -vE "\.test\.tsx?:" || true)
           if [ -n "$HITS" ]; then
             echo "$HITS"
-            echo "❌ Token storage violation: localStorage/sessionStorage access found in src/auth/"
-            echo "   Tokens must stay in memory only (11_security_and_compliance.md)."
+            echo "Token storage violation: localStorage/sessionStorage access found in src/auth/"
+            echo "Tokens must stay in memory only (11_security_and_compliance.md)."
             exit 1
           fi
-          echo "✅ No localStorage/sessionStorage access in src/auth/"
+          echo "OK: No localStorage/sessionStorage access in src/auth/"
 
       - name: "Security: no dangerouslySetInnerHTML in app code"
         run: |
-          if grep -rn --include="*.tsx" \
-            "dangerouslySetInnerHTML" src/; then
-            echo "❌ XSS risk: dangerouslySetInnerHTML found in src/"
-            echo "   Render tenant-supplied content as escaped React nodes (11_security_and_compliance.md)."
+          if grep -rn --include="*.tsx" "dangerouslySetInnerHTML" src/; then
+            echo "XSS risk: dangerouslySetInnerHTML found in src/"
+            echo "Render tenant-supplied content as escaped React nodes (11_security_and_compliance.md)."
             exit 1
           fi
-          echo "✅ No dangerouslySetInnerHTML in src/"
+          echo "OK: No dangerouslySetInnerHTML in src/"
 
-      # Design-system: pages must not hardcode a hex colour that a design token
-      # already defines (03_component_library.md). One-off layout inline styles
-      # (flex/gap/margin) are fine; duplicating a token colour is not — use
-      # var(--color-*). Excludes SVG illustration attributes and the print pages
-      # (deliberately fixed print colours, rendered shell-less).
       - name: "Design: no token-duplicating hex colours in pages"
         run: |
           TOKENS='#(1c7922|14471a|155f1b|2dc438|d6f5da|f3fcf4|0b2f0d|9a3412|7c2d12|c2410c|fed7aa|1c1b1c|374151|666666|6b7280|16a34a|d97706|dc2626|2563eb|7c3aed|4f46e5|ede9fe)'
@@ -119,27 +97,14 @@ jobs:
             | grep -v "\.test\." \
             | grep -viE "fill=|stopColor|<svg|<path|<circle|<rect|routeGrad|KolaMark|illustration" || true)
           if [ -n "$HITS" ]; then
-            echo "❌ Token-duplicating hex colour(s) in page code — use var(--color-*):"
+            echo "Token-duplicating hex colour(s) in page code — use var(--color-*):"
             echo "$HITS"
             exit 1
           fi
-          echo "✅ No token-duplicating hex colours in pages"
-
-      # Upload built dist/ as an artifact so the deploy job can use it
-      # and so any prior build can be re-deployed from CI artifacts for rollback.
-      - name: Upload build artifact
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v7
-        with:
-          name: frontend-dist-${{ github.sha }}
-          path: frontend/dist/
-          # 7 days — see the note on lambda-packages in ci.yml. These are far
-          # smaller, but one per push to main adds up for the same reason.
-          retention-days: 7
+          echo "OK: No token-duplicating hex colours in pages"
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Playwright smoke — runs the built artifact through a headless browser with
-  # no backend. Fast, self-contained (Playwright manages `npm run preview`).
+  # Playwright smoke — headless browser check against the production build.
   # ──────────────────────────────────────────────────────────────────────────
   e2e-smoke:
     runs-on: ubuntu-latest
@@ -152,7 +117,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - uses: ./.github/actions/setup-playwright
       - run: npm run build
       - name: Run smoke e2e
         run: npx playwright test --project=smoke
@@ -164,109 +129,53 @@ jobs:
           retention-days: 7
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Playwright local-stack — the meaningful e2e flows (auth, impersonation,
-  # packing-list, public-tracking) against the real Flask API + Postgres + Moto,
-  # driven through LocalAuthProvider's role switcher (no Cognito). Boots the full
-  # stack, seeds it, starts the Vite dev server, then runs the flows project.
+  # Playwright local-stack — real Flask API + Postgres + Moto + Redis flows.
   # ──────────────────────────────────────────────────────────────────────────
   e2e-local-stack:
     runs-on: ubuntu-latest
     needs: build-and-test
     defaults:
       run:
-        working-directory: .          # backend tooling runs from the repo root
+        working-directory: .
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-node@v7
         with:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
+      - uses: ./.github/actions/start-local-stack
 
-      - name: Install backend deps (uv) + put the env on PATH
-        run: |
-          uv sync --extra azure
-          # Make the uv venv's python/python3 the default for all later steps,
-          # so `python3 scripts/...` and `bash scripts/*.sh` use it unchanged.
-          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
-
-      - name: Provision .env.local (gitignored — from the tracked sample)
-        run: cp .env.local.sample .env.local
-
-      # The FRONTEND needs its own .env.local, and this step was missing —
-      # which is why e2e-local-stack had been red throughout while the same
-      # specs passed on any developer machine (where the file already exists).
-      #
-      # Without it VITE_API_BASE_URL is undefined, and src/api/client.ts throws
-      # "Missing required env var: VITE_API_BASE_URL" before any request is
-      # sent. So EVERY API call fails. InviteClaimScreen's token fetch rejects,
-      # loadState becomes 'invalid', the page renders "This link is no longer
-      # valid." and the email field never appears — the specs then timed out
-      # waiting for a field that could never render. Reproduced locally by
-      # moving frontend/.env.local aside: identical failure, and the one test
-      # that *expects* the invalid state ("an unknown token shows the same
-      # friendly invalid state") kept passing, which is the giveaway.
-      #
-      # Must run BEFORE `make bootstrap`: that script patches the freshly
-      # generated Cognito pool/client IDs into this file, but only if it
-      # already exists. auth-logout.spec.ts performs a real Cognito login
-      # against Moto, so it needs the generated IDs and the Moto endpoint.
-      - name: Provision frontend/.env.local (needed before bootstrap patches it)
-        # frontend/.env.local.sample, NOT .env.local.example: the root
-        # .gitignore ignores `.env.*` and negates only `!.env.example` and
-        # `!.env.local.sample`, so an ".example" file here is untracked and
-        # exists on developer machines only. The first version of this step
-        # copied one and failed on the runner with "No such file or directory",
-        # which is why the file is now tracked under the .sample name the
-        # backend already uses. It carries VITE_COGNITO_ENDPOINT too, so there
-        # is nothing to append here.
-        run: cp frontend/.env.local.sample frontend/.env.local
-
-      - name: Start local stack (Postgres + Moto + Redis)
-        run: make up
-
-      - name: Bootstrap AWS resources (SQS/EventBridge/S3 in Moto)
-        run: make bootstrap
-
-      - name: Migrate + seed database
-        run: |
-          set -a; source .env.local; set +a
-          PYTHONPATH=. python3 scripts/reset_db.py
-          PYTHONPATH=. python3 scripts/migrate.py
-          PYTHONPATH=. python3 scripts/seed.py
-
-      - name: Start Flask API server (background)
-        run: |
-          set -a; source .env.local; set +a
-          PYTHONPATH=. nohup python3 scripts/local_server.py > flask.log 2>&1 &
-          npx --yes wait-on http://localhost:3000/health --timeout 60000
-
-      - name: Install frontend deps + Playwright browser
+      - name: Install frontend deps
         working-directory: frontend
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
+        run: npm ci
+
+      - uses: ./.github/actions/setup-playwright
 
       - name: Start Vite dev server (background, local-auth mode)
         working-directory: frontend
         env:
           VITE_ENVIRONMENT: local
         run: |
+          set -euo pipefail
           nohup npm run dev -- --port 5173 > vite.log 2>&1 &
-          npx --yes wait-on http://localhost:5173 --timeout 60000
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:5173 > /dev/null 2>&1; then
+              echo "Vite dev server is ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Vite dev server did not start within 60s"
+          tail -n 100 vite.log || true
+          exit 1
 
       - name: Run local-stack e2e flows
         working-directory: frontend
         env:
-          PW_E2E: local-stack           # skip Playwright's managed preview server
+          PW_E2E: local-stack
         run: |
-          # Export the DB env so the invite-minting helper the specs shell out to
-          # (scripts/mint_test_invite.py) can reach Postgres — it reads DATABASE_*
-          # from the environment. .env.local lives at the repo root (one level up).
+          set -euo pipefail
           set -a; source ../.env.local; set +a
           npx playwright test --project=local-stack
 
@@ -276,84 +185,106 @@ jobs:
           name: playwright-local-stack-report
           path: |
             frontend/playwright-report/
+            frontend/test-results/
             flask.log
             frontend/vite.log
           retention-days: 7
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Deploy job — only runs on merge to main
-  # Requires GitHub Actions secrets:
-  #   FRONTEND_DEPLOY_ROLE_ARN     — IAM role ARN with s3:PutObject + cloudfront:CreateInvalidation
-  #   FRONTEND_S3_BUCKET           — S3 bucket name (output of Terraform: frontend_bucket_name)
-  #   FRONTEND_CLOUDFRONT_ID       — CloudFront distribution ID (output: cloudfront_distribution_id)
-  #   VITE_API_BASE_URL            — API Gateway base URL for this environment
-  #   VITE_COGNITO_USER_POOL_ID    — Cognito User Pool ID
-  #   VITE_COGNITO_CLIENT_ID       — Cognito App Client ID
-  #   VITE_ENVIRONMENT             — "staging" or "production"
+  # Visual baseline (audit FD-38) — before/after screenshots on PRs that touch
+  # CSS or frontend/src/design/. Differences are listed in the job summary.
   # ──────────────────────────────────────────────────────────────────────────
-  deploy:
+  visual:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: build-and-test
-    # AWS frontend (S3+CloudFront). Gated by DEPLOY_CLOUD: when it's 'azure',
-    # the frontend ships via the manual frontend-deploy workflow (cloud=azure).
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_CLOUD != 'azure'
-    environment: prod   # GitHub Environment (shared with backend) — approval gate + secrets
-
+    defaults:
+      run:
+        working-directory: .
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Does this pull request change styles?
+        id: styles
+        run: |
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+            | grep -E '^frontend/src/(design/|.*\.css$)' || true)
+          echo "$changed"
+          if [ -n "$changed" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; fi
 
       - uses: actions/setup-node@v7
+        if: steps.styles.outputs.run
         with:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - run: npm ci
+      - uses: ./.github/actions/start-local-stack
+        if: steps.styles.outputs.run
 
-      # Build with production env vars from GitHub Actions secrets
-      - name: Build for deployment
-        run: npm run build
+      - name: Install frontend deps (PR and base worktree)
+        if: steps.styles.outputs.run
+        run: |
+          set -euo pipefail
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          cp frontend/.env.local ../base/frontend/.env.local
+          (cd frontend && npm ci)
+          (cd ../base/frontend && npm ci)
+
+      - uses: ./.github/actions/setup-playwright
+        if: steps.styles.outputs.run
+
+      - name: Capture the base branch
+        if: steps.styles.outputs.run
         env:
-          VITE_API_BASE_URL:         ${{ secrets.VITE_API_BASE_URL }}
-          VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
-          VITE_COGNITO_CLIENT_ID:    ${{ secrets.VITE_COGNITO_CLIENT_ID }}
-          VITE_ENVIRONMENT:          ${{ secrets.VITE_ENVIRONMENT }}
+          VITE_ENVIRONMENT: local
+        run: |
+          set -euo pipefail
+          (cd ../base/frontend && nohup npm run dev -- --port 5173 > vite-base.log 2>&1 &)
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:5173 > /dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -sf http://localhost:5173 > /dev/null 2>&1 || { echo "::error::Base Vite failed"; exit 1; }
+          (cd frontend && npm run visual:baseline)
+          pkill -f "vite.*--port 5173" || true
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:5173 > /dev/null 2>&1 || break
+            sleep 1
+          done
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
+      - name: Compare the pull request against it
+        if: steps.styles.outputs.run
+        env:
+          VITE_ENVIRONMENT: local
+        run: |
+          set -euo pipefail
+          cd frontend
+          nohup npm run dev -- --port 5173 > vite.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://localhost:5173 > /dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -sf http://localhost:5173 > /dev/null 2>&1 || { echo "::error::PR Vite failed"; exit 1; }
+          PLAYWRIGHT_JSON_OUTPUT_NAME=visual.json npx playwright test --project=visual --reporter=list,html,json || true
+          node -e '
+            const json = JSON.parse(require("fs").readFileSync("visual.json", "utf8"));
+            const changed = [];
+            const walk = (s, trail) => { for (const c of s.suites ?? []) walk(c, [...trail, c.title]);
+              for (const sp of s.specs ?? []) if (!sp.ok) changed.push(`${trail.filter(Boolean).slice(-1)[0]} ${sp.title}`); };
+            walk(json, []);
+            const lines = changed.length ? changed.map((c) => `- ${c}`).join("\n") : "No screen changed.";
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Visual changes (${changed.length})\n\n${lines}\n\nBefore, after and diff images: the visual-report artifact.\n`);
+          '
+
+      - uses: actions/upload-artifact@v7
+        if: steps.styles.outputs.run
         with:
-          role-to-assume: ${{ secrets.FRONTEND_DEPLOY_ROLE_ARN }}
-          aws-region: eu-west-1
-
-      # Sync hashed assets first with long-term cache headers.
-      # Exclude index.html — upload it last so a user mid-session always
-      # gets either the old or new index.html, never a mix.
-      - name: Sync hashed assets (long cache)
-        run: |
-          aws s3 sync dist/ s3://${{ secrets.FRONTEND_S3_BUCKET }} \
-            --delete \
-            --exclude "index.html" \
-            --cache-control "max-age=31536000,immutable" \
-            --metadata-directive REPLACE
-
-      - name: Upload index.html (no-cache)
-        run: |
-          aws s3 cp dist/index.html s3://${{ secrets.FRONTEND_S3_BUCKET }}/index.html \
-            --cache-control "no-cache,no-store,must-revalidate" \
-            --metadata-directive REPLACE
-
-      # Invalidate only /index.html — hashed filenames mean other assets
-      # are already differentiated by name; a full /* invalidation is only
-      # needed if non-hashed paths change (run manually when needed).
-      - name: Invalidate CloudFront /index.html
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.FRONTEND_CLOUDFRONT_ID }} \
-            --paths "/index.html"
-
-      - name: Deployment summary
-        run: |
-          echo "✅ Frontend deployed"
-          echo "   Commit:       ${{ github.sha }}"
-          echo "   Bucket:       ${{ secrets.FRONTEND_S3_BUCKET }}"
-          echo "   Distribution: ${{ secrets.FRONTEND_CLOUDFRONT_ID }}"
+          name: visual-report
+          path: |
+            frontend/playwright-report/
+            flask.log
+            frontend/vite.log
+          retention-days: 14

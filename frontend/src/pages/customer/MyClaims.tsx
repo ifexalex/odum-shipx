@@ -1,40 +1,37 @@
-import { type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { type DamageClaimStatus } from '../../api/claims'
 import { CLAIM_STATUS_ORDER } from '../../api/claimsRules'
 import { useClaimList } from '../../hooks/useClaims'
-import { Badge, Banner, Button, type BadgeVariant } from '../../design/components'
+import { Banner, Button, Card, Chip, EmptyState, Icon, Mono, StatusBadge, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
+import { formatDate, plural } from '../../lib/format'
 
-const STATUS_VARIANT: Record<DamageClaimStatus, BadgeVariant> = {
-  filed: 'warning',
-  under_inspection: 'warning',
-  inspection_complete: 'warning',
-  pending_resolution: 'warning',
-  resolved: 'success',
-  closed: 'neutral',
-}
+type ClaimFilter = 'all' | 'open' | 'done'
 
-function statusLabel(s: DamageClaimStatus): string {
-  switch (s) {
-    case 'filed': return 'Filed'
-    case 'under_inspection': return 'Under inspection'
-    case 'inspection_complete': return 'Inspection complete'
-    case 'pending_resolution': return 'Pending resolution'
-    case 'resolved': return 'Resolved'
-    case 'closed': return 'Closed'
-  }
+function isDoneStatus(status: DamageClaimStatus): boolean {
+  return status === 'resolved' || status === 'closed'
 }
 
 function ClaimProgressBar({ status }: { status: DamageClaimStatus }): JSX.Element {
+  const done = isDoneStatus(status)
   const idx = CLAIM_STATUS_ORDER.indexOf(status)
-  const pct = Math.round(((idx + 1) / CLAIM_STATUS_ORDER.length) * 100)
+  const step = idx >= 0 ? idx + 1 : 1
+  const total = CLAIM_STATUS_ORDER.length
+  const pct = done ? 100 : Math.round((step / total) * 100)
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ height: 4, borderRadius: 2, background: 'var(--color-border)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: status === 'resolved' || status === 'closed' ? 'var(--color-success)' : 'var(--color-primary)', borderRadius: 2 }} />
+    <div className={styles.progressWrap}>
+      <div className={styles.progressHead}>
+        <span>{done ? 'Claim completed' : `Step ${step} of ${total}`}</span>
+        <span>{pct}%</span>
+      </div>
+      <div className={styles.progressTrack}>
+        <div
+          className={[styles.progressFill, done ? styles.progressFillSuccess : ''].filter(Boolean).join(' ')}
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   )
@@ -42,6 +39,7 @@ function ClaimProgressBar({ status }: { status: DamageClaimStatus }): JSX.Elemen
 
 export function MyClaims(): JSX.Element {
   const navigate = useNavigate()
+  const [filter, setFilter] = useState<ClaimFilter>('all')
 
   // `useClaimList` already existed and this page hand-rolled the same fetch.
   // The backend scopes GET /v1/claims to the caller's own customer record for
@@ -54,11 +52,27 @@ export function MyClaims(): JSX.Element {
       : 'Could not load your claims.'
     : null
 
+  const { openCount, doneCount } = useMemo(() => {
+    let open = 0
+    let done = 0
+    for (const c of claims) {
+      if (isDoneStatus(c.status)) done += 1
+      else open += 1
+    }
+    return { openCount: open, doneCount: done }
+  }, [claims])
+
+  const visibleClaims = useMemo(() => {
+    if (filter === 'open') return claims.filter((c) => !isDoneStatus(c.status))
+    if (filter === 'done') return claims.filter((c) => isDoneStatus(c.status))
+    return claims
+  }, [claims, filter])
+
   return (
     <div className={styles.page}>
       <PageHeader
-        title="My Claims"
-        subtitle="Track damage claims you've filed."
+        title="My claims"
+        meta="Track damage claims you've filed."
         actions={
           <Button variant="primary" icon="plus" onClick={() => navigate('/my-claims/new')}>
             File a claim
@@ -72,36 +86,72 @@ export function MyClaims(): JSX.Element {
         </div>
       )}
 
-      {loading && <p style={{ color: 'var(--color-text-muted)' }}>Loading…</p>}
+      {loading && <LinesSkeleton label="Loading" />}
 
       {!loading && claims.length === 0 && (
-        <div className={styles.empty}>
-          <p className={styles.emptyTitle}>No claims yet</p>
-          <p>If you received damaged goods, file a claim and we'll investigate.</p>
+        <Card padding="default">
+          <EmptyState
+            icon="shield"
+            title="No claims yet"
+            body="If you received damaged goods, file a claim and we'll investigate."
+            action={{ label: 'File a claim', to: '/my-claims/new' }}
+          />
+        </Card>
+      )}
+
+      {!loading && claims.length > 1 && (
+        <div className={styles.filterRow} role="group" aria-label="Filter claims">
+          <Chip active={filter === 'all'} count={claims.length} onClick={() => setFilter('all')}>
+            All
+          </Chip>
+          <Chip active={filter === 'open'} count={openCount} onClick={() => setFilter('open')}>
+            In progress
+          </Chip>
+          <Chip active={filter === 'done'} count={doneCount} onClick={() => setFilter('done')}>
+            Completed
+          </Chip>
         </div>
       )}
 
       <div className={styles.cardList}>
-        {claims.map((c) => (
-          <div key={c.id} className={[styles.card, styles.cardStatic].join(' ')}>
-            <div className={styles.cardLeft} style={{ width: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p className={styles.cardTitle} style={{ fontFamily: 'var(--font-mono)', fontSize: '0.875rem' }}>
-                    {c.id.slice(0, 8)}…
+        {visibleClaims.map((c) => (
+          // The whole card opens the claim. A link role and Enter/Space keep it usable from the keyboard.
+          <div
+            key={c.id}
+            className={styles.card}
+            role="link"
+            tabIndex={0}
+            aria-label={`Open claim ${c.reference ?? ''}`.trim()}
+            onClick={() => navigate(`/my-claims/${c.id}`)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                navigate(`/my-claims/${c.id}`)
+              }
+            }}
+          >
+            <div className={styles.cardLeft}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+                <div style={{ minWidth: 0 }}>
+                  <p className={styles.cardTitle} style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-md)' }}>
+                    {c.reference ?? `${c.id.slice(0, 8)}…`}
                   </p>
                   {c.description && <p className={styles.cardSub}>{c.description}</p>}
                 </div>
-                <Badge variant={STATUS_VARIANT[c.status]}>{statusLabel(c.status)}</Badge>
+                <StatusBadge kind="claim" status={c.status} audience="customer" />
               </div>
               <div className={styles.cardMeta}>
-                <span>Filed {c.created_at.slice(0, 10)}</span>
+                <span>Filed {formatDate(c.created_at)}</span>
+                {c.container_number && (
+                  <span>· Container <Mono>{c.container_number}</Mono></span>
+                )}
                 {c.cartons_affected.length > 0 && (
-                  <span>· {c.cartons_affected.length} carton(s) affected</span>
+                  <span>· {plural(c.cartons_affected.length, 'carton')} affected</span>
                 )}
               </div>
               <ClaimProgressBar status={c.status} />
             </div>
+            <Icon name="chevright" size={16} color="var(--color-ink-4)" />
           </div>
         ))}
       </div>

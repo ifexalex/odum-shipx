@@ -1,6 +1,9 @@
 .shell {
   display: flex;
   height: 100%;
+  /* Below StaffLayout's banners (quota, announcement, impersonation) in a flex column: shrink to the space left, so a
+     banner does not push the shell past the viewport and scroll the whole page by the banner's height. */
+  min-height: 0;
   background: var(--color-page);
   font-family: var(--font-body);
   color: var(--color-ink);
@@ -18,9 +21,12 @@
 }
 
 .content {
+  /* The scroll area contains its absolutely positioned descendants, so one with no positioned ancestor scrolls and
+     clips with the page instead of stretching the document past the viewport. */
+  position: relative;
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-xl);
+  padding: var(--space-6) var(--space-8) var(--space-8);
   max-width: var(--content-max-width);
   width: 100%;
   margin: 0 auto;
@@ -37,8 +43,8 @@
 .drawerOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(11, 47, 13, 0.55);
-  z-index: 120;
+  background: var(--scrim-modal);
+  z-index: var(--layer-drawer);
   display: none;
 }
 
@@ -66,6 +72,6 @@
     display: block;
   }
   .content {
-    padding: 16px;
+    padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--app-bottom-bar));
   }
 }

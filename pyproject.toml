@@ -60,6 +60,7 @@ dev = [
     "requests==2.34.2",
     "ruff==0.17.4",
     "safety==3.8.1",
+    "pypdf==5.4.0",
 ]
 # Extra packages the shared Lambda layer bundles beyond `dependencies` (alembic
 # for the migrate Lambda). The layer = project runtime deps + this group; the CI
@@ -154,6 +155,13 @@ skips = [
     "B310",  # URL open — all urlopen calls target known external APIs (Africa's Talking, Meta)
 ]
 
+[tool.shipx.coverage-floors]
+# Unit-test line coverage (%) per directory; CI fails below a floor (scripts/check_coverage.py, audit OPS-03).
+# Set at each directory's level on 2026-11-17. Raise a floor when coverage rises; never lower one to pass a change.
+"services/billing" = 53.8
+"services/payment_release" = 71.6
+"services/refunds" = 40.7
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
@@ -163,5 +171,6 @@ markers = [
     "unit: Unit tests (no external dependencies)",
     "integration: Integration tests (requires database)",
     "isolation: Tenant isolation tests (requires database)",
+    "db: Real-database integrity tests (requires a migrated database)",
     "load: Load/performance tests",
 ]

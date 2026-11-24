@@ -70,7 +70,7 @@ describe('CustomerLayout', () => {
     vi.mocked(customerNotificationsApi.unreadCount).mockResolvedValue({ unread_count: 0 })
     renderLayout(makeContextValue({ session: makeSession(), status: 'authenticated' }))
     expect(screen.getByText('Shipments content')).toBeInTheDocument()
-    expect(screen.getByText('My Shipments')).toBeInTheDocument()
+    expect(screen.getByText('My shipments')).toBeInTheDocument()
     expect(screen.getByText('Account')).toBeInTheDocument()
   })
 
@@ -120,5 +120,10 @@ describe('CustomerLayout', () => {
     renderLayout(makeContextValue({ session: makeSession(), status: 'authenticated' }))
     await screen.findByText('Shipments content')
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('offers the customer a search box scoped to their own records', () => {
+    renderLayout(makeContextValue({ session: makeSession(), status: 'authenticated' }))
+    expect(screen.getByRole('combobox', { name: 'Search shipments, invoices…' })).toBeInTheDocument()
   })
 })

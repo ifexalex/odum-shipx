@@ -277,3 +277,71 @@ def sample_release_note_row():
         "created_at": datetime(2026, 2, 1, tzinfo=UTC),
         "updated_at": datetime(2026, 2, 1, tzinfo=UTC),
     }
+
+
+# ---------------------------------------------------------------------------
+# No real database for the mock-based suites
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _trusted_browser_origin(monkeypatch):
+    """Trust the origin `tests/browser.py` sends, so handler tests of the cookie endpoints need no setup."""
+    from tests.browser import BROWSER_ORIGIN
+
+    monkeypatch.setenv("ALLOWED_ORIGINS", BROWSER_ORIGIN)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _rate_limiter_off(monkeypatch):
+    """Switch the rate limiter off, so no test needs Redis. `tests/unit/test_rate_limit.py` turns it on with a fake."""
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _active_user_check_stubbed(request, monkeypatch):
+    """Treat every caller as an active user, so handler-level tests need no `tenant_user` row.
+
+    `get_tenant_context` now confirms on every request that the token's user still has an
+    active row (audit SEC-02). These suites build tokens from made-up claims and mock the
+    repositories, so there is no row to find. The check itself is covered by
+    `tests/unit/test_auth.py` and, against a real database, `tests/db/test_access_revocation.py`.
+    """
+    path = str(request.node.fspath).replace("\\", "/")
+    if "tests/db/" not in path:
+        monkeypatch.setattr("shared.auth._check_user_active", lambda user_id, tenant_id: None)
+        monkeypatch.setattr("shared.auth._check_maintenance_mode", lambda: None)
+    yield
+
+
+# Suites that exercise real SQL: they open their own connections or need the
+# module's real `get_connection`, so they must not get the fake one.
+_REAL_DB_SUITES = ("tests/db/", "test_rls_enforcement", "test_db_connection_healing")
+
+
+@pytest.fixture(autouse=True)
+def _fake_db_connection(request, monkeypatch):
+    """Give `shared.db` a fake connection so `tenant_transaction` works without a database.
+
+    Services now wrap multi-step writes in `tenant_transaction`. In a unit test the
+    repository functions are mocked, so the transaction has nothing to run, but
+    opening one still asks for a connection. This hands it a mock that reports an
+    idle, healthy connection; nothing is sent anywhere. What the transactions
+    actually guarantee is tested against a real database in tests/db/.
+    """
+    path = str(request.node.fspath).replace("\\", "/")
+    if any(marker in path for marker in _REAL_DB_SUITES):
+        yield
+        return
+
+    import psycopg2.extensions
+
+    import shared.db as db_module
+
+    fake = MagicMock()
+    fake.closed = False
+    fake.get_transaction_status.return_value = psycopg2.extensions.TRANSACTION_STATUS_IDLE
+    monkeypatch.setattr(db_module, "_connection", fake)
+    yield

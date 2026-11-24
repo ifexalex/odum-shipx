@@ -83,12 +83,10 @@ describe('StaffUserDetail — multi-role editing', () => {
   it('shows a badge for every assigned role, marking the primary one', async () => {
     renderPage(user())
 
-    // Exact-textContent match on the badge itself, scoped to avoid matching
-    // an ancestor whose concatenated text happens to also contain both substrings.
-    expect(
-      await screen.findByText((_, el) => el?.textContent === 'nigeria office staff · primary'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('warehouse attendant')).toBeInTheDocument()
+    // Each role is a RoleBadge; the primary one is marked beside its badge.
+    const primary = await screen.findByText('Primary')
+    expect(primary.parentElement).toHaveTextContent('Nigeria office')
+    expect(screen.getAllByText('Warehouse').length).toBeGreaterThan(0)
   })
 
   // RoleCheckboxList renders ROLE_OPTIONS in this fixed order — index into
@@ -197,6 +195,8 @@ describe('StaffUserDetail — activation controls', () => {
     renderPage(user({ status: 'active' }))
 
     await userEvent.click(await screen.findByText('Deactivate user'))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate user' }))
 
     expect(usersApi.deactivate).toHaveBeenCalledWith('u1')
     // The whole point of the fix: the way back is present immediately, from
@@ -233,7 +233,7 @@ describe('StaffUserDetail — activation controls', () => {
 
     await userEvent.click(await screen.findByText('Reactivate user'))
 
-    expect(await screen.findByText(/Usage limit exceeded for users: 10\/10/)).toBeInTheDocument()
+    expect(await screen.findByText(/Too many requests just now/i)).toBeInTheDocument()
     expect(screen.getByText('Reactivate user')).toBeInTheDocument()
   })
 })

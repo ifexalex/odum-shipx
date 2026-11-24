@@ -11,13 +11,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
 import { configApi, type CbmRateConfig as CbmRateConfigShape } from '../../api/tenantManagement'
 import { CbmRateConfig } from './CbmRateConfig'
+import { withQuery } from '../../test/queryWrapper'
 
 function renderPage(): ReturnType<typeof render> {
-  return render(
+  return render(withQuery(
     <MemoryRouter>
       <CbmRateConfig />
     </MemoryRouter>,
-  )
+  ))
 }
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
@@ -108,7 +109,7 @@ describe('CbmRateConfig', () => {
     await waitFor(() => expect(configApi.updateCbmRate).toHaveBeenCalledWith({
       currency: 'usd', rate_mode: 'flat', carton_rate: 50, bag_rate: 50, bale_rate: 50, min_cbm_per_item: 0.1,
     }))
-    expect(await screen.findByText('CBM rate updated successfully.')).toBeInTheDocument()
+    expect(await screen.findByText('CBM rate updated')).toBeInTheDocument()
     expect(screen.getByText('$50.00 per CBM')).toBeInTheDocument()
   })
 
@@ -121,7 +122,7 @@ describe('CbmRateConfig', () => {
     await screen.findByText('$45.00 per CBM')
 
     await userEvent.click(screen.getByRole('button', { name: 'By package type' }))
-    const baleInput = screen.getByText('Bales ($ per CBM)').parentElement?.querySelector('input')
+    const baleInput = screen.getByLabelText('Bales ($ per CBM)')
     expect(baleInput).toBeTruthy()
     await userEvent.clear(baleInput!)
     await userEvent.type(baleInput!, '60')
@@ -138,7 +139,7 @@ describe('CbmRateConfig', () => {
     await screen.findByText('$45.00 per CBM')
 
     await userEvent.click(screen.getByRole('button', { name: 'By package type' }))
-    const bagInput = screen.getByText('Bags ($ per CBM)').parentElement?.querySelector('input')
+    const bagInput = screen.getByLabelText('Bags ($ per CBM)')
     await userEvent.clear(bagInput!)
 
     expect(screen.getByRole('button', { name: 'Update rate' })).toBeDisabled()
@@ -150,7 +151,7 @@ describe('CbmRateConfig', () => {
     )
     renderPage()
 
-    expect(await screen.findByText('Boom')).toBeInTheDocument()
+    expect(await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')).toBeInTheDocument()
   })
 
   it('shows an error banner when updating the rate fails', async () => {

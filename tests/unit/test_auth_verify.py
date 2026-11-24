@@ -68,6 +68,9 @@ class TestBuildAuthorizerClaims:
             result = auth_verify.build_authorizer_claims("tok")
         assert result == {
             "sub": "admin-1",
+            "oid": "admin-1",
+            "tenant_id": "tenant-xyz",
+            "role": "tenant_admin",
             "custom:tenant_id": "tenant-xyz",
             "cognito:groups": "tenant-xyz:tenant_admin",
             "impersonated_by": "platform-admin-1",

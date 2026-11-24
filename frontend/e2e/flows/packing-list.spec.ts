@@ -33,7 +33,7 @@ test.describe('packing list self-approval', () => {
       return
     }
 
-    await page.getByRole('button', { name: /^view$/i }).first().click()
+    await dataRows(page).first().getByRole('button').first().click()
     await settleNetwork(page)
 
     // On the detail page: if the current session user created this packing list,
@@ -62,9 +62,8 @@ test.describe('packing list self-approval', () => {
       return
     }
 
-    // Click within the pending row's View button, not the bare row — see the
-    // comment above on why a plain row click never navigates.
-    await pendingRow.getByRole('button', { name: /^view$/i }).click()
+    // Click the pending row's first-cell openButton (Table onOpen pattern).
+    await pendingRow.getByRole('button').first().click()
     await page.waitForURL(/\/packing-lists\//)
 
     // Self-approval: the creator should not see approve/reject

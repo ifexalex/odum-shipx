@@ -191,6 +191,8 @@ class TestStatusExtraFieldAllowlist:
             "approval_level",
             "approved_by",
             "approved_at",
+            "processed_by",
+            "processed_at",
             "rejected_by",
             "rejection_reason",
         }

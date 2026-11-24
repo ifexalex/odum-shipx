@@ -31,7 +31,7 @@ class KmsKeyProvider:
         return bytes(resp["Plaintext"]), bytes(resp["CiphertextBlob"])
 
     def decrypt_data_key(self, encrypted_key: bytes) -> bytes:
-        resp = self._kms().decrypt(CiphertextBlob=encrypted_key)
+        resp = self._kms().decrypt(CiphertextBlob=encrypted_key, KeyId=self._key_id)
         if len(resp["Plaintext"]) != 32:
             raise RuntimeError(f"KMS decrypted data key must be exactly 32 bytes, got {len(resp['Plaintext'])}")
         return bytes(resp["Plaintext"])

@@ -242,6 +242,21 @@ def get_customer_phone(tenant_id: str, customer_id: str) -> str | None:
     return (rows[0].get("phone") if rows else None) or None
 
 
+def get_customer_contact_for_retry(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
+    """Read a customer's contact details for retrying a failed notification."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT id, name, phone, email, whatsapp, locale
+        FROM customer
+        WHERE tenant_id = %s AND id = %s AND anonymised_at IS NULL
+        LIMIT 1
+        """,
+        (tenant_id, customer_id),
+    )
+    return rows[0] if rows else None
+
+
 # ---------------------------------------------------------------------------
 # Staff notifications (in-app bell — migration 046)
 # ---------------------------------------------------------------------------
@@ -253,6 +268,18 @@ _STAFF_NOTIFICATION_VISIBILITY = """
     OR (sn.target_user_id IS NULL AND sn.target_role = %(role)s)
     OR (sn.target_user_id IS NULL AND sn.target_role IS NULL)
 """
+
+_CUSTOMER_NOTIFICATION_VISIBILITY = """
+    (sn.target_user_id = %(user_id)s)
+    OR (sn.target_user_id IS NULL AND sn.target_role = %(role)s)
+"""
+
+
+def _visibility_clause(role: str) -> str:
+    """Return SQL visibility clause; customer notifications never match NULL/NULL broadcast rows."""
+    if role == "customer":
+        return _CUSTOMER_NOTIFICATION_VISIBILITY
+    return _STAFF_NOTIFICATION_VISIBILITY
 
 
 def list_staff_notifications(
@@ -269,13 +296,14 @@ def list_staff_notifications(
     affecting what any other recipient sees."""
     from shared.pagination import build_paginated_query, extract_page
 
+    vis = _visibility_clause(role)
     unread_clause = " AND r.notification_id IS NULL" if unread_only else ""
     base = f"""
         SELECT sn.*, (r.notification_id IS NOT NULL) AS is_read
         FROM staff_notification sn
         LEFT JOIN staff_notification_read r
             ON r.notification_id = sn.id AND r.user_id = %(user_id)s AND r.tenant_id = sn.tenant_id
-        WHERE sn.tenant_id = %(tenant_id)s AND ({_STAFF_NOTIFICATION_VISIBILITY})
+        WHERE sn.tenant_id = %(tenant_id)s AND ({vis})
             AND r.dismissed_at IS NULL{unread_clause}
     """
     query, params = build_paginated_query(base, cursor, limit, sort_field="sn.created_at", sort_direction="DESC")
@@ -285,6 +313,7 @@ def list_staff_notifications(
 
 
 def count_unread_staff_notifications(tenant_id: str, user_id: str, role: str) -> int:
+    vis = _visibility_clause(role)
     rows = execute_with_tenant(
         tenant_id,
         f"""
@@ -292,7 +321,7 @@ def count_unread_staff_notifications(tenant_id: str, user_id: str, role: str) ->
         FROM staff_notification sn
         LEFT JOIN staff_notification_read r
             ON r.notification_id = sn.id AND r.user_id = %(user_id)s AND r.tenant_id = sn.tenant_id
-        WHERE sn.tenant_id = %(tenant_id)s AND ({_STAFF_NOTIFICATION_VISIBILITY})
+        WHERE sn.tenant_id = %(tenant_id)s AND ({vis})
             AND r.notification_id IS NULL
         """,
         {"tenant_id": tenant_id, "user_id": user_id, "role": role},
@@ -389,12 +418,13 @@ def deactivate_active_banners_for_roles(tenant_id: str, target_roles: list[str])
 def get_active_banner(tenant_id: str, user_id: str, role: str) -> dict[str, Any] | None:
     """The single announcement (if any) this viewer should currently see as
     a page banner — same visibility scoping as the bell feed."""
+    vis = _visibility_clause(role)
     rows = execute_with_tenant(
         tenant_id,
         f"""
         SELECT sn.* FROM staff_notification sn
         WHERE sn.tenant_id = %(tenant_id)s AND sn.event_type = 'announcement' AND sn.banner_active = TRUE
-            AND ({_STAFF_NOTIFICATION_VISIBILITY})
+            AND ({vis})
         ORDER BY sn.created_at DESC
         LIMIT 1
         """,
@@ -477,6 +507,7 @@ def mark_all_staff_notifications_read(tenant_id: str, user_id: str, role: str) -
     read. Returns the number of rows newly marked."""
     from shared.db import execute_write_with_tenant_many
 
+    vis = _visibility_clause(role)
     rows = execute_write_with_tenant_many(
         tenant_id,
         f"""
@@ -485,7 +516,7 @@ def mark_all_staff_notifications_read(tenant_id: str, user_id: str, role: str) -
         FROM staff_notification sn
         LEFT JOIN staff_notification_read r
             ON r.notification_id = sn.id AND r.user_id = %(user_id)s AND r.tenant_id = sn.tenant_id
-        WHERE sn.tenant_id = %(tenant_id)s AND ({_STAFF_NOTIFICATION_VISIBILITY})
+        WHERE sn.tenant_id = %(tenant_id)s AND ({vis})
             AND r.notification_id IS NULL
         ON CONFLICT (notification_id, user_id) DO NOTHING
         RETURNING notification_id
@@ -520,6 +551,7 @@ def dismiss_all_staff_notifications(tenant_id: str, user_id: str, role: str) -> 
     already cleared). Returns the number of rows newly dismissed."""
     from shared.db import execute_write_with_tenant_many
 
+    vis = _visibility_clause(role)
     rows = execute_write_with_tenant_many(
         tenant_id,
         f"""
@@ -528,7 +560,7 @@ def dismiss_all_staff_notifications(tenant_id: str, user_id: str, role: str) -> 
         FROM staff_notification sn
         LEFT JOIN staff_notification_read r
             ON r.notification_id = sn.id AND r.user_id = %(user_id)s AND r.tenant_id = sn.tenant_id
-        WHERE sn.tenant_id = %(tenant_id)s AND ({_STAFF_NOTIFICATION_VISIBILITY})
+        WHERE sn.tenant_id = %(tenant_id)s AND ({vis})
             AND r.dismissed_at IS NULL
         ON CONFLICT (notification_id, user_id) DO UPDATE
             SET dismissed_at = COALESCE(staff_notification_read.dismissed_at, NOW()),

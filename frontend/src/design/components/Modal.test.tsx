@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { Modal } from './Modal'
+import { DialogGuard, Modal } from './Modal'
 
 describe('Modal', () => {
   it('renders nothing when closed', () => {
@@ -69,3 +70,354 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 })
+
+// A trigger that opens a dialog, as every real caller does: focus must come back to it.
+function Harness({ children, footer }: { children?: React.ReactNode; footer?: React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Open</button>
+      <Modal open={open} title="Record payment" onClose={() => setOpen(false)} footer={footer}>
+        {children}
+      </Modal>
+    </>
+  )
+}
+
+describe('Modal accessibility (FE-04)', () => {
+  describe('focus moves in', () => {
+    it('to the first form field, not the Close button that comes first in the markup', async () => {
+      render(
+        <Harness footer={<button>Save</button>}>
+          <input aria-label="Amount" />
+          <input aria-label="Reference" />
+        </Harness>,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+      expect(screen.getByLabelText('Amount')).toHaveFocus()
+    })
+
+    it('to the first action when the body has nothing to type into', async () => {
+      render(<Harness footer={<button>Confirm</button>}>Are you sure?</Harness>)
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+      expect(screen.getByRole('button', { name: 'Confirm' })).toHaveFocus()
+    })
+
+    it('to Close when that is all there is', async () => {
+      render(<Harness>Just a notice.</Harness>)
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+      expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus()
+    })
+
+    it('to the dialog itself when it has nothing focusable, so Tab cannot start behind it', () => {
+      render(
+        <>
+          <button>Behind</button>
+          <Modal open>Nothing to press here.</Modal>
+        </>,
+      )
+      expect(screen.getByRole('dialog').parentElement).toHaveFocus()
+    })
+
+    it('but not past a field that asked for focus itself', () => {
+      render(
+        <Modal open title="Edit" footer={<button>Save</button>}>
+          <input aria-label="First" />
+          <input aria-label="Second" autoFocus />
+        </Modal>,
+      )
+      expect(screen.getByLabelText('Second')).toHaveFocus()
+    })
+
+    it('skips controls that are disabled or hidden', async () => {
+      render(
+        <Harness>
+          <input aria-label="Locked" disabled />
+          <input aria-label="Concealed" hidden />
+          <input aria-label="Usable" />
+        </Harness>,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+      expect(screen.getByLabelText('Usable')).toHaveFocus()
+    })
+  })
+
+  describe('Tab stays inside', () => {
+    function renderOpen() {
+      render(
+        <>
+          <button>Behind</button>
+          <Modal open title="Pay" footer={<button>Save</button>} onClose={() => {}}>
+            <input aria-label="Amount" />
+          </Modal>
+        </>,
+      )
+    }
+
+    it('wraps from the last control to the first', async () => {
+      renderOpen()
+      screen.getByRole('button', { name: 'Save' }).focus()
+      await userEvent.tab()
+      expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus() // first in the dialog
+    })
+
+    it('wraps from the first control back to the last on Shift+Tab', async () => {
+      renderOpen()
+      screen.getByRole('button', { name: 'Close' }).focus()
+      await userEvent.tab({ shift: true })
+      expect(screen.getByRole('button', { name: 'Save' })).toHaveFocus()
+    })
+
+    it('moves through the dialog in order, and never reaches the page behind', async () => {
+      renderOpen()
+      const seen: string[] = []
+      for (let i = 0; i < 6; i++) {
+        await userEvent.tab()
+        seen.push((document.activeElement as HTMLElement).getAttribute('aria-label') ?? document.activeElement!.textContent ?? '')
+      }
+      expect(seen).not.toContain('Behind')
+      expect(new Set(seen)).toEqual(new Set(['Close', 'Amount', 'Save']))
+    })
+
+    it('pulls focus back in if it was somewhere behind the dialog', async () => {
+      renderOpen()
+      screen.getByRole('button', { name: 'Behind' }).focus()
+      await userEvent.tab()
+      expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus()
+    })
+  })
+
+  describe('focus goes back', () => {
+    it('to the button that opened the dialog, when it closes', async () => {
+      render(<Harness footer={<button>Save</button>}>Body</Harness>)
+      const trigger = screen.getByRole('button', { name: 'Open' })
+      await userEvent.click(trigger)
+      expect(trigger).not.toHaveFocus()
+      await userEvent.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(trigger).toHaveFocus()
+    })
+
+    it('also when closed with the Close button', async () => {
+      render(<Harness>Body</Harness>)
+      const trigger = screen.getByRole('button', { name: 'Open' })
+      await userEvent.click(trigger)
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+      expect(trigger).toHaveFocus()
+    })
+
+    it('without error when the opener has left the page', async () => {
+      function Gone() {
+        const [state, setState] = useState<'closed' | 'open' | 'gone'>('closed')
+        return (
+          <>
+            {state !== 'gone' && <button onClick={() => setState('open')}>Open</button>}
+            <Modal open={state === 'open'} title="T" onClose={() => setState('gone')}>
+              Body
+            </Modal>
+          </>
+        )
+      }
+      render(<Gone />)
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+  })
+
+  describe('background scroll', () => {
+    it('is locked while the dialog is open and restored after', async () => {
+      document.body.style.overflow = 'auto'
+      render(<Harness>Body</Harness>)
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+      expect(document.body.style.overflow).toBe('hidden')
+      await userEvent.keyboard('{Escape}')
+      expect(document.body.style.overflow).toBe('auto')
+      document.body.style.overflow = ''
+    })
+
+    it('stays locked until the last of two stacked dialogs closes', async () => {
+      function Stacked() {
+        const [outer, setOuter] = useState(true)
+        const [inner, setInner] = useState(true)
+        return (
+          <>
+            <Modal open={outer} title="Outer" onClose={() => setOuter(false)}>
+              body
+            </Modal>
+            <Modal open={inner} title="Inner" onClose={() => setInner(false)}>
+              body
+            </Modal>
+          </>
+        )
+      }
+      render(<Stacked />)
+      expect(document.body.style.overflow).toBe('hidden')
+      await userEvent.keyboard('{Escape}') // closes the inner one only
+      expect(document.body.style.overflow).toBe('hidden')
+      await userEvent.keyboard('{Escape}')
+      expect(document.body.style.overflow).toBe('')
+    })
+  })
+
+  describe('stacked dialogs', () => {
+    it('closes only the innermost on Escape', async () => {
+      const outerClose = vi.fn()
+      const innerClose = vi.fn()
+      render(
+        <>
+          <Modal open title="Outer" onClose={outerClose}>
+            body
+          </Modal>
+          <Modal open title="Inner" onClose={innerClose}>
+            body
+          </Modal>
+        </>,
+      )
+      await userEvent.keyboard('{Escape}')
+      expect(innerClose).toHaveBeenCalledOnce()
+      expect(outerClose).not.toHaveBeenCalled()
+    })
+
+    it('traps Tab inside the innermost', async () => {
+      render(
+        <>
+          <Modal open title="Outer" footer={<button>Outer action</button>}>
+            <input aria-label="Outer field" />
+          </Modal>
+          <Modal open title="Inner" footer={<button>Inner action</button>}>
+            <input aria-label="Inner field" />
+          </Modal>
+        </>,
+      )
+      for (let i = 0; i < 5; i++) {
+        await userEvent.tab()
+        expect(screen.getByRole('dialog', { name: 'Inner' })).toContainElement(document.activeElement as HTMLElement)
+      }
+    })
+  })
+
+  describe('labelling', () => {
+    it('is named by its visible heading', () => {
+      render(<Modal open title="Record payment">Body</Modal>)
+      const dialog = screen.getByRole('dialog', { name: 'Record payment' })
+      const heading = screen.getByRole('heading', { name: 'Record payment' })
+      expect(dialog).toHaveAttribute('aria-labelledby', heading.id)
+      expect(dialog).toHaveAttribute('aria-modal', 'true')
+    })
+
+    it('has no empty label when there is no title', () => {
+      render(<Modal open>Body</Modal>)
+      expect(screen.getByRole('dialog')).not.toHaveAttribute('aria-labelledby')
+    })
+  })
+})
+
+// A dialog built by hand, as most of the app's are (the payment and pickup flows among them): its own overlay and
+// panel, with a DialogGuard as the overlay's first child.
+function HandRolled({ onCancel }: { onCancel: () => void }) {
+  return (
+    <div data-testid="overlay" onClick={onCancel}>
+      <DialogGuard onClose={onCancel} />
+      <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Record pickup</h3>
+        <input aria-label="Collected by" />
+        <button onClick={onCancel}>Cancel</button>
+        <button>Record</button>
+      </div>
+    </div>
+  )
+}
+
+function HandRolledHarness() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Open pickup</button>
+      {open && <HandRolled onCancel={() => setOpen(false)} />}
+    </>
+  )
+}
+
+describe('DialogGuard: a hand-rolled dialog gets the same behaviour (FE-04)', () => {
+  it('moves focus in to the first field', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    expect(screen.getByLabelText('Collected by')).toHaveFocus()
+  })
+
+  it('keeps Tab and Shift+Tab inside, wrapping at both ends', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    const dialog = screen.getByRole('dialog')
+    for (let i = 0; i < 7; i++) {
+      await userEvent.tab()
+      expect(dialog).toContainElement(document.activeElement as HTMLElement)
+    }
+    for (let i = 0; i < 7; i++) {
+      await userEvent.tab({ shift: true })
+      expect(dialog).toContainElement(document.activeElement as HTMLElement)
+    }
+  })
+
+  it('closes on Escape (these dialogs had no keyboard way out) and returns focus to the opener', async () => {
+    render(<HandRolledHarness />)
+    const opener = screen.getByRole('button', { name: 'Open pickup' })
+    await userEvent.click(opener)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(opener).toHaveFocus()
+  })
+
+  it('locks background scroll while open and restores it', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    expect(document.body.style.overflow).toBe('hidden')
+    await userEvent.keyboard('{Escape}')
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('names the dialog from its heading, so it is not announced bare', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    expect(screen.getByRole('dialog', { name: 'Record pickup' })).toBeInTheDocument()
+  })
+
+  it('leaves a dialog that already has a name alone', async () => {
+    render(
+      <div>
+        <DialogGuard />
+        <div role="dialog" aria-modal="true" aria-label="Already named">
+          <h3>Something else</h3>
+          <button>OK</button>
+        </div>
+      </div>,
+    )
+    expect(screen.getByRole('dialog', { name: 'Already named' })).toBeInTheDocument()
+  })
+
+  it('does not add anything to the page that a user or a screen reader can reach', async () => {
+    render(<HandRolledHarness />)
+    await userEvent.click(screen.getByRole('button', { name: 'Open pickup' }))
+    const placeholder = screen.getByTestId('overlay').querySelector('span[hidden]')
+    expect(placeholder).not.toBeNull()
+    expect(placeholder).not.toBeVisible()
+  })
+
+  it('shares the stack with Modal: only the innermost handles Escape', async () => {
+    const outer = vi.fn()
+    const inner = vi.fn()
+    render(
+      <>
+        <Modal open title="Outer" onClose={outer}>
+          body
+        </Modal>
+        <HandRolled onCancel={inner} />
+      </>,
+    )
+    await userEvent.keyboard('{Escape}')
+    expect(inner).toHaveBeenCalledOnce()
+    expect(outer).not.toHaveBeenCalled()
+  })
+})
+

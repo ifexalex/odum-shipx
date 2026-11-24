@@ -8,21 +8,12 @@ locals {
     Owner       = "platform-engineering"
   }
 
-  # Routing rules: rule name → detail-type list + target SQS queue key
-  routing_rules = {
-    route-sms = {
-      detail_types = ["ShipmentStatusUpdated", "PaymentDue", "ReleaseNoteGenerated"]
-      queue_key    = "sms"
-    }
-    route-whatsapp = {
-      detail_types = ["ShipmentStatusUpdated", "PaymentDue", "CBMDisputeResolved", "ReleaseNoteGenerated"]
-      queue_key    = "whatsapp"
-    }
-    route-email = {
-      detail_types = ["PackingListApproved", "ReleaseNoteGenerated", "DamageClaimFiled", "TenantOnboarded", "TenantSuspended"]
-      queue_key    = "email"
-    }
-  }
+  # No rule targets the sms, whatsapp or email queues (audit BE-09, 2026-11-17). Their consumers read the message
+  # that shared/notifications.py enqueues ({tenant_id, event_type, recipient, template_data, ...}); a raw EventBridge
+  # event has no recipient, so every one routed there was skipped with a warning: wasted invocations, log noise, and
+  # a duplicate message the day a consumer is taught to read them. Services enqueue notifications directly. The
+  # metering queue is the only EventBridge target, and the only queue EventBridge may send to.
+  eventbridge_queue_keys = ["metering"]
 
   # Scheduled rules: rule name → schedule expression
   scheduled_rules = {
@@ -33,6 +24,7 @@ locals {
     tenant-data-cleanup     = "cron(0 2 * * ? *)" # 02:00 UTC daily
     usage-aggregation       = "rate(1 hour)"
     release-note-expiry     = "cron(0 0 * * ? *)" # midnight UTC daily
+    offboarding-export      = "rate(1 hour)"      # writes queued tenant data exports (audit BE-10)
   }
 }
 
@@ -74,17 +66,17 @@ resource "aws_iam_role_policy" "eventbridge_sqs" {
     Statement = [{
       Effect   = "Allow"
       Action   = "sqs:SendMessage"
-      Resource = values(var.sqs_queue_arns)
+      Resource = [for key in local.eventbridge_queue_keys : var.sqs_queue_arns[key]]
     }]
   })
 }
 
 # ---------------------------------------------------------------------------
-# SQS resource policies — allow EventBridge to send to each queue
+# SQS resource policies — allow EventBridge to send to the queues it targets
 # ---------------------------------------------------------------------------
 
 resource "aws_sqs_queue_policy" "eventbridge" {
-  for_each  = var.sqs_queue_urls
+  for_each  = { for key in local.eventbridge_queue_keys : key => var.sqs_queue_urls[key] }
   queue_url = each.value
 
   policy = jsonencode({
@@ -105,35 +97,6 @@ resource "aws_sqs_queue_policy" "eventbridge" {
 }
 
 # ---------------------------------------------------------------------------
-# Routing rules on the custom event bus (SMS / WhatsApp / Email)
-# ---------------------------------------------------------------------------
-
-resource "aws_cloudwatch_event_rule" "routing" {
-  for_each = local.routing_rules
-
-  name           = "${local.name_prefix}-${each.key}"
-  event_bus_name = aws_cloudwatch_event_bus.main.name
-  state          = "ENABLED"
-
-  event_pattern = jsonencode({
-    source      = [{ prefix = "${var.project_name}." }]
-    detail-type = each.value.detail_types
-  })
-
-  tags = local.common_tags
-}
-
-resource "aws_cloudwatch_event_target" "routing_sqs" {
-  for_each = local.routing_rules
-
-  rule           = aws_cloudwatch_event_rule.routing[each.key].name
-  event_bus_name = aws_cloudwatch_event_bus.main.name
-  target_id      = "sqs-${each.value.queue_key}"
-  arn            = var.sqs_queue_arns[each.value.queue_key]
-  role_arn       = aws_iam_role.eventbridge_sqs.arn
-}
-
-# ---------------------------------------------------------------------------
 # Metering rule — all events from logistics.* sources
 # ---------------------------------------------------------------------------
 
@@ -143,7 +106,8 @@ resource "aws_cloudwatch_event_rule" "route_metering" {
   state          = "ENABLED"
 
   event_pattern = jsonencode({
-    source = [{ prefix = "${var.project_name}." }]
+    source      = [{ prefix = "${var.project_name}." }]
+    detail-type = ["UsageRecorded"]
   })
 
   tags = local.common_tags

@@ -17,6 +17,8 @@ export interface CustomerTopNavProps {
   notificationsPanel?: ReactNode
   onNotificationsClick?: () => void
   onLogout?: () => void
+  /** The global search box (<GlobalSearch>), rendered ahead of the icon buttons. */
+  search?: ReactNode
 }
 
 function CustNavLink({ icon, label, path, count, onNavigate }: NavLinkDef & { onNavigate?: () => void }): JSX.Element {
@@ -41,9 +43,8 @@ function CustNavLink({ icon, label, path, count, onNavigate }: NavLinkDef & { on
 
 // Horizontal nav for the customer portal — deliberately not the staff
 // Sidebar (06_routing_rbac_and_navigation.md AC: customer portal stays on
-// this layout). No user-name chip yet: Session carries no display name
-// (same gap noted in AppSidebar.tsx) — just a notification bell and a plain
-// logout button until a profile fetch lands in Task 07.
+// this layout). It shows a notification bell and a plain logout button, and no
+// user-name chip.
 //
 // Mobile drawer: below 860px `.links` hides and a hamburger (mirroring
 // TopBar's staff-side one, same useShellDrawer() context — CustShell
@@ -55,6 +56,7 @@ export function CustomerTopNav({
   notificationsPanel,
   onNotificationsClick,
   onLogout,
+  search,
 }: CustomerTopNavProps): JSX.Element {
   const drawer = useShellDrawer()
 
@@ -75,6 +77,7 @@ export function CustomerTopNav({
         ))}
       </nav>
       <div className={styles.right}>
+        {search}
         <ThemeToggle className={styles.iconButton} />
         <div className={styles.bellWrap}>
           <button type="button" aria-label="Notifications" className={styles.iconButton} onClick={onNotificationsClick}>

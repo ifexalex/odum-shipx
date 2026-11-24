@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../api/client'
 import { configApi } from '../../api/tenantManagement'
 import { PaymentGatewayConfig } from './PaymentGatewayConfig'
+import { withQuery } from '../../test/queryWrapper'
 
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
@@ -34,7 +35,7 @@ describe('PaymentGatewayConfig', () => {
 
   it('shows "Not connected" and a disabled Connect button when no key is configured', async () => {
     vi.mocked(configApi.getConfig).mockResolvedValue({ webhook_config: null, paystack_config: null })
-    render(<PaymentGatewayConfig />)
+    render(withQuery(<PaymentGatewayConfig />))
 
     expect(await screen.findByText('Not connected')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect Paystack' })).toBeDisabled()
@@ -45,7 +46,7 @@ describe('PaymentGatewayConfig', () => {
       webhook_config: null,
       paystack_config: { enabled: true, last4: 'c3afb'.slice(-4), environment: 'test', configured_by: 'u1', configured_at: '2026-07-19T00:00:00Z' },
     })
-    render(<PaymentGatewayConfig />)
+    render(withQuery(<PaymentGatewayConfig />))
 
     expect(await screen.findByText('Test mode')).toBeInTheDocument()
     expect(screen.getByText(/sk_test_.*3afb/)).toBeInTheDocument()
@@ -54,7 +55,7 @@ describe('PaymentGatewayConfig', () => {
 
   it('rejects a malformed key before Save is even enabled', async () => {
     vi.mocked(configApi.getConfig).mockResolvedValue({ webhook_config: null, paystack_config: null })
-    render(<PaymentGatewayConfig />)
+    render(withQuery(<PaymentGatewayConfig />))
     await screen.findByText('Not connected')
 
     await userEvent.type(screen.getByLabelText('Secret key'), 'not-a-real-key')
@@ -69,14 +70,14 @@ describe('PaymentGatewayConfig', () => {
     vi.mocked(configApi.updatePaystackConfig).mockResolvedValue({
       enabled: true, last4: 'c3afb'.slice(-4), environment: 'test', configured_by: 'u1', configured_at: '2026-07-19T00:00:00Z',
     })
-    render(<PaymentGatewayConfig />)
+    render(withQuery(<PaymentGatewayConfig />))
     await screen.findByText('Not connected')
 
     await userEvent.type(screen.getByLabelText('Secret key'), VALID_KEY)
     await userEvent.click(screen.getByRole('button', { name: 'Connect Paystack' }))
 
     await waitFor(() => expect(configApi.updatePaystackConfig).toHaveBeenCalledWith(VALID_KEY))
-    expect(await screen.findByText('Paystack key saved.')).toBeInTheDocument()
+    expect(await screen.findByText('Paystack key saved')).toBeInTheDocument()
   })
 
   it('runs a live test-connection check and shows the result', async () => {
@@ -85,7 +86,7 @@ describe('PaymentGatewayConfig', () => {
       paystack_config: { enabled: true, last4: 'c3afb'.slice(-4), environment: 'test', configured_by: 'u1', configured_at: '2026-07-19T00:00:00Z' },
     })
     vi.mocked(configApi.testPaystackConnection).mockResolvedValue({ success: true, environment: 'test' })
-    render(<PaymentGatewayConfig />)
+    render(withQuery(<PaymentGatewayConfig />))
     await screen.findByText('Test mode')
 
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
@@ -104,7 +105,7 @@ describe('PaymentGatewayConfig', () => {
         null,
       ),
     )
-    render(<PaymentGatewayConfig />)
+    render(withQuery(<PaymentGatewayConfig />))
     await screen.findByText('Test mode')
 
     await userEvent.click(screen.getByRole('button', { name: 'Test connection' }))
@@ -118,7 +119,7 @@ describe('PaymentGatewayConfig', () => {
       paystack_config: { enabled: true, last4: 'c3afb'.slice(-4), environment: 'test', configured_by: 'u1', configured_at: '2026-07-19T00:00:00Z' },
     })
     vi.mocked(configApi.deletePaystackConfig).mockResolvedValue({ enabled: false })
-    render(<PaymentGatewayConfig />)
+    render(withQuery(<PaymentGatewayConfig />))
     await screen.findByText('Test mode')
 
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }))
@@ -128,5 +129,12 @@ describe('PaymentGatewayConfig', () => {
 
     await waitFor(() => expect(configApi.deletePaystackConfig).toHaveBeenCalled())
     expect(await screen.findByText('Not connected')).toBeInTheDocument()
+  })
+
+  it('reads the tenant config once for both panels (they used to fetch it separately)', async () => {
+    vi.mocked(configApi.getConfig).mockResolvedValue({ webhook_config: null, paystack_config: null })
+    render(withQuery(<PaymentGatewayConfig />))
+    await screen.findByText('Not connected')
+    expect(configApi.getConfig).toHaveBeenCalledTimes(1)
   })
 })

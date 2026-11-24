@@ -39,3 +39,13 @@ describe('routeTable', () => {
     }
   })
 })
+
+describe('missing items route (UX-08)', () => {
+  it('admits the China office alongside Nigeria staff and tenant admins, and no other claims route', () => {
+    const route = routeTable.find((r) => r.path === '/claims/missing-items')
+    expect(route?.allow).toEqual(expect.arrayContaining(['nigeria_office_staff', 'tenant_admin', 'china_office_staff']))
+    for (const other of ['/claims', '/claims/seized-items', '/claims/:id']) {
+      expect(routeTable.find((r) => r.path === other)?.allow).not.toContain('china_office_staff')
+    }
+  })
+})

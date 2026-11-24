@@ -26,7 +26,7 @@ Implement the Payment & Release Lambda service: payment confirmation, release no
 | GET | `/v1/release-notes` | tenant_admin, nigeria_office_staff, warehouse_attendant, customer (own only) |
 | GET | `/v1/release-notes/stats` | tenant_admin, nigeria_office_staff, warehouse_attendant |
 | POST | `/v1/release-notes` | tenant_admin, nigeria_office_staff |
-| GET | `/v1/release-notes/{id}` | tenant_admin, nigeria_office_staff, warehouse_attendant, customer (own) |
+| GET | `/v1/release-notes/{id}` | tenant_admin, nigeria_office_staff, warehouse_attendant, customer (own; **404, not 403, for another customer's note** since 2026-11-16, so it cannot confirm the id exists) |
 | PATCH | `/v1/release-notes/{id}/release` | warehouse_attendant |
 | POST | `/v1/release-notes/{id}/split` | tenant_admin, nigeria_office_staff |
 | POST | `/v1/release-notes/{id}/reissue` | tenant_admin, nigeria_office_staff |
@@ -111,16 +111,22 @@ matching the prose message. `shared/responses.error_response` now emits it and
 **Idempotency:** Supply `Idempotency-Key: <uuid>` header to make retries safe. Duplicate keys within 24 hours return the original cached response without double-counting payments. Key max length: 100 characters.
 
 1. Validate billing exists in tenant scope
-2. Create `payment_record` (`payment_method` is nullable — migration 008)
-3. Update billing:
-   - `total_paid_ngn += amount_ngn`
-   - `outstanding_ngn = total_due_ngn - total_paid_ngn`
-   - Update `billing.status` (values from migration 006):
+2. In **one transaction** (`repo.record_payment`, 2026-11-14):
+   - allocate the receipt number from the `tenant_counter` (`receipt`) — manual payments only
+   - create `payment_record` (`payment_method` is nullable — migration 008)
+   - update billing in a single `UPDATE`, which locks the row and computes the status from the stored total (not from a value read earlier):
+     - `amount_paid_ngn += amount_ngn`
      - If outstanding == 0 (±0.01 tolerance) → `paid`
-     - If outstanding < 0 → `overpaid` (auto-create refund_request for overpayment)
+     - If outstanding < 0 → `overpaid`
      - If outstanding > 0 → `partially_paid`
-4. Publish `PaymentConfirmed` event
-5. Return: payment_id, new status, outstanding, release_note_available flag
+   - if overpaid, create a `refund_request` for **this payment's** excess only (an invoice that was already overpaid is not refunded twice)
+3. Publish `PaymentConfirmed` event
+4. Return: payment_id, new status, outstanding, release_note_available flag
+
+Any failure in step 2 rolls the whole thing back — there is never a payment record without the matching invoice update.
+Two payments that arrive together are applied one after the other, so two halves of an invoice end `paid`, not `partially_paid`.
+The gateway webhook (`process_webhook_payment`) uses the same function; a repeat of the same `gateway_transaction_id` returns
+`None` and changes nothing. Real-database tests: `tests/db/test_money_integrity.py`.
 
 ## Payment Claims — customer "I've made this payment" (2026-09-06)
 
@@ -281,6 +287,8 @@ This ordering is a security requirement, not a stylistic choice — see `07_api_
 **Flutterwave:** `verif-hash` = plain secret configured on the Flutterwave dashboard. Stored in `FLUTTERWAVE_WEBHOOK_SECRET` env var. Event type: `charge.completed`. Unused (no frontend integration) — stayed on its original single env-var secret, out of scope for the Paystack migration.
 
 For both gateways, the payment reference (`tx_ref` / `reference`) must equal the billing UUID. The handler looks up the billing tenant using PLATFORM scope, then confirms payment via `process_webhook_payment()`.
+
+**Only a positive naira amount is a payment (audit BE-08, 2026-11-17).** Paystack reports `data.amount` in the smallest unit of `data.currency`. The webhook read it as kobo whatever the currency said, so a correctly signed `charge.success` for 250.00 in another currency (possible once a tenant's Paystack account accepts other currencies, or by a misconfigured checkout) credited ₦250.00, and a zero or negative amount went through as well. Both payment paths now read the amount through `paystack.charge_amount_ngn(data)`: a charge whose `currency` is not `NGN` (case and padding ignored; missing counts as not NGN), or whose amount is not a positive finite number, is not applied and is logged at WARNING (charge id and currency only, cut short: the payload is not trusted at that point). The webhook still answers 200, so Paystack does not keep retrying an event we will never apply; `POST /v1/payments/{id}/verify` answers 422 `BR-PAY-VERIFY-002` ("This payment was not made in naira…"), which `PaymentSuccess.tsx` already shows as its error state. Flutterwave already checked the currency and now refuses a non-positive or malformed amount too. **A refused charge is money the customer paid that is not on the invoice:** find it in the logs (`Ignoring Paystack charge`) and settle it by hand (runbook). Tests: `TestPaystackChargeAmount`, `TestExtractPaystackPaymentCurrency`, `TestASignedEventInAnotherCurrencyDoesNotChangeTheInvoice` (`tests/unit/test_payment_webhook.py`; the last signs a real HMAC and runs the route), and the verify-path case in `tests/unit/test_payment_release.py`. Mutation-checked (5 protections, each caught).
 
 Duplicate webhook deliveries are idempotent: `payment_record.gateway_transaction_id` has a partial UNIQUE index (migration 018). A duplicate delivery returns HTTP 200 without creating a second payment record.
 
@@ -470,3 +478,44 @@ Response: `{"gateway_status": "success" | <paystack's own status string>, "new_p
 ## Payment-claim evidence upload — file name sanitisation (2026-09-23)
 
 **Upload file names are sanitised (2026-09-23).** The client's `filename` is passed through `shared.validation.safe_filename()` before it is used in the S3 key or stored: directory components dropped, anything outside Unicode word characters / `. ( ) space -` replaced with `_`, no leading/trailing dots, ≤100 chars with the extension kept (Chinese names like `装箱单.xlsx` survive). A name that reduces to nothing is a `422`. The download `Content-Disposition` is sanitised again on read, since rows written earlier may hold an unsafe name. See `00_CROSS_CUTTING_STANDARDS.md` §2.2.
+
+**Manual payments refuse closed invoices (2026-11-14).** `POST /v1/payments/{billing-id}/confirm` returns
+`422 BILLING_NOT_PAYABLE` when the invoice is `cancelled` or `waived`, like the gateway webhook already did (`BR-WEBHOOK-001`).
+Before, the status recompute would have flipped a cancelled invoice to `paid`. **Release-note numbers** now come from the
+`tenant_counter` (`release_note`) instead of `COUNT(*)+1`, so two notes created together can no longer share a reference;
+a number is skipped if the note insert then fails (uniqueness, not gap-free).
+
+## Pickup code (2026-11-16, audit UX-09, ADR-008, migration 065)
+
+**Problem:** an in-person pickup needed only a typed collector name, so anyone who knew a release-note reference could collect the goods.
+
+| Change | Detail |
+|---|---|
+| `POST /v1/release-notes`, `.../split`, `.../reissue` | Each new note is given a six digit pickup code, sent to the customer by SMS and email (`pickup_code_issued`). Best effort: a note is never refused because a code could not be issued. |
+| `GET /v1/release-notes[/{id}]` | Two new fields: **`pickup_code_required`** (the note is active and carries a code) and **`pickup_code_locked`** (five wrong codes). The code and its hash are never returned. |
+| `PATCH /v1/release-notes/{id}/release` | New optional body field **`pickup_code`** (spaces and dashes ignored). For a note that carries a code: missing is `422 PICKUP_CODE_REQUIRED` (not counted), wrong is `422 PICKUP_CODE_INVALID` with the tries left, the fifth wrong one and everything after is `422 PICKUP_CODE_LOCKED`, and a missing pepper is `503`. No pickup record is written on a refusal. The pickup audit entry records `pickup_code_verified`. A note without a code is unchanged. |
+| **`POST /v1/release-notes/{id}/pickup-code`** (new) | tenant_admin, nigeria_office_staff. Sends the customer a fresh code for an active note, retires the old one and unlocks the note. `200 {release_note_id, sent_via: ["sms","email"]}`. `422 RELEASE_NOTE_NOT_ACTIVE`, `422 PICKUP_CODE_NOT_DELIVERABLE` (no phone or email, or channels off), `422 PICKUP_CODES_NOT_CONFIGURED`. Audited (`pickup_code_reissued`, `sent_via`). |
+
+Design, storage (keyed hash only), the lock and the consequences are in `docs/adr/008-release-note-pickup-code.md`. Env: `PICKUP_CODE_PEPPER` (at least 16 characters; unset means no codes are issued and none are required).
+
+**Ground-truth gap found on the way:** the warehouse dashboard's quick pickup sheet sent only the carton count, and `RecordPickupRequest` requires `collected_by_name` for a non-delegate pickup, so every in-person pickup recorded from the dashboard was refused with a 422 (the release-note page's form was fixed for this earlier; the dashboard sheet was not). It now has a "Collected by" field, defaulted to the customer.
+
+Tests: `tests/unit/test_pickup_code.py` (30), `test_pickup_code_release.py` (46), `test_pickup_code_notification.py` (13), nine security properties mutation-checked. `tests/db/test_pickup_code.py` (11) and **migration 065 itself have not been run** (no Docker): run `make migrate` and `make test-db`.
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+
+`POST /v1/payments/claims` also checks the stored evidence file: missing → 422 `UPLOAD_NOT_FOUND`; over 5 MB → 422 `FILE_TOO_LARGE` (an Azure upload is not bound to its declared size).
+
+## Pickup ID number column widened (2026-11-19)
+
+**Bug found and fixed (latent until encryption is on):** `pickup_record.id_number` was VARCHAR(100) but holds `encrypt_field` output (~260+ characters), so recording a pickup with an ID number would have failed in production. Migration 071 made it TEXT.
+
+### Release note and receipt PDFs rebuilt (FD-40 to FD-42, 2026-11-21)
+
+Both are built on the shared PDF theme (`services/excel/pdf_theme.py`). The release note adds its valid-until date, "(partial release)", every carton tag with a "Collected" box, and terms; its **QR code now holds the bare reference** (owner decision): the warehouse screen's lookup opens the note from a scan (it held `RELEASE:{ref}`, which found nothing). The receipt adds the balance after the payment and who received it. The browser print page for release notes is retired: "Print" opens this PDF. See `19_excel_import_export.md`.
+
+### Receipts reachable from the app (FD-43, 2026-11-21)
+
+`GET /v1/payments/{id}/receipt/pdf` is now called from each payment row on the staff and customer invoice pages and from the payment-success page (the payment found on `GET /v1/billing/{id}/detail` by its `payment_reference`). No API change.

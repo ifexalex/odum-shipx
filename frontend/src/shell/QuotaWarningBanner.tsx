@@ -1,54 +1,84 @@
-import type { JSX } from 'react'
-import { Banner } from '../design/components'
-import { pctUsed, useQuota } from '../hooks/useQuota'
-
 /**
- * Shell-level quota warning banner.
+ * The plan-limit notice (FD-16): one line inside the content column, for the tenant admin only, saying which limit is
+ * near or reached, with a link to the plan. Other roles meet a limit through the limit-reached dialog when an action is
+ * blocked, so they are not shown a warning they cannot act on all day.
  *
- * Renders:
- *  - Nothing when all dimensions are below 80%.
- *  - A warning banner when any dimension is 80–99% used.
- *  - An error banner when any dimension is at or over 100%.
- *
- * Mounted once in StaffLayout so it appears on every staff page.
+ * Not on a phone, where the top of the screen belongs to the page itself (FD-35); there the dashboard's plan-usage panel
+ * marks the limit ("At limit"). The admin can dismiss it for the session. It comes back when the situation changes: another dimension, or a
+ * warning that becomes a reached limit.
  */
-export function QuotaWarningBanner(): JSX.Element | null {
-  const { quota, nearingLimit, atLimit } = useQuota()
+import { useState, type JSX } from 'react'
+import { Link } from 'react-router-dom'
+import { Icon, IconButton } from '../design/components'
+import { pctUsed, useQuota } from '../hooks/useQuota'
+import { PLAN_ANCHOR } from './PlanUsagePanel'
+import styles from './QuotaWarningBanner.module.css'
 
-  if (!quota || (!nearingLimit && !atLimit)) return null
+const DISMISSED_KEY = 'shipx_quota_notice_dismissed'
 
+function readDismissed(): string | null {
+  try {
+    return sessionStorage.getItem(DISMISSED_KEY)
+  } catch {
+    return null
+  }
+}
+
+export interface QuotaNotice {
+  /** What it is about, for dismissal: a new key shows again. */
+  key: string
+  level: 'warning' | 'error'
+  text: string
+}
+
+/** The notice to show the tenant admin, or null when every limit is under 80%. */
+export function useQuotaNotice(): QuotaNotice | null {
+  const { quota } = useQuota()
+  if (!quota) return null
   const dims = [
-    { label: 'Users', dim: quota.limits.users },
-    { label: 'Containers this month', dim: quota.limits.containers_per_month },
-    { label: 'Storage', dim: quota.limits.storage_gb },
+    { key: 'users', label: 'Users', dim: quota.limits.users },
+    { key: 'containers', label: 'Containers this month', dim: quota.limits.containers_per_month },
+    { key: 'storage', label: 'Storage', dim: quota.limits.storage_gb },
   ]
-
-  const atLimitDim = dims.find((d) => pctUsed(d.dim) >= 1)
-  const nearingDim = dims.find((d) => pctUsed(d.dim) >= 0.8)
-
-  if (atLimitDim) {
-    const { label, dim } = atLimitDim
-    return (
-      <div style={{ padding: '0 0 0 0' }}>
-        <Banner variant="error" title={`${label} limit reached`}>
-          {label} ({dim.used}/{dim.max}) — you have reached your {quota.subscription_tier} plan limit.
-          Contact support or upgrade your plan to continue.
-        </Banner>
-      </div>
-    )
+  const tier = quota.subscription_tier[0]!.toUpperCase() + quota.subscription_tier.slice(1)
+  const reached = dims.find((d) => pctUsed(d.dim) >= 1)
+  if (reached) {
+    return {
+      key: `${reached.key}:reached`,
+      level: 'error',
+      text: `${reached.label}: ${reached.dim.used} of ${reached.dim.max}. You have reached your ${tier} plan’s limit.`,
+    }
   }
-
-  if (nearingDim) {
-    const { label, dim } = nearingDim
-    const pct = Math.round(pctUsed(dim) * 100)
-    return (
-      <div style={{ padding: '0 0 0 0' }}>
-        <Banner variant="warning" title={`Approaching ${label.toLowerCase()} limit`}>
-          {label}: {dim.used} of {dim.max} used ({pct}%). Upgrade your plan before the limit is reached.
-        </Banner>
-      </div>
-    )
+  const near = dims.find((d) => pctUsed(d.dim) >= 0.8)
+  if (near) {
+    return {
+      key: `${near.key}:near`,
+      level: 'warning',
+      text: `${near.label}: ${near.dim.used} of ${near.dim.max} used, close to your ${tier} plan’s limit.`,
+    }
   }
-
   return null
+}
+
+export function QuotaWarningBanner({ notice }: { notice: QuotaNotice }): JSX.Element | null {
+  const [dismissed, setDismissed] = useState(readDismissed)
+  if (dismissed === notice.key) return null
+  const dismiss = (): void => {
+    try {
+      sessionStorage.setItem(DISMISSED_KEY, notice.key)
+    } catch {
+      // Storage blocked: it still hides for this page view.
+    }
+    setDismissed(notice.key)
+  }
+  return (
+    <div className={[styles.bar, styles[notice.level]].join(' ')} role="status">
+      <Icon name={notice.level === 'error' ? 'alert' : 'warn'} size={16} stroke={2} />
+      <span className={styles.text}>{notice.text}</span>
+      <Link to={`/dashboard#${PLAN_ANCHOR}`} className={styles.link}>
+        View plan
+      </Link>
+      <IconButton icon="x" label="Dismiss the plan-limit notice" size="sm" onClick={dismiss} />
+    </div>
+  )
 }

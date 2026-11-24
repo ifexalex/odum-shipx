@@ -8,6 +8,7 @@ Routes:
   DELETE /v1/billing/{billing-id}/charges/{id}       — tenant_admin
   GET   /v1/billing/{billing-id}/storage-fees        — tenant_admin, nigeria_office_staff, customer (own)
   GET   /v1/billing/disputes                         — nigeria_office_staff, tenant_admin, china_office_staff
+  GET   /v1/billing/disputes/{dispute-id}            — same roles; measurement data only, no payment data
   GET   /v1/billing/{customer-id}                    — tenant_admin, nigeria_office_staff, customer (own)
   GET   /v1/billing/{billing-id}/detail              — tenant_admin, nigeria_office_staff, customer (own)
   POST  /v1/billing/{billing-id}/dispute             — customer
@@ -28,18 +29,25 @@ import uuid
 from typing import Any
 
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
-from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.observability import init_tracing, record_failure
+from shared.pagination import parse_pagination_params
 from shared.responses import created, error_response, no_content, paginated, success
 from shared.tenant_context import UserRole
 from shared.validation import parse_validated
 
 from . import service
-from .models import CancelBillingRequest, ExemptCarryoverRequest, FileCBMDisputeRequest, ResolveCBMDisputeRequest
+from .models import (
+    CancelBillingRequest,
+    ExemptCarryoverRequest,
+    FileCBMDisputeRequest,
+    GenerateBillingRequest,
+    ResolveCBMDisputeRequest,
+)
 
 # Module-level init (runs once on cold start)
 setup_logging()
@@ -53,6 +61,11 @@ _BILLING_READ_ROLES = (
     UserRole.CUSTOMER,
 )
 _DISPUTE_READ_ROLES = (
+    UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.TENANT_ADMIN,
+    UserRole.CUSTOMER,
+)
+_DISPUTE_CREATE_ROLES = (
     UserRole.NIGERIA_OFFICE_STAFF,
     UserRole.TENANT_ADMIN,
     UserRole.CUSTOMER,
@@ -96,7 +109,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
@@ -112,15 +125,30 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -173,6 +201,7 @@ def _handle_event(event: dict[str, Any]) -> dict[str, Any]:
                 payload.get("customer_id"),
                 payload.get("container_id"),
             )
+            record_failure("invoice_generation")
     else:
         logger.info("Ignoring unhandled event type: %s", detail_type)
 
@@ -196,7 +225,7 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
     if segment is None:
         if method == "GET":
             ctx.assert_role(*_BILLING_READ_ROLES)
-            filters = {}
+            filters: dict[str, Any] = {}
             if _qp(event, "status"):
                 # Comma-separated multi-select (Filters panel) — a single
                 # status is just a 1-element list, matched against
@@ -208,13 +237,15 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
                 filters["created_after"] = _qp(event, "created_after")
             if _qp(event, "created_before"):
                 filters["created_before"] = _qp(event, "created_before")
+            if (_qp(event, "overdue") or "").lower() in ("true", "1"):
+                # Only invoices owed for over 30 days: what the "Overdue" stat opens (FD-18).
+                filters["overdue"] = True
             if _qp(event, "q"):
                 # Free-text search over invoice_number / customer name /
                 # container_number (ILIKE in list_billing_all). The frontend
                 # BillingList search box sends ?q= — it was silently dropped.
                 filters["q"] = _qp(event, "q")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             sort_field = _qp(event, "sort") or "created_at"
             sort_direction = _qp(event, "direction") or "desc"
             page, next_cursor, has_more = service.list_billing(
@@ -229,8 +260,10 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
             return paginated(page, next_cursor, has_more, request_id=request_id)
         if method == "POST":
             ctx.assert_role(*_CHARGE_WRITE_ROLES)
-            body = _parse_body(event)
-            result = service.generate_billing(ctx.tenant_id, body, actor_id=ctx.user_id, ctx=ctx)
+            req = parse_validated(GenerateBillingRequest, _parse_body(event))
+            result = service.generate_billing(ctx.tenant_id, req, actor_id=ctx.user_id, ctx=ctx)
+            if req.customer_id is None:
+                return success(result, request_id=request_id)
             return created(result, location="/v1/billing", request_id=request_id)
         raise ResourceNotFoundError("route", path)
 
@@ -241,6 +274,14 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
         if method == "GET":
             ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
             return success(service.get_billing_stats(ctx.tenant_id), request_id=request_id)
+        raise ResourceNotFoundError("route", path)
+
+    # GET /v1/billing/unbilled — customers on cleared containers with CBM to bill and no
+    # invoice (dashboard queue). Staff only; completed by POST /v1/billing {container_id}.
+    if segment == "unbilled":
+        if method == "GET":
+            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            return success(service.list_unbilled_customers(ctx.tenant_id), request_id=request_id)
         raise ResourceNotFoundError("route", path)
 
     # GET /v1/billing/report?created_after=&created_before= — period report
@@ -276,7 +317,8 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
     if segment == "payments":
         if method == "GET":
             ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
-            limit = min(int(_qp(event, "limit", 8)), 50)
+            _, parsed_limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=8)
+            limit = min(parsed_limit, 50)
             results = service.list_recent_payments(ctx.tenant_id, limit)
             return success(results, request_id=request_id)
         raise ResourceNotFoundError("route", path)
@@ -305,8 +347,7 @@ def _carryover_routes(
                 filters["customer_id"] = _qp(event, "customer_id")
             if _qp(event, "status"):
                 filters["status"] = _qp(event, "status")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_carryovers(tenant_id, filters, limit, cursor)
             return paginated(page, next_cursor, has_more, request_id=request_id)
 
@@ -361,6 +402,7 @@ def _billing_routes(
                 actor_id=ctx.user_id,
                 ctx=ctx,
                 request_id=request_id,
+                ip_address=ip_address,
             )
             return created(result, location=f"/v1/billing/{resource_id}/disputes", request_id=request_id)
 
@@ -389,6 +431,7 @@ def _billing_routes(
                     body,
                     actor_id=ctx.user_id,
                     ip_address=ip_address,
+                    actor_role=str(ctx.role),
                 )
                 return success(result, request_id=request_id, status_code=201)
 
@@ -427,6 +470,7 @@ def _billing_routes(
                 reason=reason,
                 actor_id=ctx.user_id,
                 ip_address=ip_address or "",
+                actor_role=str(ctx.role),
             )
             return success(result, request_id=request_id)
 
@@ -441,6 +485,7 @@ def _billing_routes(
                 req.cancel_reason,
                 actor_id=ctx.user_id,
                 ip_address=ip_address,
+                actor_role=str(ctx.role),
             )
             return success(result, request_id=request_id)
 
@@ -459,6 +504,7 @@ def _billing_routes(
                 carryover_id,
                 actor_id=ctx.user_id,
                 ip_address=ip_address,
+                actor_role=str(ctx.role),
             )
             return success(result, request_id=request_id)
 
@@ -481,17 +527,23 @@ def _dispute_action_routes(
                 filters["status"] = _qp(event, "status")
             if _qp(event, "customer_id"):
                 filters["customer_id"] = _qp(event, "customer_id")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
-            page, next_cursor, has_more = service.list_disputes(tenant_id, filters, limit, cursor)
-            return paginated(page, next_cursor, has_more, request_id=request_id)
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
+            page, next_cursor, has_more, total = service.list_disputes(tenant_id, filters, limit, cursor)
+            return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
         # POST /v1/billing/disputes — create a dispute (billing_id in body)
         if method == "POST":
-            ctx.assert_role(*_DISPUTE_LIST_ALL_ROLES)
+            ctx.assert_role(*_DISPUTE_CREATE_ROLES)
             body = _parse_body(event)
-            result = service.create_dispute(tenant_id, body, actor_id=ctx.user_id, ctx=ctx, request_id=request_id)
+            result = service.create_dispute(
+                tenant_id, body, actor_id=ctx.user_id, ctx=ctx, request_id=request_id, ip_address=ip_address
+            )
             return created(result, location=f"/v1/billing/disputes/{result.get('id', '')}", request_id=request_id)
         raise ResourceNotFoundError("route", "/".join(parts))
+
+    # GET /v1/billing/disputes/{dispute-id} — measurement data only (UX-01)
+    if action is None and method == "GET":
+        ctx.assert_role(*_DISPUTE_LIST_ALL_ROLES)
+        return success(service.get_dispute_detail(tenant_id, dispute_id), request_id=request_id)
 
     if action == "acknowledge" and method == "PATCH":
         ctx.assert_role(*_ACKNOWLEDGE_ROLES)
@@ -500,6 +552,7 @@ def _dispute_action_routes(
             dispute_id,
             actor_id=ctx.user_id,
             ip_address=ip_address,
+            actor_role=str(ctx.role),
         )
         return success(result, request_id=request_id)
 
@@ -528,6 +581,7 @@ def _dispute_action_routes(
             reason,
             actor_id=ctx.user_id,
             ctx=ctx,
+            ip_address=ip_address,
         )
         return success(result, request_id=request_id)
 

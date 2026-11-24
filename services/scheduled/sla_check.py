@@ -12,10 +12,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from shared.audit import log_audit
-from shared.db import execute_with_tenant
+from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.staff_notifications import notify_staff
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -25,7 +25,7 @@ init_tracing()
 logger = logging.getLogger(__name__)
 
 _SLA_WINDOW = timedelta(hours=24)
-_SYSTEM_ACTOR = "system"
+_SYSTEM_ACTOR: str | None = None
 _SYSTEM_ROLE = "scheduler"
 
 
@@ -48,6 +48,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             breaches += count
         except Exception:
             logger.exception("SLA check failed for tenant %s", tenant_id)
+            record_failure("scheduled_job_step")
             errors += 1
 
     logger.info(
@@ -74,20 +75,38 @@ def _process_tenant(tenant_id: str) -> int:
 
     for dispute in breaching:
         try:
-            _record_breach(tenant_id, dispute)
-            breach_count += 1
+            if _record_breach(tenant_id, dispute) is not False:
+                breach_count += 1
         except Exception:
             logger.exception(
                 "SLA breach record failed for dispute %s",
                 dispute["id"],
                 extra={"tenant_id": tenant_id},
             )
+            record_failure("scheduled_job_step")
 
     return breach_count
 
 
-def _record_breach(tenant_id: str, dispute: dict[str, Any]) -> None:
+def _record_breach(tenant_id: str, dispute: dict[str, Any]) -> bool:
     dispute_id = str(dispute["id"])
+
+    stamped = execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE cbm_dispute
+        SET sla_breached_at = NOW()
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND status IN ('submitted', 'open')
+          AND acknowledged_at IS NULL
+          AND sla_breached_at IS NULL
+        RETURNING id
+        """,
+        {"tenant_id": tenant_id, "id": dispute_id},
+    )
+    if not stamped:
+        return False
 
     log_audit(
         tenant_id=tenant_id,
@@ -111,16 +130,19 @@ def _record_breach(tenant_id: str, dispute: dict[str, Any]) -> None:
 
     # Notify Nigeria Office Staff
     _notify_nigeria_staff(tenant_id, dispute)
+    return True
 
 
 def _notify_nigeria_staff(tenant_id: str, dispute: dict[str, Any]) -> None:
     staff = execute_with_tenant(
         tenant_id,
         """
-        SELECT tu.email, tu.locale
+        SELECT DISTINCT tu.email, tu.locale
         FROM tenant_user tu
+        LEFT JOIN tenant_user_role tur
+          ON tur.user_id = tu.id AND tur.tenant_id = tu.tenant_id
         WHERE tu.tenant_id = %s
-          AND tu.role = 'nigeria_office_staff'
+          AND (tu.role = 'nigeria_office_staff' OR tur.role = 'nigeria_office_staff')
           AND tu.status = 'active'
         LIMIT 10
         """,
@@ -129,6 +151,8 @@ def _notify_nigeria_staff(tenant_id: str, dispute: dict[str, Any]) -> None:
 
     template_vars = {
         "dispute_id": str(dispute["id"]),
+        "reference_number": str(dispute.get("reference_number") or dispute["id"]),
+        "status": "sla_breached",
         "disputed_cbm": str(dispute["disputed_cbm"]),
     }
 
@@ -176,16 +200,17 @@ def _get_active_tenants() -> list[dict[str, Any]]:
 
 
 def _get_sla_breaching_disputes(tenant_id: str, threshold: datetime) -> list[dict[str, Any]]:
-    """Return open disputes created before threshold that have never been touched."""
+    """Return submitted disputes created before threshold that have never been acknowledged."""
     return execute_with_tenant(
         tenant_id,
         """
         SELECT id, billing_id, customer_id, disputed_cbm, created_at, updated_at
         FROM cbm_dispute
-        WHERE tenant_id  = %s
-          AND status     = 'open'
-          AND created_at < %s
-          AND updated_at = created_at
+        WHERE tenant_id        = %s
+          AND status           IN ('submitted', 'open')
+          AND created_at       < %s
+          AND acknowledged_at  IS NULL
+          AND sla_breached_at  IS NULL
         ORDER BY created_at ASC
         """,
         (tenant_id, threshold),

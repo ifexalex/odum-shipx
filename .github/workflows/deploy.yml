@@ -2,23 +2,18 @@ name: Deploy Pipeline
 
 # ── Trigger summary ──────────────────────────────────────────────────────────
 #
-#   push to main  →  deploy-dev (auto, every successful CI run)
-#                     └─ smoke-dev
+#   push to main  ->  deploy-dev (auto, when CI Pipeline ran backend build)
+#                      └─ smoke-dev
 #
-#   v*.*.*-rc*    →  resolve artifact for tagged commit
+#   v*.*.*-rc*    ->  prepare (verify CI + artifact for tagged commit)
 #   tag push           └─ deploy-staging (auto, tag protection = gate)
 #   (protected)             └─ smoke-staging
 #
-#   v*.*.* tag    →  resolve artifact for tagged commit
-#   push           └─ deploy-prod (auto, after smoke-staging passes)
-#   (protected)         └─ [CloudWatch alarms monitor prod — no synthetic smoke]
+#   v*.*.* tag    ->  prepare (verify CI + artifact for tagged commit)
+#   push               └─ deploy-prod (auto, after smoke-staging passes or skipped)
+#   (protected)             └─ smoke-prod (read-only post-deploy probe)
 #
-#   workflow_dispatch  →  break-glass hotfix only; operator supplies run_id
-#
-# Tag protection ruleset (configure in repo Settings → Rules):
-#   Pattern: v*
-#   Restriction: @{org}/release-managers team only
-#   Block force pushes: yes
+#   workflow_dispatch  ->  break-glass hotfix / demo; operator supplies run_id
 # ---------------------------------------------------------------------------
 
 on:
@@ -33,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Target environment (break-glass hotfix only)"
+        description: "Target environment (break-glass hotfix or demo)"
         required: true
         type: choice
         options: [dev, staging, prod, demo]
@@ -42,52 +37,91 @@ on:
         required: true
         type: string
 
-# Queue deploys — never cancel a deploy mid-run (leaves mixed state).
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: false
+# Concurrency is enforced per target environment inside _deploy-env.yml
+# (deploy-aws-<env>) so a dev deploy never blocks a prod hotfix and concurrent
+# prod tags always serialize cleanly.
 
 permissions:
   contents: read
-  actions: read    # required for cross-workflow artifact download
+  actions: read    # required for cross-workflow artifact lookup + download
 
-# ── Artifact resolution ──────────────────────────────────────────────────────
-# On tag push: find the successful CI Pipeline run for the exact tagged commit
-# SHA. Fails if no successful CI run exists for that commit — enforces that
-# only tested code can be deployed.
-# On workflow_run and workflow_dispatch: not used (run ID is known directly).
 jobs:
-  resolve-artifact:
+  # Single preparation gate for all trigger modes. Eliminates skipped-needs traps
+  # on workflow_dispatch and enforces that tagged commits have a passing CI build
+  # artifact before staging or prod can deploy.
+  prepare:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && vars.DEPLOY_CLOUD != 'azure'   # tag push path only (AWS)
+    if: vars.DEPLOY_CLOUD != 'azure'
     outputs:
-      run_id: ${{ steps.find.outputs.run_id }}
+      run_id: ${{ steps.resolve.outputs.run_id }}
+      should_deploy_dev: ${{ steps.resolve.outputs.should_deploy_dev }}
     permissions:
       contents: read
       actions: read
     steps:
-      - name: Find successful CI run for tagged commit
-        id: find
+      - name: Resolve CI run ID and deploy eligibility
+        id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          INPUT_RUN_ID: ${{ inputs.run_id }}
         run: |
-          RUN_ID=$(gh api \
-            "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&event=push&status=success" \
-            --jq '[.workflow_runs[] | select(.name == "CI Pipeline")] | first | .id')
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "No successful CI Pipeline run found for commit ${{ github.sha }}"
-            echo "Only commits that have passed CI can be deployed via tag."
-            exit 1
-          fi
-          echo "Found CI run: $RUN_ID"
-          echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          should_deploy_dev="false"
+          run_id=""
 
-  # ── Dev — auto-deploys on every successful CI run ──────────────────────
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "$WORKFLOW_RUN_CONCLUSION" = "success" ]; then
+              BUILD_STATUS=$(gh api \
+                "repos/${{ github.repository }}/actions/runs/${WORKFLOW_RUN_ID}/jobs" \
+                --jq '[.jobs[] | select(.name == "build")] | first | .conclusion // "skipped"')
+              if [ "$BUILD_STATUS" = "success" ]; then
+                run_id="$WORKFLOW_RUN_ID"
+                should_deploy_dev="true"
+                echo "CI Pipeline run ${run_id} produced lambda-packages — deploying dev."
+              else
+                echo "CI Pipeline run ${WORKFLOW_RUN_ID} skipped backend build (${BUILD_STATUS}) — skipping dev deploy."
+              fi
+            else
+              echo "CI Pipeline run concluded '${WORKFLOW_RUN_CONCLUSION}' — skipping dev deploy."
+            fi
+          elif [ "$EVENT_NAME" = "push" ]; then
+            RUN_ID=$(gh api \
+              "repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&event=push&status=success" \
+              --jq '[.workflow_runs[] | select(.name == "CI Pipeline")] | first | .id')
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+              echo "::error::No successful CI Pipeline run found for commit ${{ github.sha }}."
+              echo "Only commits that have passed CI can be deployed via tag."
+              exit 1
+            fi
+            BUILD_STATUS=$(gh api \
+              "repos/${{ github.repository }}/actions/runs/${RUN_ID}/jobs" \
+              --jq '[.jobs[] | select(.name == "build")] | first | .conclusion // "skipped"')
+            if [ "$BUILD_STATUS" != "success" ]; then
+              echo "::error::CI Pipeline run ${RUN_ID} skipped backend build (no backend changes on tagged commit)."
+              echo "Tag a commit with a backend build artifact, or use workflow_dispatch with its CI run_id."
+              exit 1
+            fi
+            run_id="$RUN_ID"
+            echo "Verified CI build artifact on run ${run_id}."
+          else
+            run_id="$INPUT_RUN_ID"
+            echo "Manual dispatch using CI run ${run_id}."
+          fi
+
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+          echo "should_deploy_dev=${should_deploy_dev}" >> "$GITHUB_OUTPUT"
+
+  # ── Dev — auto-deploys on every successful backend CI run ────────────────
   deploy-dev:
+    needs: prepare
     if: >-
-      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
-      vars.DEPLOY_CLOUD != 'azure'
+      vars.DEPLOY_CLOUD != 'azure' && (
+        (github.event_name == 'workflow_run' && needs.prepare.outputs.should_deploy_dev == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+      )
     permissions:
       contents: read
       id-token: write
@@ -95,18 +129,12 @@ jobs:
     uses: ./.github/workflows/_deploy-env.yml
     with:
       environment: dev
-      artifact_run_id: >-
-        ${{ github.event_name == 'workflow_run'
-            && github.event.workflow_run.id
-            || inputs.run_id }}
+      artifact_run_id: ${{ needs.prepare.outputs.run_id }}
     secrets: inherit
 
   smoke-dev:
     needs: deploy-dev
-    if: >-
-      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-       (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')) &&
-      vars.DEPLOY_CLOUD != 'azure'
+    if: success() && vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
     uses: ./.github/workflows/_smoke-test.yml
@@ -114,53 +142,43 @@ jobs:
       environment: dev
     secrets: inherit
 
-  # ── Staging — triggered by v*.*.*-rc* tag push ──────────────────────────
-  # Tag protection rules enforce who can create these tags.
-  # resolve-artifact finds the CI run for the tagged commit.
+  # ── Staging — triggered by v*.*.*-rc* tag push or workflow_dispatch ──────
   deploy-staging:
-    needs: resolve-artifact
+    needs: prepare
     if: >-
-      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
-        contains(github.ref, '-rc')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')) &&
-      vars.DEPLOY_CLOUD != 'azure'
-    permissions:
-      contents: read
-      id-token: write
-      actions: read
-    uses: ./.github/workflows/_deploy-env.yml
-    with:
-      environment: staging
-      artifact_run_id: >-
-        ${{ github.event_name == 'push'
-            && needs.resolve-artifact.outputs.run_id
-            || inputs.run_id }}
-    secrets: inherit
-
-  smoke-staging:
-    needs: deploy-staging
-    if: >-
-      always() && needs.deploy-staging.result == 'success' && vars.DEPLOY_CLOUD != 'azure' && (
+      vars.DEPLOY_CLOUD != 'azure' && (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
           contains(github.ref, '-rc')) ||
         (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
       )
     permissions:
       contents: read
+      id-token: write
+      actions: read
+    uses: ./.github/workflows/_deploy-env.yml
+    with:
+      environment: staging
+      artifact_run_id: ${{ needs.prepare.outputs.run_id }}
+    secrets: inherit
+
+  smoke-staging:
+    needs: deploy-staging
+    if: success() && vars.DEPLOY_CLOUD != 'azure'
+    permissions:
+      contents: read
     uses: ./.github/workflows/_smoke-test.yml
     with:
       environment: staging
     secrets: inherit
 
-  # ── Prod — triggered by v*.*.* tag push (no -rc suffix) ─────────────────
-  # For the normal release path: smoke-staging must pass before prod deploys.
-  # For direct prod hotfix (push v*.*.* without a prior -rc): smoke-staging is
-  # skipped; always() lets this job evaluate its own condition. Tag protection
-  # rules are the sole gate in that case — only release managers can push prod tags.
+  # ── Prod — triggered by v*.*.* tag push (no -rc) or workflow_dispatch ────
+  # Explicitly requires needs.prepare.result == 'success' so a failed CI lookup
+  # can never bypass artifact verification and fire deploy-prod.
   deploy-prod:
-    needs: [resolve-artifact, smoke-staging]
+    needs: [prepare, smoke-staging]
     if: >-
-      always() && vars.DEPLOY_CLOUD != 'azure' && (
+      always() && vars.DEPLOY_CLOUD != 'azure' &&
+      needs.prepare.result == 'success' && (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
           !contains(github.ref, '-rc') &&
           (needs.smoke-staging.result == 'success' || needs.smoke-staging.result == 'skipped')) ||
@@ -173,15 +191,22 @@ jobs:
     uses: ./.github/workflows/_deploy-env.yml
     with:
       environment: prod
-      artifact_run_id: >-
-        ${{ github.event_name == 'push'
-            && needs.resolve-artifact.outputs.run_id
-            || inputs.run_id }}
+      artifact_run_id: ${{ needs.prepare.outputs.run_id }}
+    secrets: inherit
+
+  smoke-prod:
+    needs: deploy-prod
+    if: success() && vars.DEPLOY_CLOUD != 'azure'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_smoke-test.yml
+    with:
+      environment: prod
     secrets: inherit
 
   # ── Demo — standalone, dispatch-only (NOT in the promotion chain) ────────
-  # Deploy a chosen CI artifact to the throwaway demo env for a live link.
   deploy-demo:
+    needs: prepare
     if: github.event_name == 'workflow_dispatch' && inputs.environment == 'demo' && vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
@@ -190,29 +215,15 @@ jobs:
     uses: ./.github/workflows/_deploy-env.yml
     with:
       environment: demo
-      artifact_run_id: ${{ inputs.run_id }}
+      artifact_run_id: ${{ needs.prepare.outputs.run_id }}
     secrets: inherit
 
   smoke-demo:
     needs: deploy-demo
-    if: always() && needs.deploy-demo.result == 'success' && vars.DEPLOY_CLOUD != 'azure'
+    if: success() && vars.DEPLOY_CLOUD != 'azure'
     permissions:
       contents: read
     uses: ./.github/workflows/_smoke-test.yml
     with:
       environment: demo
-    secrets: inherit
-
-  # ── Prod post-deploy smoke ──────────────────────────────────────────────
-  # The smoke suite is entirely read-only (GET /health, unauthenticated-401
-  # checks, response-time SLA) — safe to run against prod. Fails the pipeline
-  # loudly if a deploy left prod unhealthy, rather than waiting on alarms.
-  smoke-prod:
-    needs: deploy-prod
-    if: always() && needs.deploy-prod.result == 'success' && vars.DEPLOY_CLOUD != 'azure'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/_smoke-test.yml
-    with:
-      environment: prod
     secrets: inherit

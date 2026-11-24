@@ -30,18 +30,6 @@ export const CONTAINER_STATUS_ORDER: ContainerStatus[] = [
   'fully_released',
 ]
 
-export const CONTAINER_STATUS_LABELS: Record<ContainerStatus, string> = {
-  loading: 'Loading',
-  sealed: 'Sealed',
-  in_transit: 'In Transit',
-  arrived: 'Arrived (NG)',
-  customs_clearance: 'Customs Clearance',
-  cleared: 'Cleared',
-  at_warehouse: 'At Warehouse',
-  fully_released: 'Fully Released',
-  cancelled: 'Cancelled',
-}
-
 /** True when a container can be hard-deleted (no cargo, still loading). */
 export function canDeleteContainer(
   role: UserRole,

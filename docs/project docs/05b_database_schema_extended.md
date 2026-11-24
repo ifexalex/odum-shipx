@@ -405,6 +405,44 @@ Records are inserted by `services/tenant_management/service.update_dollar_rate()
 
 **`rate_type='dollar_rate'` entries changed shape (2026-09-19):** since the base rate now comes from Bybit (not something an admin types in), what gets recorded is a **markup change**, not a raw rate — `rate_value`/`previous_value` are `{ "rate": <effective rate at the moment of the change>, "base_rate", "markup_type", "markup_value" }` (all plain `float`, never `Decimal` — `append_rate_history`'s `json.dumps()` has no `default=str` and raises on one, a real bug caught live the first time this feature's `PUT` was exercised end-to-end). `rate_value.rate` is still a single comparable number across every entry regardless of provenance, so `RateHistoryTable`/`RateTrendChart` on the frontend needed **no changes** — they've always just read `rate_value.rate` as a plain number.
 
+### Migration 062 — `tenant_counter` and one live invoice per customer per container
+
+```sql
+CREATE TABLE tenant_counter (
+    tenant_id  UUID NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+    name       VARCHAR(50) NOT NULL,          -- 'invoice' | 'receipt' | 'release_note'
+    last_value BIGINT NOT NULL DEFAULT 0 CHECK (last_value >= 0),
+    PRIMARY KEY (tenant_id, name)
+);
+CREATE UNIQUE INDEX idx_billing_one_live_per_customer_container
+    ON billing (tenant_id, customer_id, container_id) WHERE status <> 'cancelled';
+```
+
+`tenant_counter` is RLS-enabled with the canonical predicate (migration 059) and `FORCE ROW LEVEL SECURITY`. It replaces
+`SELECT COUNT(*) + 1` numbering, which handed the same number to two requests running at once. Seeded from the larger of
+the row count and the highest trailing number already issued, so numbering continues unchanged.
+
+The partial unique index makes a second live invoice for the same customer and container impossible, so invoice
+generation is idempotent. Cancelled invoices are excluded: cancel-and-reissue stays possible. If duplicate live invoices
+already exist the migration stops and lists them (see `docs/runbook.md`) — it never merges or cancels money records.
+
+Invoice and receipt numbers now use the counter (receipts inside the atomic payment write). Release-note numbers still use
+`COUNT(*) + 1`; the `release_note` counter is seeded for that follow-up (their unique index makes a collision loud, not silent).
+
+### Migration 063 — storage-fee waivers and compensation refund types
+
+```sql
+ALTER TABLE storage_fee_log ADD COLUMN waived_at TIMESTAMPTZ, ADD COLUMN waive_reason TEXT;
+CREATE INDEX idx_storage_fee_log_billing_unwaived ON storage_fee_log (billing_id) WHERE waived_at IS NULL;
+ALTER TABLE refund_request DROP CONSTRAINT refund_request_refund_type_check;
+ALTER TABLE refund_request ADD CONSTRAINT refund_request_refund_type_check
+  CHECK (refund_type IN ('overpayment','cbm_correction','damage_or_loss','missing_item','seized_item'));
+```
+
+`waived_at` marks a fee as waived (the log row is kept as history); an invoice's storage fees are the un-waived rows.
+`is_billed` stays as it was (default false, set by nothing). The widened CHECK is what lets seized/missing-item
+compensation create its refund request. Downgrade fails if rows already use the two new types.
+
 ### Migration 016 — `cbm_dispute.status` — add `'rejected'`
 
 The `reject_dispute()` service function sets `status = 'rejected'`, but migration 006's CHECK constraint omitted this value. Migration 016 drops and recreates the constraint with the full set of valid statuses.
@@ -529,7 +567,45 @@ CREATE INDEX idx_onboarding_request_email ON tenant_onboarding_request(lower(con
 - [x] cbm_dispute.status CHECK includes 'rejected' (migration 016)
 - [x] notification_template table created with RLS (migration 024) — per-tenant custom message copy for SMS, WhatsApp, and email
 - [x] rate_history table created with RLS (migration 025) — append-only audit trail of rate changes
-- [x] notification_log table created with RLS (migration 027) — persists every outbound notification; columns: id, tenant_id, event_type, channel (sms|email|whatsapp), recipient_masked, recipient_name, customer_id, status (queued|sent|delivered|read|failed), provider, provider_message_id, gateway_response JSONB, error_detail, retry_of (self-FK), template_data JSONB, created_at, updated_at; indexes on (tenant_id, created_at), status, channel, customer_id, provider_message_id
+- [x] notification_log table created with RLS (migration 027) — persists every outbound notification; columns: id, tenant_id, event_type, channel (sms|email|whatsapp), recipient_masked, recipient_name, customer_id, status (queued|sent|delivered|read|failed|**suppressed** — added by migration 064), provider, provider_message_id, gateway_response JSONB, error_detail, retry_of (self-FK), template_data JSONB, created_at, updated_at; indexes on (tenant_id, created_at), status, channel, customer_id, provider_message_id
 - [x] `notification_log.locale` VARCHAR(5) added (migration 043). `get_log_for_fallback` had always selected this column so a fallback SMS renders in the recipient's language, but it was never created — every WhatsApp→SMS fallback raised `UndefinedColumn` and no SMS was ever queued. Nullable: rows written before the migration have no recorded locale and `trigger_sms_fallback` coalesces to `en`.
 - [x] impersonation_session table created (migration 028, platform-scoped, no RLS) — platform admin support sessions; columns: id, platform_admin_id, target_tenant_id FK, target_user_id, target_role, read_only, started_at, expires_at, ended_at, end_reason; indexes for active session lookup and by admin/tenant
 - [x] customer.locale added (migration 029, `VARCHAR(10) NOT NULL DEFAULT 'en'`) — BCP-47 locale forwarded by scheduled jobs (storage_reminders, release_expiry) to `enqueue_notification` so notification Lambdas select the correct template language
+
+- [x] Migration 064 (2026-11-15): `notification_log_status_check` now also allows `suppressed`, recording a message held back by the customer's notification preferences (`shared/notification_consent.py`), with the reason in `error_detail`. The downgrade refuses while any `suppressed` row exists rather than rewrite history. No other schema change in audit Phase 2: `customer.consent_given_at` already existed and now also means "preferences recorded".
+
+## Migration 065 — release note pickup code (2026-11-16)
+
+`release_note` gains `pickup_code_hash VARCHAR(64)` (HMAC-SHA256 hex of the code, keyed by `PICKUP_CODE_PEPPER` and bound to the note id; NULL means the note needs no code), `pickup_code_issued_at TIMESTAMPTZ`, and `pickup_code_failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (>= 0)`. The plaintext code is never stored. No RLS change (the table's policy covers the new columns). Downgrade drops the three columns. See ADR-008.
+
+## Migration 066 — invoice total floor and partial credits (2026-11-17, audit BE-07)
+
+- `refund_request.credit_applied_ngn DECIMAL(15,2) NOT NULL DEFAULT 0`, `CHECK (>= 0)`: how much of a credit (a refund approved as `credit_next_shipment`) invoices have used. The credit stays `applied_as_credit` until this reaches `COALESCE(amount_approved_ngn, amount_ngn)`, then `processed`. Backfill: credits already `processed` were spent whole under the old rule and are set to their full value.
+- `billing.credits_applied_ngn DECIMAL(15,2) NOT NULL DEFAULT 0`, `CHECK (>= 0)`: the credit the invoice absorbed when issued. 0 for invoices issued before this migration (not recorded then).
+- `billing` gets `ck_billing_total_not_negative CHECK (total_ngn >= 0)`. It is added `NOT VALID` (enforced at once for new and changed rows) and validated in the same migration **only if no existing invoice has a negative total**. If some do, the migration succeeds, logs how many, and leaves the constraint unvalidated: see `docs/runbook.md`, "Invoices with a negative total".
+- The migration reads and backfills as `PLATFORM` (`app.current_tenant_id`), because both tables force row-level security, and restores the setting afterwards.
+- No RLS change: no new table. Applied to the local dev database on 2026-11-17; the constraint validated (no negative invoices there).
+
+## Migration 067 — `tenant_offboarding_export` (2026-11-17, audit BE-10)
+
+One row per tenant data export. Columns: `id`, `tenant_id` (FK `tenant` ON DELETE CASCADE), `status` (`pending|running|completed|failed|cancelled`), `requested_by` (platform admin's id; VARCHAR, no FK: platform admins are not `tenant_user` rows), `requested_at`, `started_at`, `completed_at`, `attempts` (≥ 0), `object_key`, `size_bytes` (≥ 0), `sha256`, `row_counts` JSONB, `last_error` (exception type name only), `updated_at`. CHECK: a completed row has `object_key` and `completed_at`. Indexes: open work by `requested_at` (partial), `(tenant_id, requested_at DESC)`, and a partial UNIQUE on `tenant_id` WHERE status is pending or running (one export in flight per tenant; `queue_export` relies on it with `ON CONFLICT … DO NOTHING`). RLS: canonical predicate, ENABLE + FORCE (`05c`). Applied to the local dev database on 2026-11-17.
+
+## Migration 068 — where an invoice's exchange rate came from (2026-11-17, audit BE-11)
+
+- `billing.exchange_rate_source VARCHAR(20)`, `CHECK (IN ('live', 'last_known', 'hardcoded'))`: where `exchange_rate_ngn` came from (`shared.fx_rate.RATE_SOURCE_*`). Invoicing refuses `hardcoded`, so new rows carry `live` or `last_known`.
+- `billing.exchange_rate_fetched_at TIMESTAMPTZ`: when that market rate was fetched.
+- Both NULL for invoices issued before the migration (nothing recorded it). No backfill, no RLS change. Applied to the local dev database on 2026-11-17 (4 existing invoices, all NULL).
+
+## Migration 069 — upload confirmation (2026-11-19)
+
+- `confirmed_at TIMESTAMPTZ` on `claim_evidence`, `manifest_evidence` and `container_document`: when the client confirmed the upload and its stored size was checked. NULL means presigned but not confirmed; such a row is never listed or downloadable. Existing rows backfilled to `created_at`.
+- `container_document.file_size_bytes INTEGER` (the other two already had it), set at confirmation.
+- No RLS change: `container_document` keeps its tenant policy; the two evidence tables stay without RLS, scoped through their parent. Applied to the local dev database on 2026-11-19.
+
+## Migration 070 — `billing_credit_application` (2026-11-19)
+
+One row per credit an invoice used: `id`, `tenant_id`, `billing_id` → billing, `refund_request_id` → refund_request (both `ON DELETE RESTRICT`), `amount_ngn DECIMAL(15,2) CHECK (> 0)`, `created_at`, `reversed_at` (set when the invoice is cancelled and the amount returned). Written in `create_invoice`'s transaction; read by `get_credit_applications`; reversed by `cancel_billing`. Indexes on `(tenant_id, billing_id)` and `(tenant_id, refund_request_id)`. Invoices issued before the migration have no rows. In `shared/tenant_data.py` (export and offboarding cleanup). Applied to the local dev database on 2026-11-19.
+
+## Migration 071 — encrypted columns are TEXT (2026-11-19)
+
+`refund_request.account_number` (was VARCHAR(50)), `refund_request.account_name` (VARCHAR(255)) and `pickup_record.id_number` (VARCHAR(100)) are TEXT. `encrypt_field` output is `base64(wrapped key || Fernet token)`, about 264 characters for 10 digits against an in-memory KMS and more against real KMS / Key Vault, so every encrypted write would have failed with `StringDataRightTruncation` in any environment with encryption on (local dev stores plaintext, which hid it). No rewrite of rows. Applied to the local dev database on 2026-11-19.

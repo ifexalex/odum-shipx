@@ -406,3 +406,7 @@ downstream consumer needed changing.
 can now produce hundreds of rows, so it is a single `INSERT ... SELECT * FROM
 UNNEST(...)` with one array per column — still fully parameterised. Measured:
 **500 rows in 229 ms**, end to end through the API.
+
+### Packing list PDF rebuilt (FD-40/41, 2026-11-21)
+
+`GET /v1/packing-lists/{id}/pdf` is the one packing-list document (the `/packing-lists/:id/print` page is retired; "Print" opens the PDF). Now with type, quantity, dimensions, CBM to 3 decimals and kg to 1, wrapping 40-character tags, page numbers, and packed by / approved by with dates. `GET /v1/packing-lists/{id}/export?format=pdf` is now 422. See `19_excel_import_export.md`.

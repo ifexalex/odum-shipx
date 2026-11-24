@@ -5,10 +5,12 @@ from io import BytesIO
 from unittest.mock import patch
 
 import openpyxl
+import pytest
 from openpyxl.styles import Font
 
 from services.excel.import_manifest import parse_manifest_xlsx
 from shared.tenant_context import TenantContext, UserRole
+from tests.patching import patch_tenant_management
 
 TENANT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
@@ -132,6 +134,12 @@ class TestQuantityUnitParsing:
 
 
 class TestProcessManifestImport:
+    @pytest.fixture(autouse=True)
+    def _stored_upload_within_limit(self):
+        """The stored file's size is checked where it is used (shared.uploads.check_stored_size); stub it here."""
+        with patch("shared.uploads.check_stored_size", return_value=1024):
+            yield
+
     def test_auto_creates_new_container_and_customers(self):
         from services.excel import service
 
@@ -166,7 +174,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "get_existing_tracking_code", return_value=None),
             patch.object(service.repo, "get_next_tracking_sequence", return_value=1),
             patch.object(service.repo, "insert_manifest_items") as mock_insert_items,
-            patch("services.tenant_management.service.issue_customer_invite") as mock_issue_invite,
+            patch_tenant_management("issue_customer_invite") as mock_issue_invite,
         ):
             mock_gsp.return_value.get_object.return_value = buf.getvalue()
 
@@ -211,7 +219,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "get_existing_tracking_code", return_value=None),
             patch.object(service.repo, "get_next_tracking_sequence", return_value=1),
             patch.object(service.repo, "insert_manifest_items"),
-            patch("services.tenant_management.service.issue_customer_invite") as mock_issue_invite,
+            patch_tenant_management("issue_customer_invite") as mock_issue_invite,
         ):
             mock_gsp.return_value.get_object.return_value = buf.getvalue()
 
@@ -251,7 +259,7 @@ class TestProcessManifestImport:
             patch.object(service.repo, "get_existing_tracking_code", return_value=None),
             patch.object(service.repo, "get_next_tracking_sequence", return_value=1),
             patch.object(service.repo, "insert_manifest_items") as mock_insert_items,
-            patch("services.tenant_management.service.issue_customer_invite"),
+            patch_tenant_management("issue_customer_invite"),
         ):
             mock_gsp.return_value.get_object.return_value = buf.getvalue()
 

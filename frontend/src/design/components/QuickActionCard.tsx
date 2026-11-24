@@ -21,13 +21,13 @@ export interface QuickActionCardProps {
 
 export function QuickActionCard({ icon, title, sub, cta, onAction, accent = false }: QuickActionCardProps): JSX.Element {
   return (
-    <Card padding={20}>
+    <Card padding="default">
       <div className={styles.row}>
         <div className={accent ? styles.tileAccent : styles.tile}>
           <Icon name={icon} size={18} stroke={2.3} />
         </div>
         <div className={styles.body}>
-          <h4 className={styles.title}>{title}</h4>
+          <h3 className={styles.title}>{title}</h3>
           <p className={styles.sub}>{sub}</p>
           <button type="button" className={accent ? styles.ctaAccent : styles.cta} onClick={onAction}>
             {cta} <Icon name="arrowright" size={13} stroke={2.5} />

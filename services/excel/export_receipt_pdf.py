@@ -1,242 +1,91 @@
-"""Generate a branded A4 cash receipt PDF using reportlab.
+"""The payment receipt PDF (audit FD-40, FD-41): the one receipt document, built on ``pdf_theme``.
 
-Mirrors export_release_note_pdf.py's layout:
-  - Header strip (brand colour): company name  |  QR code (top-right)
-  - Title: "CASH RECEIPT"
-  - Receipt number badge
-  - Meta block: Payer, Amount, Payment Method, Bank/Cheque, Warehouse, Date
-  - Amount-in-words line ("Being payment of...")
-  - Signature block
-  - Footer
+Contents: receipt number and date; who paid; the amount in figures and in words; payment method and reference (bank,
+cheque number where given); the invoice it pays and the balance left after this payment; who received it.
 """
 
-from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
 from typing import Any
 
+from reportlab.lib.units import cm
+from reportlab.platypus import Spacer, Table
+
+from . import pdf_theme as t
 from .naira_words import naira_amount_to_words
 
 
-def _qr_image(data: str, size_cm: float) -> Any:
-    """Return a reportlab Flowable that renders a QR code for *data*."""
-    from reportlab.graphics.barcode.qr import QrCodeWidget
-    from reportlab.graphics.shapes import Drawing
-    from reportlab.lib.units import cm
+def generate_receipt_pdf(brand: t.Brand, payment: dict[str, Any]) -> BytesIO:
+    """Render the receipt.
 
-    size_pt = size_cm * cm
-    qr = QrCodeWidget(data)
-    bounds = qr.getBounds()
-    qr_w = bounds[2] - bounds[0]
-    qr_h = bounds[3] - bounds[1]
-    scale = size_pt / max(qr_w, qr_h)
+    Args:
+        brand: The tenant's branding (``pdf_theme.Brand``).
+        payment: The payment row as ``get_payment_for_receipt_pdf`` returns it (with ``billing_total_ngn``,
+            ``balance_after_ngn`` and ``received_by_name``).
+    """
+    receipt_number = str(payment.get("receipt_number") or payment.get("id") or "")
+    paid = Decimal(str(payment.get("amount_ngn") or "0"))
+    payer = str(payment.get("payer_name") or payment.get("customer_name") or t.MISSING)
 
-    # The transform must be set on the Drawing, not the widget — QrCodeWidget
-    # has no settable `transform` attribute (reportlab's AttrMap validation
-    # rejects it), which was silently crashing every receipt PDF export.
-    drawing = Drawing(size_pt, size_pt)
-    drawing.transform = [scale, 0, 0, scale, 0, 0]
-    drawing.add(qr)
-    return drawing
-
-
-def generate_receipt_pdf(
-    branding: dict[str, Any],
-    payment: dict[str, Any],
-) -> BytesIO:
-    """Return a BytesIO buffer containing the branded cash receipt PDF."""
-    from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import cm
-    from reportlab.platypus import (
-        HRFlowable,
-        Paragraph,
-        SimpleDocTemplate,
-        Spacer,
-        Table,
-        TableStyle,
+    amount_block = Table(
+        [[t.para("Amount received", "label")], [t.para(t.money(paid), "figure")], [t.para(naira_amount_to_words(paid), "small")]],
+        colWidths=[t.CONTENT_WIDTH],
     )
-
-    company_name: str = branding.get("company_display_name") or branding.get("company_name") or "ShipX"
-    brand_color_hex: str = branding.get("primary_color") or "#1a56db"
-    try:
-        brand_color = colors.HexColor(brand_color_hex)
-    except Exception:
-        brand_color = colors.HexColor("#1a56db")
-
-    buf = BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=A4,
-        leftMargin=1.5 * cm,
-        rightMargin=1.5 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm,
-    )
-    styles = getSampleStyleSheet()
-    page_width = A4[0] - 3 * cm  # usable width after margins
-
-    company_style = ParagraphStyle(
-        "company",
-        parent=styles["Heading1"],
-        textColor=colors.white,
-        fontSize=16,
-        leading=20,
-    )
-    title_style = ParagraphStyle(
-        "rctitle",
-        parent=styles["Heading2"],
-        textColor=colors.HexColor("#111827"),
-        fontSize=14,
-        spaceAfter=4,
-    )
-    ref_style = ParagraphStyle(
-        "ref",
-        parent=styles["Normal"],
-        textColor=brand_color,
-        fontSize=11,
-        fontName="Helvetica-Bold",
-        spaceAfter=10,
-    )
-    meta_key_style = ParagraphStyle(
-        "mk",
-        parent=styles["Normal"],
-        fontSize=9,
-        textColor=colors.HexColor("#6b7280"),
-    )
-    meta_val_style = ParagraphStyle(
-        "mv",
-        parent=styles["Normal"],
-        fontSize=9,
-        fontName="Helvetica-Bold",
-        textColor=colors.HexColor("#111827"),
-    )
-    words_style = ParagraphStyle(
-        "words",
-        parent=styles["Normal"],
-        fontSize=10,
-        fontName="Helvetica-Oblique",
-        textColor=colors.HexColor("#111827"),
-        spaceAfter=6,
-    )
-    footer_style = ParagraphStyle(
-        "footer",
-        parent=styles["Normal"],
-        fontSize=8,
-        textColor=colors.HexColor("#6b7280"),
-        alignment=1,
-    )
-    sig_label_style = ParagraphStyle(
-        "siglabel",
-        parent=styles["Normal"],
-        fontSize=8,
-        textColor=colors.HexColor("#9ca3af"),
-    )
-
-    receipt_number = str(payment.get("receipt_number") or str(payment.get("id") or ""))
-    payer_name = str(payment.get("payer_name") or payment.get("customer_name") or "")
-    amount_ngn = Decimal(str(payment.get("amount_ngn") or "0"))
-    payment_method = str(payment.get("payment_method") or "").replace("_", " ").title()
-    bank_name = str(payment.get("bank_name") or "")
-    cheque_number = str(payment.get("cheque_number") or "")
-    warehouse_name = str(payment.get("warehouse_name") or "")
-    billing_reference = str(payment.get("billing_reference") or payment.get("billing_id") or "")
-
-    payment_date_raw = payment.get("payment_date")
-    if isinstance(payment_date_raw, date | datetime):
-        payment_date_str = payment_date_raw.strftime("%d %B %Y")
-    else:
-        payment_date_str = str(payment_date_raw or datetime.utcnow().strftime("%d %B %Y"))
-
-    qr_data = f"RECEIPT:{receipt_number}"
-    qr_size = 3.5  # cm
-
-    header_data = [[Paragraph(company_name, company_style), _qr_image(qr_data, qr_size)]]
-    header_table = Table(
-        header_data,
-        colWidths=[page_width - (qr_size * cm) - 0.5 * cm, qr_size * cm],
-        rowHeights=[qr_size * cm],
-    )
-    header_table.setStyle(
-        TableStyle(
+    amount_block.setStyle(
+        t.TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, -1), brand_color),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (0, -1), 10),
-                ("RIGHTPADDING", (-1, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("BACKGROUND", (0, 0), (-1, -1), t.SURFACE_MUTED),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, 0), 8),
+                ("BOTTOMPADDING", (0, -1), (-1, -1), 8),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
             ]
         )
     )
 
-    meta_pairs = [
-        ("Payer", payer_name),
-        ("Amount (NGN)", f"{amount_ngn:,.2f}"),
-        ("Payment Method", payment_method),
-        ("Bank Name", bank_name),
-        ("Cheque No", cheque_number),
-        ("Warehouse", warehouse_name),
-        ("Payment Reference", billing_reference),
-        ("Date", payment_date_str),
+    payment_facts = [
+        ("Received from", payer),
+        ("Phone", str(payment.get("customer_phone") or t.MISSING)),
+        ("Payment method", t.humanise(payment.get("payment_method"))),
+        ("Payment reference", str(payment.get("reference_number") or payment.get("gateway_transaction_id") or t.MISSING)),
     ]
-    meta_rows = [[Paragraph(k, meta_key_style), Paragraph(v, meta_val_style)] for k, v in meta_pairs if v]
-    meta_table = Table(
-        meta_rows,
-        colWidths=[4.0 * cm, page_width - 4.0 * cm],
-    )
-    meta_table.setStyle(
-        TableStyle(
-            [
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#f9fafb")]),
-                ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
-            ]
-        )
-    )
+    if payment.get("bank_name"):
+        payment_facts.append(("Bank", str(payment["bank_name"])))
+    if payment.get("cheque_number"):
+        payment_facts.append(("Cheque No.", str(payment["cheque_number"])))
+    if payment.get("warehouse_name"):
+        payment_facts.append(("Received at", str(payment["warehouse_name"])))
+    if payment.get("physical_receipt_number"):
+        payment_facts.append(("Paper receipt No.", str(payment["physical_receipt_number"])))
 
-    amount_words = naira_amount_to_words(amount_ngn)
-
-    sig_line = HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#9ca3af"), spaceAfter=2)
-    sig_data = [
-        [sig_line, sig_line],
-        [
-            Paragraph("Authorized Signature", sig_label_style),
-            Paragraph("Name (Print)", sig_label_style),
-        ],
+    balance = payment.get("balance_after_ngn")
+    summary = [
+        ("Invoice", str(payment.get("billing_reference") or t.MISSING)),
+        ("Invoice total", t.money(payment.get("billing_total_ngn"))),
+        ("This payment", t.money(paid)),
+        ("Balance after this payment", t.money(max(Decimal(str(balance)), Decimal(0)) if balance is not None else None)),
     ]
-    col_w = page_width / 2
-    sig_table = Table(sig_data, colWidths=[col_w, col_w])
-    sig_table.setStyle(
-        TableStyle(
-            [
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]
-        )
-    )
-
-    elements = [
-        header_table,
-        Spacer(1, 0.5 * cm),
-        Paragraph("CASH RECEIPT", title_style),
-        Paragraph(f"Receipt No: {receipt_number}", ref_style),
-        meta_table,
-        Spacer(1, 0.5 * cm),
-        Paragraph(f"Being payment of: {amount_words}", words_style),
-        Spacer(1, 1.0 * cm),
-        sig_table,
-        Spacer(1, 0.8 * cm),
-        HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#d1d5db")),
-        Spacer(1, 0.2 * cm),
-        Paragraph(
-            "This receipt confirms payment received as stated above. Please retain for your records.",
-            footer_style,
+    owing = balance is not None and Decimal(str(balance)) > 0
+    body = [
+        amount_block,
+        Spacer(1, 0.4 * cm),
+        t.facts_grid(payment_facts, columns=2),
+        *t.section("Applied to"),
+        t.summary_lines(
+            summary,
+            emphasise=() if owing else ("Balance after this payment",),
+            alarm=("Balance after this payment",) if owing else (),
         ),
+        *t.section("Received by"),
+        t.facts_grid([("Name", str(payment.get("received_by_name") or t.MISSING))], columns=2),
+        t.signature_lines(["Received by: signature", "Customer: signature"]),
     ]
-
-    doc.build(elements)
-    buf.seek(0)
-    return buf
+    return t.render(
+        brand,
+        "Receipt",
+        receipt_number,
+        body,
+        facts=[("Date", t.day(payment.get("payment_date") or payment.get("created_at")))],
+        subject=f"Payment receipt for {payer}",
+    )

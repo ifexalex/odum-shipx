@@ -250,11 +250,16 @@ class TestListManifests:
         from services.manifest import service
 
         rows = [_manifest()]
-        with patch.object(service.repo, "list_manifests", return_value=(rows, None, False)) as mock_list:
-            result, cursor, has_more = service.list_manifests(TENANT_ID, {}, 20, None)
+        with (
+            patch.object(service.repo, "list_manifests", return_value=(rows, None, False)) as mock_list,
+            patch.object(service.repo, "count_manifests", return_value=68) as mock_count,
+        ):
+            result, cursor, has_more, total = service.list_manifests(TENANT_ID, {"verification_status": "pending"}, 20, None)
 
-        mock_list.assert_called_once_with(TENANT_ID, {}, 20, None)
-        assert len(result) == 1
+        mock_list.assert_called_once_with(TENANT_ID, {"verification_status": "pending"}, 20, None)
+        # The total is counted with the same filters as the page (the list shows "1 of 68").
+        mock_count.assert_called_once_with(TENANT_ID, {"verification_status": "pending"})
+        assert len(result) == 1 and total == 68
         assert not has_more
 
 
@@ -274,7 +279,7 @@ class TestEvidenceUpload:
         )
         with (
             patch.object(service.repo, "get_manifest_by_id", return_value=_manifest()),
-            patch.object(service, "get_storage_provider", return_value=storage),
+            patch("shared.uploads.get_storage_provider", return_value=storage),
             patch.object(service.repo, "create_manifest_evidence", return_value={"id": "ev-1"}) as mock_create,
         ):
             result = service.generate_evidence_upload(
@@ -283,14 +288,17 @@ class TestEvidenceUpload:
                 filename="damage.jpg",
                 content_type="image/jpeg",
                 actor_id="user-1",
+                size_bytes=1024,
                 label="Carton ABC-123",
             )
 
         # Tenant-isolated S3 key prefix.
-        assert storage.presigned_upload.call_args.args[0] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
+        key = storage.presigned_upload.call_args.args[0]
+        assert key.startswith(f"{TENANT_ID}/manifests/manifest-001/") and key.endswith("-damage.jpg")
         # Evidence row captured the label + key.
         stored = mock_create.call_args[0][1]
-        assert stored["file_key"] == f"{TENANT_ID}/manifests/manifest-001/damage.jpg"
+        assert stored["file_key"] == key
+        assert stored["file_name"] == "damage.jpg"
         assert stored["label"] == "Carton ABC-123"
         assert result["evidence_id"] == "ev-1"
         assert result["upload_url"] == "https://s3.example/bucket"
@@ -306,6 +314,7 @@ class TestEvidenceUpload:
                 filename="malware.exe",
                 content_type="application/x-msdownload",
                 actor_id="user-1",
+                size_bytes=1024,
             )
 
     def test_missing_manifest_raises_not_found(self):
@@ -321,6 +330,7 @@ class TestEvidenceUpload:
                 filename="x.png",
                 content_type="image/png",
                 actor_id="user-1",
+                size_bytes=1024,
             )
 
     def test_get_manifest_serializes_evidence_with_download_url(self):

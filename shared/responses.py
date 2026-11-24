@@ -59,6 +59,19 @@ def created(
     }
 
 
+def accepted(data: dict[str, Any], request_id: str = "") -> dict[str, Any]:
+    """Format a 202 Accepted response: the request was received, and what it led to is not reported.
+
+    For public endpoints where the outcome must not be observable by the caller, such as
+    registration, which answers the same whether or not the email already has an account.
+    """
+    return {
+        "statusCode": 202,
+        "headers": _standard_headers(request_id),
+        "body": json.dumps({"data": data}, default=str),
+    }
+
+
 def no_content(request_id: str = "") -> dict[str, Any]:
     """Format a 204 No Content response (used for DELETE)."""
     return {
@@ -134,9 +147,15 @@ def error_response(
     if rule_id:
         problem["rule_id"] = rule_id
 
+    headers = _standard_headers(request_id)
+    # A rate-limited client is told how long to wait (RFC 9110 §10.2.3), so a well-behaved one backs off.
+    retry_after = getattr(error, "retry_after", None)
+    if retry_after:
+        headers["Retry-After"] = str(retry_after)
+
     return {
         "statusCode": error.status_code,
-        "headers": _standard_headers(request_id),
+        "headers": headers,
         "body": json.dumps(problem, default=str),
     }
 

@@ -13,6 +13,9 @@ import logging
 from typing import Any
 
 from shared.db import execute_transaction, execute_with_tenant, execute_write_with_tenant
+from shared.platform_audit import (
+    insert_platform_audit as insert_platform_audit,  # re-exported: callers use repo.insert_platform_audit
+)
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -182,7 +185,11 @@ def list_tenants(limit: int = 50, cursor: dict[str, Any] | None = None) -> list[
 
 
 def update_tenant(tenant_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
-    set_clause, params = _build_set_clause(updates, _TENANT_UPDATE_FIELDS)
+    prepared = dict(updates)
+    for json_col in ("branding_config", "notification_preferences"):
+        if json_col in prepared and isinstance(prepared[json_col], (dict, list)):
+            prepared[json_col] = json.dumps(prepared[json_col])
+    set_clause, params = _build_set_clause(prepared, _TENANT_UPDATE_FIELDS)
     params["updated_at"] = "NOW()"
     params["id"] = tenant_id
     return execute_write_with_tenant(
@@ -190,6 +197,15 @@ def update_tenant(tenant_id: str, updates: dict[str, Any]) -> dict[str, Any] | N
         f"UPDATE tenant SET {set_clause}, updated_at = NOW() WHERE id = %(id)s RETURNING *",
         params,
     )
+
+
+def count_non_offboarded_tenants() -> int:
+    """Count tenants that are not offboarded (used to enforce platform max_tenants)."""
+    rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        "SELECT COUNT(*)::int AS cnt FROM tenant WHERE status <> 'offboarded'",
+    )
+    return int(rows[0]["cnt"]) if rows else 0
 
 
 def set_tenant_status(tenant_id: str, status: str) -> dict[str, Any] | None:
@@ -323,7 +339,7 @@ def get_user_by_cognito_sub(tenant_id: str, cognito_sub: str) -> dict[str, Any] 
 def get_user_by_email(tenant_id: str, email: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT * FROM tenant_user WHERE tenant_id = %s AND email = %s LIMIT 1",
+        "SELECT * FROM tenant_user WHERE tenant_id = %s AND LOWER(email) = LOWER(%s) LIMIT 1",
         (tenant_id, email),
     )
     return rows[0] if rows else None
@@ -345,7 +361,7 @@ def find_user_across_tenants(email: str | None = None, user_id: str | None = Non
     elif email:
         rows = execute_with_tenant(
             PLATFORM_TENANT_ID,
-            "SELECT * FROM tenant_user WHERE email = %s LIMIT 1",
+            "SELECT * FROM tenant_user WHERE LOWER(email) = LOWER(%s) LIMIT 1",
             (email,),
         )
     else:
@@ -456,12 +472,59 @@ def set_user_status(tenant_id: str, user_id: str, status: str) -> dict[str, Any]
 
 
 def count_active_users(tenant_id: str) -> int:
+    """Count active staff/admin users (excludes customer portal accounts from staff seat quota)."""
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT COUNT(*) AS cnt FROM tenant_user WHERE tenant_id = %s AND status = 'active'",
+        "SELECT COUNT(*) AS cnt FROM tenant_user WHERE tenant_id = %s AND status = 'active' AND role <> 'customer'",
         (tenant_id,),
     )
     return int(rows[0]["cnt"]) if rows else 0
+
+
+def count_active_tenant_admins(tenant_id: str, exclude_user_id: str | None = None) -> int:
+    """Count active users holding the `tenant_admin` role (primary or secondary)."""
+    if exclude_user_id:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT COUNT(DISTINCT tu.id)::int AS cnt
+            FROM tenant_user tu
+            LEFT JOIN tenant_user_role tur ON tur.tenant_user_id = tu.id AND tur.tenant_id = tu.tenant_id
+            WHERE tu.tenant_id = %s
+              AND tu.status = 'active'
+              AND tu.id <> %s
+              AND (tu.role = 'tenant_admin' OR tur.role = 'tenant_admin')
+            """,
+            (tenant_id, exclude_user_id),
+        )
+    else:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT COUNT(DISTINCT tu.id)::int AS cnt
+            FROM tenant_user tu
+            LEFT JOIN tenant_user_role tur ON tur.tenant_user_id = tu.id AND tur.tenant_id = tu.tenant_id
+            WHERE tu.tenant_id = %s
+              AND tu.status = 'active'
+              AND (tu.role = 'tenant_admin' OR tur.role = 'tenant_admin')
+            """,
+            (tenant_id,),
+        )
+    return int(rows[0]["cnt"]) if rows else 0
+
+
+def ensure_primary_user_role(tenant_id: str, user_id: str, role: str, assigned_by: str | None = None) -> None:
+    """Ensure the user's primary role exists in `tenant_user_role` (idempotent)."""
+    execute_write_with_tenant(
+        tenant_id,
+        """
+        INSERT INTO tenant_user_role (tenant_user_id, tenant_id, role, is_primary, assigned_by)
+        VALUES (%(user_id)s, %(tenant_id)s, %(role)s, TRUE, %(assigned_by)s)
+        ON CONFLICT (tenant_user_id, role) DO NOTHING
+        RETURNING tenant_user_id
+        """,
+        {"user_id": user_id, "tenant_id": tenant_id, "role": role, "assigned_by": assigned_by},
+    )
 
 
 def count_containers_this_month(tenant_id: str) -> int:
@@ -621,7 +684,11 @@ def list_customers(
 
 
 def update_customer(tenant_id: str, customer_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
-    set_clause, params = _build_set_clause(updates, _CUSTOMER_UPDATE_FIELDS)
+    prepared = dict(updates)
+    for json_col in ("delivery_address",):
+        if json_col in prepared and isinstance(prepared[json_col], (dict, list)):
+            prepared[json_col] = json.dumps(prepared[json_col])
+    set_clause, params = _build_set_clause(prepared, _CUSTOMER_UPDATE_FIELDS)
     params["tenant_id"] = tenant_id
     params["id"] = customer_id
     return execute_write_with_tenant(
@@ -631,25 +698,77 @@ def update_customer(tenant_id: str, customer_id: str, updates: dict[str, Any]) -
     )
 
 
+def customer_has_unpaid_balance(tenant_id: str, customer_id: str) -> bool:
+    """True when the customer still owes money on a non-cancelled/non-waived invoice."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT 1 FROM billing
+        WHERE tenant_id = %s
+          AND customer_id = %s
+          AND status NOT IN ('cancelled', 'waived', 'paid', 'overpaid')
+          AND balance_ngn > 0.01
+        LIMIT 1
+        """,
+        (tenant_id, customer_id),
+    )
+    return bool(rows)
+
+
+def delete_unconsumed_invites_for_customer(tenant_id: str, customer_id: str) -> None:
+    """Remove any pending customer_invite rows so an anonymised customer can never be resurrected."""
+    execute_write_with_tenant(
+        tenant_id,
+        """
+        DELETE FROM customer_invite
+        WHERE tenant_id = %s AND customer_id = %s AND consumed_at IS NULL
+        RETURNING id
+        """,
+        (tenant_id, customer_id),
+    )
+
+
+def anonymise_tenant_user(tenant_id: str, user_id: str) -> dict[str, Any] | None:
+    """Erase the personal data on a portal login (GDPR Art. 17), keeping the row for FK integrity.
+
+    `email` is NOT NULL and unique per tenant, so it becomes a per-user placeholder on a reserved
+    domain; the row is left `deactivated`. Cognito/Entra hold their own copy, which the caller deletes.
+    """
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE tenant_user
+        SET email = %(placeholder)s, full_name = 'Anonymised', cognito_sub = NULL,
+            status = 'deactivated', updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        RETURNING id
+        """,
+        {"tenant_id": tenant_id, "id": user_id, "placeholder": f"erased-{user_id}@erased.invalid"},
+    )
+
+
 def anonymise_customer_record(tenant_id: str, customer_id: str) -> None:
     """Erase personal data from a customer record (GDPR Art. 17).
 
-    Retains the UUID row for FK integrity but nulls all PII fields.
-    Sets anonymised_at to NOW() to timestamp when erasure occurred.
+    Retains the UUID row for FK integrity but nulls all PII fields (including
+    `delivery_address` and consent state) and timestamps `anonymised_at`.
     """
     execute_write_with_tenant(
         tenant_id,
         """
         UPDATE customer
-        SET name             = 'Anonymised',
-            email            = NULL,
-            phone            = NULL,
-            whatsapp         = NULL,
-            address          = NULL,
-            contract_details = NULL,
-            user_id          = NULL,
-            anonymised_at    = NOW(),
-            updated_at       = NOW()
+        SET name                 = 'Anonymised',
+            email                = NULL,
+            phone                = NULL,
+            whatsapp             = NULL,
+            address              = NULL,
+            delivery_address     = NULL,
+            contract_details     = NULL,
+            notification_consent = '{}'::text[],
+            consent_given_at     = NULL,
+            user_id              = NULL,
+            anonymised_at        = NOW(),
+            updated_at           = NOW()
         WHERE tenant_id = %(tenant_id)s AND id = %(id)s
         RETURNING id
         """,
@@ -715,9 +834,10 @@ def get_customer_full_export_data(tenant_id: str, customer_id: str) -> dict[str,
 
 
 def get_customer_by_email(tenant_id: str, email: str) -> dict[str, Any] | None:
+    """Return `{id, name}` of the live customer with this email, ignoring case, or None."""
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT id FROM customer WHERE tenant_id = %s AND email = %s AND anonymised_at IS NULL LIMIT 1",
+        "SELECT id, name FROM customer WHERE tenant_id = %s AND LOWER(email) = LOWER(%s) AND anonymised_at IS NULL LIMIT 1",
         (tenant_id, email),
     )
     return rows[0] if rows else None
@@ -1013,30 +1133,6 @@ def list_platform_audit_log(
     params.update(extra)
     rows = execute_with_tenant(PLATFORM_TENANT_ID, query, params)
     return extract_page(rows, limit)
-
-
-def insert_platform_audit(
-    action: str,
-    actor_id: str | None,
-    target_tenant_id: str | None,
-    details: dict[str, Any] | None = None,
-    ip_address: str | None = None,
-) -> None:
-    execute_write_with_tenant(
-        PLATFORM_TENANT_ID,
-        """
-        INSERT INTO platform_audit_log (action, actor_id, target_tenant_id, details, ip_address)
-        VALUES (%(action)s, %(actor_id)s, %(target_tenant_id)s, %(details)s::jsonb, %(ip_address)s)
-        RETURNING id
-        """,
-        {
-            "action": action,
-            "actor_id": actor_id,
-            "target_tenant_id": target_tenant_id,
-            "details": json.dumps(details) if details else None,
-            "ip_address": ip_address,
-        },
-    )
 
 
 # ---------------------------------------------------------------------------

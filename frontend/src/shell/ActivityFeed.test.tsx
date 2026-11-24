@@ -4,6 +4,7 @@
  * actor name on the staff-profile (showActor=false).
  */
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configApi, type TenantActivityEntry } from '../api/tenantManagement'
 import { withQuery } from '../test/queryWrapper'
@@ -58,5 +59,14 @@ describe('ActivityFeed (B6)', () => {
     vi.mocked(configApi.activity).mockResolvedValue(ok([]))
     render(withQuery(<ActivityFeed />))
     await waitFor(() => expect(screen.getByText('No recent activity.')).toBeInTheDocument())
+  })
+
+  it('says a failed load failed, with a retry, instead of "No recent activity" (FD-53)', async () => {
+    vi.mocked(configApi.activity).mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce(ok([entry({})]))
+    render(withQuery(<ActivityFeed />))
+    expect(await screen.findByText("Couldn't load activity")).toBeInTheDocument()
+    expect(screen.queryByText('No recent activity.')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /try again|retry/i }))
+    expect(await screen.findByText('packing list')).toBeInTheDocument()
   })
 })

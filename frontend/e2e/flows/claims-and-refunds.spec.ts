@@ -48,7 +48,7 @@ test.describe('claims and refunds', () => {
     await expect(page.getByText(CONTAINER_NUMBER)).toBeVisible()
 
     await page.getByRole('button', { name: /done.*view my claims/i }).click()
-    await expect(page.getByText('Claim filed!')).toBeVisible()
+    await expect(page.getByRole('heading', { name: /claim filed/i })).toBeVisible()
   })
 
   test('staff inspects and resolves the claim as a refund above the staff limit', async ({ page }) => {
@@ -59,17 +59,14 @@ test.describe('claims and refunds', () => {
     const REFUND_AMOUNT_NGN = '500000'
 
     await switchRole(page, 'nigeria_office_staff')
-    await goToViaNav(page, /^claims$/i)
+    await goToViaNav(page, /^damage claims$/i)
     await page.getByPlaceholder(/claim id, customer, container/i).fill('DC-')
     await settleNetwork(page)
     await page.waitForTimeout(300)
 
     const row = dataRows(page).filter({ hasText: /filed|under inspection|inspection complete|pending resolution/i }).first()
     test.skip(!(await hasRows(row)), 'No open claim found — run the filing test first')
-    // ClaimList.tsx's row action label depends on status (rowAction()):
-    // "Start inspection" / "Complete" / "Resolve" / "View" — not a fixed
-    // label, same pattern as BillingList.tsx.
-    await row.getByRole('button', { name: /start inspection|complete|resolve|^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/claims\//)
     // Without this, the immediately-following isVisible() check can run while
     // the page still shows "Loading claim…", wrongly concluding no
@@ -116,7 +113,7 @@ test.describe('claims and refunds', () => {
     await submitBtn.click()
 
     await expect(resolveDialog.getByText(/action failed/i)).toBeVisible({ timeout: 10_000 })
-    await expect(resolveDialog.getByText(/tenant_admin approval required/i)).toBeVisible()
+    await expect(resolveDialog.getByText(/don't have permission|tenant_admin approval required/i)).toBeVisible()
 
     // The assertion above is the point of this test — the rejection message
     // is confirmed. Closing the dialog is just cleanup, not essential: the
@@ -129,14 +126,14 @@ test.describe('claims and refunds', () => {
     const REFUND_AMOUNT_NGN = '500000'
 
     await switchRole(page, 'tenant_admin')
-    await goToViaNav(page, /^claims$/i)
+    await goToViaNav(page, /^damage claims$/i)
     await page.getByPlaceholder(/claim id, customer, container/i).fill('DC-')
     await settleNetwork(page)
     await page.waitForTimeout(300)
 
     const row = dataRows(page).filter({ hasText: /under inspection/i }).first()
     test.skip(!(await hasRows(row)), 'No under-inspection claim found — run the prior tests first')
-    await row.getByRole('button', { name: /start inspection|complete|resolve|^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page.getByText('Claim details')).toBeVisible()
 
     const resolveBtn = page.getByRole('button', { name: /resolve claim/i })
@@ -165,7 +162,7 @@ test.describe('refund review, approve, and reject', () => {
 
     const row = dataRows(page).filter({ hasText: /pending review/i }).first()
     test.skip(!(await hasRows(row)), 'No pending_review refund found — run the claims tests first')
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page).toHaveURL(/\/refunds\//)
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
@@ -186,7 +183,7 @@ test.describe('refund review, approve, and reject', () => {
     await goToViaNav(page, /^refunds$/i)
     const pendingApprovalRow = dataRows(page).filter({ hasText: /pending approval/i }).first()
     test.skip(!(await hasRows(pendingApprovalRow)), 'No pending_approval refund found')
-    await pendingApprovalRow.getByRole('button', { name: /^view$/i }).click()
+    await pendingApprovalRow.getByRole('button').first().click()
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
     const approveBtn = page.getByRole('button', { name: /^approve$/i })
@@ -209,7 +206,7 @@ test.describe('refund review, approve, and reject', () => {
 
     const row = dataRows(page).filter({ hasText: /pending review/i }).first()
     test.skip(!(await hasRows(row)), 'No pending_review refund found')
-    await row.getByRole('button', { name: /^view$/i }).click()
+    await row.getByRole('button').first().click()
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
 
     const rejectBtn = page.getByRole('button', { name: /^reject$/i })

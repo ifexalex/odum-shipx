@@ -4,7 +4,7 @@
 }
 
 .banner {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .spacerLg {
@@ -18,14 +18,14 @@
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
 .actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 0 0;
+  padding: var(--space-5) 0 0;
 }
 
 /* P2-6 — collapse the two-column form grid on narrow app frames */
@@ -41,18 +41,18 @@
   justify-content: space-between;
   font-family: var(--font-body);
   font-weight: 500;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-2);
 }
 .optionalTag {
   font-weight: 400;
   color: var(--color-ink-4);
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 .capacityHelper {
   display: block;
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
   color: var(--color-ink-4);
 }

@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { withQuery } from '../../test/queryWrapper'
 import { ApiError } from '../../api/client'
 import { warehousesApi, type Warehouse } from '../../api/warehouses'
-import { TopBarTestWrapper } from '../../test/TopBarTestWrapper'
 import { Warehouses } from './Warehouses'
 
 vi.mock('../../api/warehouses', () => ({
@@ -43,9 +42,9 @@ function renderPage() {
   return render(
     withQuery(
       <MemoryRouter>
-        <TopBarTestWrapper>
+        <>
           <Warehouses />
-        </TopBarTestWrapper>
+        </>
       </MemoryRouter>,
     ),
   )
@@ -59,9 +58,6 @@ describe('Warehouses', () => {
     vi.mocked(warehousesApi.setDefault).mockReset()
     vi.mocked(warehousesApi.remove).mockReset()
     vi.mocked(warehousesApi.deactivate).mockReset()
-    // Delete is destructive and now confirms first; default to accepting so
-    // each test states its own intent rather than inheriting a stub.
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     vi.mocked(warehousesApi.list).mockResolvedValue([DEFAULT_WH, OTHER_WH])
   })
 
@@ -170,21 +166,52 @@ describe('Warehouses', () => {
   // "When I delete a warehouse it should be deleted completely, not soft
   // deleted" — and separately, clicking Set default appeared to do nothing.
 
-  it('really deletes a non-default warehouse, after confirming', async () => {
+  it('really deletes a non-default warehouse, after confirming in the dialog', async () => {
     vi.mocked(warehousesApi.remove).mockResolvedValue({ ...OTHER_WH, is_active: false })
     renderPage()
     await screen.findByText('Aba — Ariaria')
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    // Nothing happens until the dialog is confirmed.
+    const dialog = await screen.findByRole('dialog', { name: 'Delete this warehouse?' })
+    expect(warehousesApi.remove).not.toHaveBeenCalled()
+    expect(within(dialog).getByText('Aba — Ariaria')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete warehouse' }))
     await waitFor(() => expect(warehousesApi.remove).toHaveBeenCalledWith('wh2'))
     // A real delete, not a flag flip.
     expect(warehousesApi.deactivate).not.toHaveBeenCalled()
+    await screen.findByText('Aba — Ariaria was deleted.')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('does not delete when the confirmation is declined', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+  it('refreshes the list after a delete', async () => {
+    // The list is cached for five minutes; a delete that skipped the cache left the row on screen.
+    vi.mocked(warehousesApi.remove).mockResolvedValue({ ...OTHER_WH, is_active: false })
+    renderPage()
+    await screen.findByText('Aba — Ariaria')
+    vi.mocked(warehousesApi.list).mockResolvedValue([DEFAULT_WH])
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete warehouse' }))
+    await waitFor(() => expect(screen.queryByRole('cell', { name: 'Aba — Ariaria' })).not.toBeInTheDocument())
+    expect(warehousesApi.list).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not delete when the dialog is cancelled', async () => {
     renderPage()
     await screen.findByText('Aba — Ariaria')
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(warehousesApi.remove).not.toHaveBeenCalled()
+  })
+
+  it('does not delete when the dialog is dismissed with Escape', async () => {
+    renderPage()
+    await screen.findByText('Aba — Ariaria')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await screen.findByRole('dialog')
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(warehousesApi.remove).not.toHaveBeenCalled()
   })
 
@@ -208,7 +235,37 @@ describe('Warehouses', () => {
     renderPage()
     await screen.findByText('Aba — Ariaria')
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete warehouse' }))
+    // The same dialog now explains why, with the server's reason, and offers to retire.
+    const dialog = await screen.findByRole('dialog', { name: 'Retire this warehouse instead?' })
+    expect(within(dialog).getByText('This warehouse is referenced by 2 release notes')).toBeInTheDocument()
+    expect(warehousesApi.deactivate).not.toHaveBeenCalled()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Retire warehouse' }))
     await waitFor(() => expect(warehousesApi.deactivate).toHaveBeenCalledWith('wh2'))
+    await screen.findByText(/was retired/)
+  })
+
+  it('keeps the warehouse when retiring is declined', async () => {
+    vi.mocked(warehousesApi.remove).mockRejectedValue(
+      new ApiError(
+        {
+          type: 'about:blank',
+          title: 'Business Rule Violation',
+          status: 422,
+          detail: 'This warehouse is referenced by 2 release notes',
+          error_code: 'BUSINESS_RULE_VIOLATION',
+          rule_id: 'WAREHOUSE_IN_USE',
+        },
+        null,
+      ),
+    )
+    renderPage()
+    await screen.findByText('Aba — Ariaria')
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete warehouse' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Retire this warehouse instead?' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(warehousesApi.deactivate).not.toHaveBeenCalled()
   })
 
   it('confirms in the UI that the default moved', async () => {
@@ -237,7 +294,7 @@ describe('Warehouses', () => {
     renderPage()
     await screen.findByText('Aba — Ariaria')
     await userEvent.click(screen.getByRole('button', { name: 'Set default' }))
-    await screen.findByText('Internal server error')
+    await screen.findByText('Something went wrong on our side. Try again; if it keeps happening, contact support.')
   })
 
   it('can create a warehouse already marked as the default', async () => {

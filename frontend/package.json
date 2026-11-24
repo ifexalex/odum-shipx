@@ -14,9 +14,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "visual:baseline": "PW_E2E=local-stack playwright test --project=visual --update-snapshots=all",
+    "visual:compare": "PW_E2E=local-stack playwright test --project=visual --reporter=list,html",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@fontsource-variable/kumbh-sans": "5.3.0",
+    "@fontsource-variable/manrope": "5.3.0",
     "@tanstack/react-query": "^5.62.0",
     "amazon-cognito-identity-js": "^6.3.22",
     "react": "^18.3.1",

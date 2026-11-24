@@ -1,9 +1,11 @@
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { authProvider, isInteractiveLogin } from '../../auth/authClient'
+import { safeNextPath } from '../../auth/returnPath'
 import { homePathForRole } from '../../auth/roleHome'
+import { rememberNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Check, Field, Icon, KolaMark, ShipxWordmark } from '../../design/components'
+import { Banner, Button, Field, Icon, KolaMark, ShipxWordmark, IconButton } from '../../design/components'
 import { colors } from '../../design/theme'
 import styles from './LoginScreen.module.css'
 
@@ -66,10 +68,10 @@ function BrandIllustration(): JSX.Element {
           <rect x="-18" y="-2" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
           <rect x="-18" y="5" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
         </g>
-        <text x="80" y="105" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fill: colors.primaryBright, letterSpacing: '0.1em' }}>
+        <text x="80" y="105" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.primaryBright, letterSpacing: 'var(--tracking-label)' }}>
           CN · GZG
         </text>
-        <text x="320" y="312" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fill: colors.accentHover, letterSpacing: '0.1em' }}>
+        <text x="320" y="312" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.accentHover, letterSpacing: 'var(--tracking-label)' }}>
           NG · LOS
         </text>
       </svg>
@@ -80,9 +82,10 @@ function BrandIllustration(): JSX.Element {
 export function LoginScreen(): JSX.Element {
   const { login, beginLogin, status } = useSession()
   const navigate = useNavigate()
+  // Where the visitor was heading before sign-in; refused unless it is a plain in-app path (auth/returnPath.ts).
+  const next = safeNextPath(useSearchParams()[0].get('next'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const loading = status === 'loading'
@@ -92,13 +95,16 @@ export function LoginScreen(): JSX.Element {
     setError(null)
     try {
       const session = await login(email, password)
-      navigate(homePathForRole(session.role), { replace: true })
+      navigate(next ?? homePathForRole(session.role), { replace: true })
     } catch (err) {
       // Temporary password (registration / staff invite): Cognito demands a
       // permanent one before issuing tokens — hand off to the reset screen.
       if (err instanceof Error && err.name === 'NewPasswordRequiredError') {
         navigate(`/reset-password?first=1&email=${encodeURIComponent(email)}`)
         return
+      }
+      if (import.meta.env.DEV) {
+        console.error('[LoginScreen] signIn failed:', err)
       }
       setError(loginErrorMessage(err))
     }
@@ -109,6 +115,8 @@ export function LoginScreen(): JSX.Element {
   // navigates away on success, so this only returns on failure.
   async function handleEntraLogin(): Promise<void> {
     setError(null)
+    // The sign-in leaves the app and returns to /auth/callback, which restores this.
+    rememberNext(next)
     try {
       await beginLogin?.()
     } catch (err) {
@@ -126,11 +134,12 @@ export function LoginScreen(): JSX.Element {
         </div>
         <div className={styles.tagline}>
           <BrandIllustration />
-          <h1 className={styles.heroHeading}>
+          {/* The brand line, not the page's heading: the form's title is the h1 (FD-49). */}
+          <p className={styles.heroHeading}>
             Cargo logistics,
             <br />
             <span className={styles.heroAccent}>engineered to move.</span>
-          </h1>
+          </p>
           <p className={styles.heroSub}>
             Guangzhou to Lagos. End-to-end. Unstoppable. Built for the operators, customers, and developers
             who lead every shipment.
@@ -147,8 +156,12 @@ export function LoginScreen(): JSX.Element {
 
       <div className={styles.formPanel}>
         <div className={styles.formWrap}>
+          <div className={styles.mobileBrand}>
+            <KolaMark size={24} color="var(--color-primary)" />
+            <ShipxWordmark size={18} />
+          </div>
           <div className={styles.formHead}>
-            <h2 className={styles.formTitle}>Sign in to ShipX</h2>
+            <h1 className={styles.formTitle}>Sign in to ShipX</h1>
             <p className={styles.formSub}>
               {isInteractiveLogin
                 ? 'Sign in to access your portal.'
@@ -157,7 +170,7 @@ export function LoginScreen(): JSX.Element {
           </div>
 
           {error && (
-            <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 'var(--space-5)' }}>
               <Banner variant="error" title="Couldn't sign in">
                 {error}
               </Banner>
@@ -192,24 +205,17 @@ export function LoginScreen(): JSX.Element {
                 autoComplete="current-password"
                 required
                 trailing={
-                  <button
-                    type="button"
-                    className={styles.trailingButton}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    onClick={() => setShowPassword((value) => !value)}
-                  >
-                    <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
-                  </button>
+                  <IconButton
+              className={styles.trailingButton}
+              size="sm"
+              icon={showPassword ? 'eyeoff' : 'eye'}
+              label={showPassword ? 'Hide password' : 'Show password'}
+              onClick={() => setShowPassword((value) => !value)}
+            />
                 }
               />
-              <div className={styles.rowBetween}>
-                <label className={styles.rememberLabel}>
-                  <Check checked={rememberMe} onChange={setRememberMe} />
-                  Remember me for 30 days
-                </label>
-                <button type="button" className={styles.link} onClick={() => navigate('/forgot-password')}>
-                  Forgot password?
-                </button>
+              <div className={styles.rowBetween} style={{ justifyContent: 'flex-end' }}>
+                <Link to="/forgot-password" className={styles.link}>Forgot password?</Link>
               </div>
               <Button type="submit" variant="accent" size="lg" full loading={loading}>
                 Sign In
@@ -223,16 +229,15 @@ export function LoginScreen(): JSX.Element {
             <span className={styles.dividerLine} />
           </div>
           <p className={styles.footerLine}>
-            Customer of a shipping company?{' '}
-            <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/register')}>
-              Create your account →
-            </button>
+            Have a tracking code?{' '}
+            <Link to="/track" className={styles.footerLinkStrong}>Track a shipment <Icon name="arrowright" size={12} /></Link>
           </p>
-          <p className={styles.footerLine} style={{ marginTop: 8 }}>
+          <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)' }}>
             Are you a shipping company?{' '}
-            <button type="button" className={styles.footerLinkStrong} onClick={() => navigate('/get-started')}>
-              Onboard with ShipX →
-            </button>
+            <Link to="/get-started" className={styles.footerLinkStrong}>Onboard with ShipX <Icon name="arrowright" size={12} /></Link>
+          </p>
+          <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
+            New customer? Use the sign-up or invite link sent by your shipping company.
           </p>
         </div>
       </div>

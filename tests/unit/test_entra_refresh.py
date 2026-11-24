@@ -12,6 +12,7 @@ import pytest
 import shared.providers as providers
 from services.auth import entra_refresh, handler
 from shared.exceptions import AuthenticationRequiredError, ExternalServiceError
+from tests.browser import BROWSER_HEADERS
 
 _REFRESH = "x" * 40
 
@@ -19,6 +20,7 @@ _REFRESH = "x" * 40
 def _event(cookies: list[str]) -> dict:
     return {
         "requestContext": {"requestId": "r1", "http": {"method": "POST", "path": "/v1/auth/refresh"}},
+        "headers": dict(BROWSER_HEADERS),
         "cookies": cookies,
         "body": "",
     }

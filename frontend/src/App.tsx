@@ -1,6 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import type { JSX } from 'react'
-import { BrowserRouter } from 'react-router-dom'
+import { useState, type JSX } from 'react'
+import { BrowserRouter, createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { LocalAuthProvider } from './auth/LocalAuthProvider'
 import { RoleSwitcher } from './auth/RoleSwitcher'
 import { SessionProvider } from './auth/SessionProvider'
@@ -9,18 +9,20 @@ import { useSession } from './auth/useSession'
 import { ComponentCatalog } from './design/ComponentCatalog'
 import { DesignPreview } from './design/DesignPreview'
 import { queryClient } from './lib/queryClient'
+import { ErrorBoundary } from './shell/ErrorBoundary'
 import { AppRoutes } from './shell/routes'
+import { ToastRegion } from './design/components/ToastRegion'
 
 function AuthPreview(): JSX.Element {
   const { session, status } = useSession()
   return (
-    <div style={{ padding: 32, fontFamily: 'var(--font-body)' }}>
+    <div style={{ padding: 'var(--space-8)', fontFamily: 'var(--font-body)' }}>
       <h1>Auth preview — local dev shim</h1>
       <p>Flip roles below; this is the same Session shape SessionProvider produces from a real Cognito login.</p>
       <p>
         status: <strong>{status}</strong>
       </p>
-      <pre style={{ background: 'var(--color-surface-muted)', padding: 16, borderRadius: 8 }}>
+      <pre style={{ background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
         {JSON.stringify(session, null, 2)}
       </pre>
       <RoleSwitcher />
@@ -40,6 +42,7 @@ function AppProviders({ children }: { children: JSX.Element }): JSX.Element {
         <LocalAuthProvider>
           {children}
           <RoleSwitcher />
+          <ToastRegion />
         </LocalAuthProvider>
       </QueryClientProvider>
     )
@@ -55,9 +58,33 @@ function AppProviders({ children }: { children: JSX.Element }): JSX.Element {
         }}
       >
         {children}
+        <ToastRegion />
       </SessionProvider>
     </QueryClientProvider>
   )
+}
+
+// A data router (FD-54), so a form can hold navigation while it has unsaved input (`shell/UnsavedChangesGuard`, which
+// needs `useBlocker`). One catch-all route renders the same tree as before: `AppRoutes` still declares every path with
+// <Routes>, and each layout keeps its own error boundary. The app-level boundary sits inside the route as well as
+// around the router, so a render error reaches it rather than the router's default error screen.
+function MainApp(): JSX.Element {
+  // Created on mount, not at import: the dev preview pages above run without it.
+  const [router] = useState(() =>
+    createBrowserRouter([
+      {
+        path: '*',
+        element: (
+          <ErrorBoundary variant="app">
+            <AppProviders>
+              <AppRoutes />
+            </AppProviders>
+          </ErrorBoundary>
+        ),
+      },
+    ]),
+  )
+  return <RouterProvider router={router} />
 }
 
 // Router + providers root. The dev-only path checks below are a temporary
@@ -68,7 +95,11 @@ function App(): JSX.Element {
     return <DesignPreview />
   }
   if (import.meta.env.DEV && window.location.pathname === '/component-catalog') {
-    return <ComponentCatalog />
+    return (
+      <BrowserRouter>
+        <ComponentCatalog />
+      </BrowserRouter>
+    )
   }
   if (import.meta.env.DEV && window.location.pathname === '/auth-preview') {
     return (
@@ -78,12 +109,12 @@ function App(): JSX.Element {
     )
   }
 
+  // Outermost, so even a failure in the providers or the router shows a way back instead of a white screen.
+  // Each layout has its own boundary around its routed content, which keeps the menu usable.
   return (
-    <BrowserRouter>
-      <AppProviders>
-        <AppRoutes />
-      </AppProviders>
-    </BrowserRouter>
+    <ErrorBoundary variant="app">
+      <MainApp />
+    </ErrorBoundary>
   )
 }
 

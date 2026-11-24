@@ -29,6 +29,10 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Cache PyJWKClient per JWKS URL so each request does not perform a fresh outbound
+# JWKS fetch (PyJWKClient caches keys internally for 300s by default).
+_JWKS_CLIENTS: dict[str, Any] = {}
+
 
 def _jwks_url() -> str:
     """Return the configured JWKS endpoint (OIDC_JWKS_URL, else COGNITO_JWKS_URL)."""
@@ -40,31 +44,49 @@ def _audience() -> str:
     return os.environ.get("OIDC_AUDIENCE") or os.environ.get("COGNITO_AUDIENCE", "")
 
 
+def _issuer() -> str:
+    """Return the expected token issuer (OIDC_ISSUER, else COGNITO_ISSUER)."""
+    return os.environ.get("OIDC_ISSUER") or os.environ.get("COGNITO_ISSUER", "")
+
+
+def _get_jwks_client(jwks_url: str) -> Any:
+    client = _JWKS_CLIENTS.get(jwks_url)
+    if client is None:
+        from jwt import PyJWKClient
+
+        client = PyJWKClient(jwks_url, cache_keys=True)
+        _JWKS_CLIENTS[jwks_url] = client
+    return client
+
+
 def verify_oidc_jwt(token: str) -> dict[str, Any] | None:
     """Return decoded claims if ``token`` is a valid OIDC RS256 JWT, else None.
 
-    Verifies the signature against the configured JWKS endpoint. Audience is
-    enforced only when one is configured. Any verification failure (bad
-    signature, expiry, audience, unreachable JWKS) yields None so the caller can
-    fall through to the next token strategy.
+    Verifies signature, expiry, audience (fail-closed: requires OIDC_AUDIENCE /
+    COGNITO_AUDIENCE), optional issuer (`OIDC_ISSUER`), and rejects Cognito access
+    tokens (`token_use != "id"`).
     """
     try:
         import jwt
-        from jwt import PyJWKClient
 
         jwks_url = _jwks_url()
         audience = _audience()
-        if not jwks_url:
+        issuer = _issuer()
+        if not jwks_url or not audience:
             return None
-        jwks_client = PyJWKClient(jwks_url)
+        jwks_client = _get_jwks_client(jwks_url)
         signing_key = jwks_client.get_signing_key_from_jwt(token)
-        claims = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256"],
-            audience=audience or None,
-            options={"verify_aud": bool(audience)},
-        )
+        decode_kwargs: dict[str, Any] = {
+            "algorithms": ["RS256"],
+            "audience": audience,
+            "options": {"verify_aud": True},
+        }
+        if issuer:
+            decode_kwargs["issuer"] = issuer
+        claims = jwt.decode(token, signing_key.key, **decode_kwargs)
+        # Reject Cognito access tokens (only ID tokens carry tenant/role claims).
+        if claims.get("token_use") is not None and claims.get("token_use") != "id":
+            return None
         return dict(claims)
     except Exception as exc:  # noqa: BLE001 - any failure means "not a valid OIDC JWT"
         logger.debug("OIDC JWT verification failed: %s", exc)
@@ -120,14 +142,19 @@ def _oidc_claims_to_context(claims: dict[str, Any]) -> dict[str, Any]:
 def _impersonation_claims_to_context(claims: dict[str, Any]) -> dict[str, Any]:
     """Project impersonation claims into the authorizer-context shape.
 
-    Synthesises ``cognito:groups`` from ``{tenant_id}:{role}`` so
-    ``get_tenant_context`` parses the role exactly as it does for a real JWT,
-    and passes the impersonation markers through for read-only enforcement.
+    Emits both Cognito (`custom:tenant_id`, `cognito:groups`) and Entra
+    (`oid`, `tenant_id`, `role`, `groups`) keys so impersonation works identically
+    regardless of `CLOUD_PROVIDER`, and passes the impersonation markers through
+    for fail-closed read-only enforcement.
     """
+    sub = claims.get("sub", "")
     tenant_id = claims.get("tenant_id", "")
     role = claims.get("role", "tenant_admin")
     return {
-        "sub": claims.get("sub", ""),
+        "sub": sub,
+        "oid": sub,
+        "tenant_id": tenant_id,
+        "role": role,
         "custom:tenant_id": tenant_id,
         "cognito:groups": f"{tenant_id}:{role}",
         "impersonated_by": claims.get("impersonated_by", ""),

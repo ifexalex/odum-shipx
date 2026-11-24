@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { manifestKeys } from '../api/keys'
+import { STALE_5_MIN } from '../lib/queryClient'
 import { manifestApi, type ManifestListParams, type VerifyManifestInput } from '../api/manifest'
 import { useCursorPagination } from './useCursorPagination'
 
@@ -18,9 +19,15 @@ export function useManifest(id: string) {
   })
 }
 
+/** Per-status counts for the manifest list's stats row. A child of `manifestKeys.all`, so any manifest write refreshes it. */
+export function useManifestStats() {
+  return useQuery({ queryKey: manifestKeys.stats(), queryFn: () => manifestApi.stats(), staleTime: STALE_5_MIN })
+}
+
 export function useVerifyManifest(id: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Manifest verification saved' },
     mutationFn: (body: VerifyManifestInput) => manifestApi.verify(id, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: manifestKeys.detail(id) })

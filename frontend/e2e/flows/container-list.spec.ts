@@ -10,11 +10,12 @@
  * Requires seeded containers (make stack / make seed / seed_stress.py).
  */
 import { expect, test } from '@playwright/test'
-import { clickFilterAndSettle, dataRows, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
+import { clickFilterAndSettle, dataRows, goToViaNav, hasRows, settleNetwork, switchRole } from '../support/roleSwitch'
 
 test.describe('container list', () => {
   test.beforeEach(async ({ page }) => {
     await switchRole(page, 'china_office_staff')
+    await goToViaNav(page, /^containers$/i)
     await expect(page).toHaveURL(/\/containers/)
     await settleNetwork(page)
   })
@@ -67,7 +68,7 @@ test.describe('container list', () => {
   })
 
   test('Filters panel: status multi-select narrows results and Clear resets it', async ({ page }) => {
-    await page.getByRole('button', { name: /^filters$/i }).click()
+    await page.getByRole('button', { name: /^(more )?filters$/i }).click()
     const dialog = page.getByRole('dialog', { name: /filters/i })
     await expect(dialog).toBeVisible()
 
@@ -79,8 +80,7 @@ test.describe('container list', () => {
     await expect(statusOptions.first()).toHaveAttribute('aria-checked', 'true')
 
     await dialog.getByRole('button', { name: /clear all filters/i }).click()
-    // Clearing closes the panel (clearAllFilters also calls setFiltersOpen(false)).
-    await expect(dialog).not.toBeVisible()
+    await expect(statusOptions.first()).toHaveAttribute('aria-checked', 'false')
   })
 
   test('sorting by a sortable column reorders the table without erroring', async ({ page }) => {

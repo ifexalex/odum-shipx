@@ -4,7 +4,7 @@
  * The Action component is the single chokepoint for read-only impersonation in
  * the UI, mirroring get_tenant_context() on the backend. This test verifies:
  * - Normal session: renders as a live Button (clickable)
- * - Read-only session: renders as a dashed disabled pill (not clickable)
+ * - Read-only session: a disabled button with the reason as its title (FD-07: Button does this itself)
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -12,6 +12,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { Action } from './Action'
+import { Button } from './Button'
+import { IconButton } from './IconButton'
 
 function baseSession(overrides: Partial<Session> = {}): Session {
   return {
@@ -61,27 +63,14 @@ describe('Action — read-only impersonation enforcement', () => {
     expect(onClick).toHaveBeenCalledOnce()
   })
 
-  it('renders as a disabled dashed pill during read-only impersonation', () => {
-    const onClick = vi.fn()
+  it('is a disabled button during read-only impersonation, and says why', () => {
     renderWithSession(
-      <Action variant="primary" onClick={onClick}>Approve</Action>,
-      baseSession({
-        readOnly: true,
-        impersonatedBy: 'platform@shipx.co',
-        tokenType: 'impersonation',
-      }),
+      <Action variant="primary" onClick={vi.fn()}>Approve</Action>,
+      baseSession({ readOnly: true, impersonatedBy: 'platform@shipx.co', tokenType: 'impersonation' }),
     )
-
-    // The read-only pill has role="button" and aria-disabled="true".
-    // It must NOT render as a native <button> (which has a real click handler).
-    const pill = screen.getByRole('button', { name: /approve/i })
-
-    // aria-disabled marks it as non-interactive for assistive technology
-    expect(pill).toHaveAttribute('aria-disabled', 'true')
-
-    // It should be a <span>, not a native <button> — native buttons stay clickable
-    // even with aria-disabled unless explicitly disabled via the disabled attr.
-    expect(pill.tagName.toLowerCase()).toBe('span')
+    const button = screen.getByRole('button', { name: /approve/i })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', 'Disabled during read-only impersonation')
   })
 
   it('never fires onClick during read-only impersonation', async () => {
@@ -107,5 +96,30 @@ describe('Action — read-only impersonation enforcement', () => {
 
     const pill = screen.getByText('Save').closest('[aria-disabled]')
     expect(pill).toHaveAttribute('title', 'Disabled during read-only impersonation')
+  })
+
+  it('blocks a mutating Button without an Action wrapper (FD-07)', () => {
+    renderWithSession(
+      <>
+        <Button variant="primary">Save</Button>
+        <Button variant="danger-ghost">Cancel container</Button>
+        <Button variant="secondary">Filter</Button>
+        <Button variant="secondary" mutates>Archive</Button>
+        <Button variant="primary" mutates={false}>Open</Button>
+        <IconButton icon="x" label="Remove item" variant="danger-ghost" />
+      </>,
+      baseSession({ readOnly: true, impersonatedBy: 'platform@shipx.co' }),
+    )
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /cancel container/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /archive/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /remove item/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /filter/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /open/i })).toBeEnabled()
+  })
+
+  it('leaves every button live outside impersonation and with no session at all', () => {
+    render(<Button variant="primary">Sign in</Button>)
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeEnabled()
   })
 })

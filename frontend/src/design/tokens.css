@@ -13,7 +13,8 @@
   --color-primary-bright: #2dc438; /* focus rings, progress, "Green Flash" */
   --color-primary-soft: #d6f5da; /* selected row bg */
   --color-primary-tint: #f3fcf4; /* hover row bg */
-  --color-primary-on-soft: #155f1b; /* primary text/icon ON a primary-soft fill (stat-card icons, consent pills) — goes light in dark mode so it isn't green-on-green */
+  --color-primary-on-soft: #155f1b;
+  --color-primary-text: var(--color-primary); /* brand green as text (links, active labels): goes light in dark */ /* primary text/icon ON a primary-soft fill (stat-card icons, consent pills) — goes light in dark mode so it isn't green-on-green */
 
   --color-forest-dark: #0b2f0d; /* sidebar background — never navy */
 
@@ -21,6 +22,19 @@
      the login brand panel). Always near-white in BOTH themes — never flips
      with --color-surface, which becomes dark in dark mode. */
   --color-on-brand: #ffffff;
+
+  /* On the dark brand surfaces (sidebar, login panel, customer top bar, scan block, blocked screen), in both themes.
+     Text: on-dark, on-dark-muted (4.5:1 on forest-dark and primary-deep), on-dark-subtle (4.5:1 on forest-dark only).
+     On the brand-green customer top bar only on-dark itself reads at 4.5:1. */
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: rgba(255, 255, 255, 0.72);
+  --color-on-dark-subtle: rgba(255, 255, 255, 0.5);
+  --color-on-dark-fill: rgba(255, 255, 255, 0.08);
+  --color-on-dark-fill-strong: rgba(255, 255, 255, 0.15);
+  --color-on-dark-line: rgba(255, 255, 255, 0.1);
+  --color-shade: rgba(0, 0, 0, 0.2); /* a darker band on a coloured banner */
+  /* Text on an element that is white in both themes (the warehouse scan input). */
+  --color-on-light: #1f2329;
 
   --color-accent: #9a3412; /* Kola Copper — ONE highest-stakes CTA per screen only */
   --color-accent-deep: #7c2d12;
@@ -30,73 +44,134 @@
   --color-accent-text: #9a3412; /* accent text on a normal surface (eyebrow labels) — goes light in dark */
 
   /* Neutrals (warm gray, never pure black) */
-  --color-ink: #1c1b1c;
+  /* One cool grey ramp (FD-03). ink-3 and ink-4 are distinct steps; every ink reads at 4.5:1 on every surface. */
+  --color-ink: #1f2329;
   --color-ink-2: #374151;
-  --color-ink-3: #666666;
-  --color-ink-4: #6b7280;
-  --color-line: #cccccc;
+  --color-ink-3: #4b5563;
+  --color-ink-4: #5f6672;
+  --color-line: #d1d5db; /* dividers and card edges */
+  --color-control-border: #868c97; /* inputs, selects, search boxes: 3:1 on every surface (WCAG 1.4.11) */
   --color-line-soft: #e5e7eb;
   --color-surface: #ffffff;
   --color-surface-muted: #f9fafb;
   --color-page: #f3f4f6;
 
-  /* Status — never overridable by tenant config, see ThemeProvider.tsx */
-  --color-success: #16a34a;
+  /* Status — never overridable by tenant config, see ThemeProvider.tsx. The base colours are text-safe: 4.5:1 on
+     every surface (FD-03). -fill is the background of white button text. */
+  --color-success: #15803d;
   --color-success-strong: #14532d;
   --color-success-soft: #dcfce7;
-  --color-warning: #d97706;
+  --color-warning: #b45309;
   --color-warning-strong: #7c2d0e;
   --color-warning-soft: #fef3c7;
-  --color-error: #dc2626;
+  --color-error: #c81e1e;
   --color-error-strong: #991b1b;
   --color-error-soft: #fee2e2;
   --color-info: #2563eb;
   --color-info-strong: #1e3a8a;
   --color-info-soft: #dbeafe;
+  --color-success-fill: var(--color-success);
+  --color-error-fill: var(--color-error);
 
   /* Role accents — used for sidebar badges, avatars, role chips */
   --color-role-platform: #7c3aed;
   --color-role-admin: #1c7922;
   --color-role-china: #4f46e5;
   --color-role-nigeria: #9a3412;
-  --color-role-warehouse: #d97706;
-  --color-role-customer: #2dc438;
+  --color-role-warehouse: #b45309;
+  --color-role-customer: #1a7f26;
   --color-role-platform-soft: #ede9fe; /* purple Badge variant background */
   --color-role-platform-text: #7c3aed; /* platform/purple badge text ON role-platform-soft — goes light in dark */
 
   /* Typography */
-  --font-display: 'Averta', 'Manrope', sans-serif; /* Averta is commercial-licensed; Manrope is the open fallback loaded in index.html */
-  --font-body: 'Kumbh Sans', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Every family here is shipped by fonts.css; 'ShipX Naira' draws only the ₦ sign, which the others lack (FD-06). */
+  --font-display: 'ShipX Naira', 'Manrope Variable', sans-serif;
+  --font-body: 'ShipX Naira', 'Kumbh Sans Variable', sans-serif;
+  --font-mono: 'ShipX Naira', 'JetBrains Mono Variable', monospace;
 
-  /* Spacing — strict 4px base */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 64px;
+  /* Type scale (FD-01). Every font size on screen is one of these; each has a paired line height. 12 px is the smallest
+     size allowed on screen. Exempt: print pages, the marketing page, and rules marked `scale-exempt` (miniature
+     document previews, emoji icons). Weights: 400, 500, 600 and 700 only. */
+  --text-xs: 12px; /* table headers, badges, captions */
+  --text-xs-line: 16px;
+  --text-sm: 13px; /* table cells, helper text, meta lines */
+  --text-sm-line: 20px;
+  --text-md: 14px; /* body text, inputs, buttons */
+  --text-md-line: 20px;
+  --text-lg: 16px; /* card titles, lead text */
+  --text-lg-line: 24px;
+  --text-xl: 20px; /* section titles */
+  --text-xl-line: 28px;
+  --text-2xl: 24px; /* page titles, stat values */
+  --text-2xl-line: 32px;
+  --text-3xl: 32px; /* hero figures */
+  --text-3xl-line: 40px;
+  /* Line height for a rule that inherits its size: tight for headings and single lines, body for running text. */
+  --leading-tight: 1.25;
+  --leading-body: 1.5;
+  /* Letter spacing: 0 by default, label on small uppercase labels, tight on text of 20 px and above. */
+  --tracking-label: 0.04em;
+  --tracking-tight: -0.01em;
+
+  /* Spacing scale (FD-02): every gap, padding and margin is one of these. Named by 4 px units, so --space-3 is 12 px. */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
 
   /* Layout */
-  --sidebar-width: 240px;
-  --sidebar-width-collapsed: 64px;
-  --content-max-width: 1280px;
+  --sidebar-width: 232px;
+  --sidebar-width-collapsed: 60px;
+  --content-max-width: 1320px;
 
-  /* Radius — mix freely across component families, never within one */
-  --radius-none: 0px;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 12px;
-  --radius-full: 9999px;
+  /* Radius (FD-04): four steps in order, plus full. 50% stays allowed for circles. */
+  --radius-sm: 4px; /* tags, small chips, checkboxes */
+  --radius-md: 6px; /* controls: buttons, inputs, menus, nav items */
+  --radius-lg: 10px; /* cards, panels, tables */
+  --radius-xl: 14px; /* modals, hero panels */
+  --radius-full: 9999px; /* pills, circular controls */
 
-  /* Shadows — tinted with Forest Dark, never pure black */
-  --shadow-rest: 0 1px 3px rgba(11, 47, 13, 0.08), 0 1px 2px rgba(11, 47, 13, 0.05);
-  --shadow-hover: 0 4px 12px rgba(11, 47, 13, 0.1), 0 2px 4px rgba(11, 47, 13, 0.06);
-  --shadow-modal: 0 10px 25px rgba(11, 47, 13, 0.18);
-  --shadow-focus-ring: 0 0 0 3px rgba(45, 196, 56, 0.35);
+  /* Shadows — Falcon-inspired multi-layer depth, tinted with Forest Dark (never pure black in light mode) */
+  --shadow-control: 0 1px 2px rgba(11, 47, 13, 0.06), 0 1px 1px rgba(11, 47, 13, 0.04);
+  --shadow-rest: 0 7px 14px 0 rgba(11, 47, 13, 0.06), 0 3px 6px 0 rgba(11, 47, 13, 0.04);
+  --shadow-hover: 0 10px 22px 0 rgba(11, 47, 13, 0.1), 0 4px 8px 0 rgba(11, 47, 13, 0.06);
+  --shadow-popover: 0 12px 32px 0 rgba(11, 47, 13, 0.14), 0 4px 12px 0 rgba(11, 47, 13, 0.08); /* menus, dropdowns */
+  --shadow-modal: 0 20px 44px 0 rgba(11, 47, 13, 0.2), 0 6px 16px 0 rgba(11, 47, 13, 0.1);
+  --shadow-focus-ring: 0 0 0 3px rgba(45, 196, 56, 0.32);
+  /* A chosen option or the current step: a soft brand halo. A live-status dot: a glow. */
+  --shadow-selected: 0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, transparent);
+  --shadow-glow: 0 0 8px var(--color-primary-bright);
   --scrim-modal: rgba(11, 47, 13, 0.55);
+
+  /* Layers (FD-05), lowest to highest. -1, 0 and 1 stay allowed for order inside one component; a click-catcher
+     behind a menu is calc(var(--layer-dropdown) - 1). */
+  --layer-sticky: 10;
+  --layer-dropdown: 20;
+  --layer-drawer: 30;
+  --layer-modal: 40;
+  --layer-toast: 50;
+
+  /* Room the shell leaves at the bottom of the content for a page's fixed action bar on a phone (FD-35): 0 here,
+     72px while a page shows one (PageHeader.module.css), and the device's own bottom inset (home indicator). */
+  --app-bottom-bar: 0px;
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Dialog widths (FD-12): alert/confirm, form, long form, detail. */
+  --dialog-sm: 480px;
+  --dialog-md: 560px;
+  --dialog-lg: 720px;
+  --dialog-xl: 960px;
+
+  /* Motion (FD-05): two durations and one easing. Reduced motion turns both off (below). */
+  --motion-fast: 120ms; /* colour and border changes */
+  --motion-base: 180ms; /* size, position, opacity */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
 
   color-scheme: light;
 }
@@ -123,8 +198,9 @@
   --color-ink: #eef2ee;
   --color-ink-2: #c7cec7;
   --color-ink-3: #9ba59b;
-  --color-ink-4: #828d82;
+  --color-ink-4: #8a958a;
   --color-line: #333c34;
+  --color-control-border: #6b766c;
   --color-line-soft: #272f28;
   --color-surface: #181d19;
   --color-surface-muted: #1f2621;
@@ -135,6 +211,8 @@
   --color-primary-soft: #18381e; /* selected row bg */
   --color-primary-tint: #141b15; /* hover row bg */
   --color-primary-on-soft: #5bd069; /* bright green — legible on the dark primary-soft fill */
+  /* Brand green as text: the base stays dark enough for white button text, so text gets its own light green. */
+  --color-primary-text: #5bd069;
 
   --color-accent-soft: #3a2113;
   /* Copper/purple badge + eyebrow text go light so they're legible on dark
@@ -157,40 +235,35 @@
   --color-info: #4f8df5;
   --color-info-strong: #aecbfb;
   --color-info-soft: #16294b;
+  /* The status bases are bright for text on dark; white button text needs darker fills. */
+  --color-success-fill: #15803d;
+  --color-error-fill: #b91c1c;
 
   /* Role accents — keep hues; lighten the darkest (Nigeria copper) and the
      platform soft fill for dark backgrounds. */
   --color-role-nigeria: #d2693f;
+  --color-role-platform: #a78bfa;
+  --color-role-admin: #5bd069;
+  --color-role-china: #8b8cf6;
+  --color-role-warehouse: #e3971f;
+  --color-role-customer: #4cc95a;
   --color-role-platform-soft: #291f4a;
 
-  /* Shadows read as depth on dark via black, not forest tint. */
-  --shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.35);
-  --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.6);
+  /* Shadows read as depth on dark via deeper black opacity (Falcon dark elevation). */
+  --shadow-control: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 1px rgba(0, 0, 0, 0.22);
+  --shadow-rest: 0 7px 14px 0 rgba(0, 0, 0, 0.36), 0 3px 6px 0 rgba(0, 0, 0, 0.24);
+  --shadow-hover: 0 12px 24px 0 rgba(0, 0, 0, 0.48), 0 4px 10px 0 rgba(0, 0, 0, 0.32);
+  --shadow-popover: 0 12px 40px 0 rgba(0, 0, 0, 0.62), 0 4px 16px 0 rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 20px 50px 0 rgba(0, 0, 0, 0.72), 0 8px 20px 0 rgba(0, 0, 0, 0.48);
   --scrim-modal: rgba(0, 0, 0, 0.66);
-}
-
-/*
- * Semantic aliases — more readable shorthand for page-level CSS.
- * These resolve to the canonical Odum tokens above; the raw tokens
- * remain authoritative. Use either name; prefer the canonical names
- * in new component CSS.
- */
-:root {
-  --color-text: var(--color-ink);
-  --color-text-muted: var(--color-ink-4);
-  --color-border: var(--color-line-soft);
-  --color-primary-muted: var(--color-primary-soft);
-  --color-error-muted: var(--color-error-soft);
-  --color-success-muted: var(--color-success-soft);
-  --color-warning-muted: var(--color-warning-soft);
-  --color-info-muted: var(--color-info-soft);
 }
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
 }
 
 html,
@@ -199,9 +272,30 @@ body,
   height: 100%;
 }
 
+/* Reduced motion (FD-05): every transition and animation is instant for a user who asks the system for less
+   motion. Spinners still turn (one iteration of a 1 ms animation would freeze them), just without easing. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 body {
   margin: 0;
   font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: var(--text-md-line);
   color: var(--color-ink);
   background: var(--color-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }

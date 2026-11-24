@@ -66,6 +66,8 @@ describe('NotificationLog', () => {
       ),
     )
 
+    await userEvent.click(screen.getByRole('button', { name: /^Sent:/ }))
+
     await userEvent.type(screen.getByLabelText('From'), '2026-01-01')
     await userEvent.type(screen.getByLabelText('To'), '2026-01-31')
     await waitFor(() =>

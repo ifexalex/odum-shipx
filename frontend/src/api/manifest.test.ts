@@ -62,16 +62,16 @@ describe('manifestApi', () => {
     expect(init.body).toBe(JSON.stringify({ resolution_notes: 'Recounted, all found.' }))
   })
 
-  it('getEvidenceUploadUrl() POSTs /evidence with filename, content_type and label', async () => {
+  it('getEvidenceUploadUrl() POSTs /evidence with filename, content_type, size and label', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({ data: { upload_url: 'https://s3', upload_method: 'PUT', upload_headers: { 'Content-Type': 'image/jpeg' }, evidence_id: 'ev1', file_key: 'k' } }),
     )
-    await manifestApi.getEvidenceUploadUrl('mf1', 'damage.jpg', 'image/jpeg', 'Missing — Acme (SHX-1)')
+    await manifestApi.getEvidenceUploadUrl('mf1', 'damage.jpg', 'image/jpeg', 4096, 'Missing — Acme (SHX-1)')
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toContain('/v1/manifests/mf1/evidence')
     expect(init.method).toBe('POST')
     expect(init.body).toBe(
-      JSON.stringify({ filename: 'damage.jpg', content_type: 'image/jpeg', label: 'Missing — Acme (SHX-1)' }),
+      JSON.stringify({ filename: 'damage.jpg', content_type: 'image/jpeg', size_bytes: 4096, label: 'Missing — Acme (SHX-1)' }),
     )
   })
 })

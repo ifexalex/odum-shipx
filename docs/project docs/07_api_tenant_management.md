@@ -37,7 +37,10 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | GET | `/v1/platform/tenants` | List tenants | platform_admin |
 | GET | `/v1/platform/tenants/{id}` | Get tenant detail | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}` | Update tenant | platform_admin |
-| DELETE | `/v1/platform/tenants/{id}` | Offboard tenant | platform_admin |
+| DELETE | `/v1/platform/tenants/{id}` | Offboard tenant (also queues the tenant data export, same transaction, audit BE-10) | platform_admin |
+| GET | `/v1/platform/tenants/{id}/offboarding-export` | The offboarded tenant's data export: status, size, checksum, rows, attempts, deletion date (2026-11-17) | platform_admin |
+| POST | `/v1/platform/tenants/{id}/offboarding-export` | Queue an export when there is none or it gave up (2026-11-17) | platform_admin |
+| POST | `/v1/platform/tenants/{id}/offboarding-export/link` | Five-minute download link to the archive; audited (2026-11-17) | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}/suspend` | Suspend tenant | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}/activate` | Lift suspension (suspended→active) | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}/reactivate` | Re-onboard offboarded tenant (offboarded→active) | platform_admin |
@@ -59,7 +62,10 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 |---|---|---|---|
 | GET | `/v1/tenant/activity` | Tenant-scoped audit feed; `?actor_id=` narrows to one staff member, `?entity_type=` narrows to one kind of record; cursor-paginated; response includes `before_state`/`after_state` | tenant_admin |
 | GET | `/v1/tenant/config` | Get tenant config (webhook_config.secret masked to `****`; paystack_config.secret_key_encrypted stripped entirely) | all staff roles + customer (read widened 2026-07-11 for staff — printable documents render `branding_config` for whoever prints them; widened again 2026-09-06 for customer — `MyBillingDetail.tsx`'s bank-transfer panel needs `bank_transfer_config`) |
-| PUT | `/v1/tenant/config` | Update branding, notifications, webhook_config, and/or bank_transfer_config | tenant_admin |
+| PUT | `/v1/tenant/config` | Update branding, notifications, webhook_config, and/or bank_transfer_config. `branding.logo_key` / `branding.logo_url` sent by a client are ignored; the stored logo is kept (FD-29) | tenant_admin |
+| POST | `/v1/tenant/config/logo/upload-url` | Presign the tenant logo upload (FD-29): `{filename, content_type, size_bytes}`; PNG, JPEG or WebP, at most 5 MB; key under `{tenant_id}/branding/logo/`. 201 | tenant_admin |
+| PUT | `/v1/tenant/config/logo` | Use an uploaded file as the logo: `{file_key}`, which must be this tenant's logo upload (422 otherwise). Confirms the stored size, replaces and deletes the previous logo, audits `logo_set`. Returns `branding_config` with `logo_url` | tenant_admin |
+| DELETE | `/v1/tenant/config/logo` | Stop using a logo; deletes the file, audits `logo_removed` | tenant_admin |
 | POST | `/v1/tenant/config/webhook/rotate-secret` | Generate new HMAC signing secret; returns it once in plaintext | tenant_admin |
 | POST | `/v1/tenant/config/webhook/test` | Send a signed test event to the configured webhook URL; returns delivery result | tenant_admin |
 | PUT | `/v1/tenant/config/paystack` | Connect/replace this tenant's own Paystack secret key (encrypted at rest; always a full replace, never a partial merge) | tenant_admin |
@@ -257,6 +263,9 @@ Re-onboards an offboarded tenant under a **new agreement**. Distinct from `/acti
 The create customer endpoint accepts `full_name` as an alias for the `name` field (normalised in the service layer). Both `{"name": "..."}` and `{"full_name": "..."}` are accepted.
 
 ### GET /v1/tenant/dollar-rate + /v1/tenant/cbm-rate — staff read access
+
+**2026-11-17 (audit BE-11):** the dollar-rate response adds `rate_source` (`live` | `last_known` | `hardcoded`), and `fetched_at` is `null` for `hardcoded` (it used to be the request time). `DollarRateConfig` shows "last known rate, fetched …" or "built-in default, never fetched" and a warning banner whenever the rate is not live.
+
 Writes (`PUT`) to these two rate endpoints remain **tenant_admin only**, but the **`GET`** was widened to also allow `china_office_staff` and `nigeria_office_staff` (handler `_dispatch`, special-cased ahead of the blanket `assert_role(TENANT_ADMIN)` on the `/v1/tenant/*` section). Reason: the China packing-list wizard shows a live shipping-price estimate computed from the CBM rate × FX rate, and Nigeria staff preview the same when billing. Least-privilege read-only widening — a shipping rate is neither PII nor a secret. Every other `/v1/tenant/*` path/method is unchanged.
 
 ### GET /v1/customers — derived `shipment_count`
@@ -575,6 +584,7 @@ See `13_api_payment_release.md`'s "Payment Claims" section for the customer's "I
 ### Cognito Resend-Invite / Reset-Password
 - **POST /v1/tenant/users/{id}/resend-invite** — Calls `admin_create_user` with `MessageAction=RESEND`; re-delivers the temporary-password email without creating a new account.
 - **POST /v1/tenant/users/{id}/reset-password** — Calls `admin_reset_user_password`; Cognito sends a verification-code reset email.
+- **Audited (2026-11-17, audit SEC-07):** resend-invite, reset-password and resend-activation each write an `audit_log` row on the target `tenant_user` — actions `INVITE_RESENT`, `PASSWORD_RESET_SENT`, `ACTIVATION_RESENT` — with the actor, their role and the client IP; the snapshot is `{"user_id"}` only (the email is PII and already on the row). No row is written when the identity provider call fails. They show in the tenant activity log (entity type `tenant_user`, filter "All actions"). Ground-truth gap closed: before this, all three changed a user's way into their account and left no trace; `resend-activation` was not in the audit finding but had the same gap.
 
 Both are tenant_admin only.
 
@@ -618,8 +628,14 @@ Request body:
 }
 ```
 
-Guards: tenant must be `active`; email must not already exist in that tenant's customer table. Cognito
-sends a temporary password to the customer's email. `tenant.slug` (migration 023) is auto-derived from
+Guards: tenant must be `active`. ~~email must not already exist in that tenant's customer table~~ **Changed 2026-11-15 (audit SEC-04):** the endpoint is
+public, so a distinct error for a taken email let anyone test who is a customer of a given company, so it now answers **`202 Accepted` with `{"data": {"status": "received"}}`, no `Location` and no record,
+whether the email is new or already has an account**. A new email gets the Cognito temporary-password email as before; an email that already has an account
+(in this tenant, or anywhere in the shared identity pool, which Cognito reports as a different duplicate error) creates nothing and its owner is
+emailed `registration_existing_account` ("you already have an account", with a sign-in link; the name in it is the existing account's, never what the
+registrant typed). Matching is case-insensitive. A bad or inactive company link is still reported. Residual: a new registration does more work, so response time
+still differs slightly; the per-address limit (5/hour) bounds probing through it. Per-address rate limiting is described in `00_CROSS_CUTTING_STANDARDS.md` §8.7.
+The response used to be `201` with the new customer row, so a client reading `id` from it must stop. `tenant.slug` (migration 023) is auto-derived from
 `company_name` at tenant creation. `phone`/`whatsapp` are normalised to E.164 (`shared/phone.py`) using
 the tenant's `destination_country` dial code before being stored.
 
@@ -867,3 +883,79 @@ Repository functions (`insert_onboarding_request`, `list_onboarding_requests`, `
 - [x] POST /v1/tenant/config/webhook/rotate-secret — generates cryptographically random 64-char hex secret via `secrets.token_hex(32)`; returns plaintext once; audited
 - [x] POST /v1/tenant/config/webhook/test — sends signed test event to configured URL using same HMAC-SHA256 path as real events; returns `{success, status_code, error}`
 - [x] Locale (EN/ZH): `tenant_user.locale` writable via PATCH /v1/tenant/users/{id} (tenant_admin) and PATCH /v1/tenant/me (any authenticated role); validated against `{"en","zh"}`; locale NOT synced to Cognito (DB-only); tracking service passes `locale` from `get_customers_for_container` to `enqueue_notifications` so ZH customers receive Chinese-language notifications
+
+## Implementation notes — audit Phase 2: access and abuse (2026-11-15)
+
+- **Deactivated staff lose access at once (SEC-02).** `DELETE /v1/tenant/users/{id}` disables the identity-provider account, sets `tenant_user.status = 'deactivated'`, calls
+  `global_sign_out` (best effort; revokes the refresh token) and evicts the cached identity (`shared.auth.evict_identity_cache`). The status is what denies an *already-issued*
+  token: `get_tenant_context` now checks the user's `tenant_user` row on every request (previously only a token with **no** tenant claim ever consulted the database), so the
+  very next request gets `401`, not at token expiry. Role changes evict the cached identity too, because the Entra fallback path reads the role from it. A failed user
+  lookup is `503` (fail closed). Detail and trade-offs: `00_CROSS_CUTTING_STANDARDS.md` §8.7.
+- **Erasing a customer ends their login (SEC-02).** `DELETE /v1/customers/{id}` (GDPR erasure) reads `customer.user_id` *before* the erasure nulls it, deactivates that portal login the same way (`_revoke_login`,
+  audited as `STATUS_CHANGE` with `reason: customer_erasure`) and only then erases the record, so a failure leaves a customer that can be retried. **Updated 2026-11-16:** the erasure also
+  deletes the identity-provider account (`IdentityProvider.delete_user`; Cognito `AdminDeleteUser`, Entra Graph `DELETE /users/{id}`; a missing user is a no-op), strictly and *before* the row
+  loses the email that finds it, then scrubs the `tenant_user` row (`email` -> `erased-{id}@erased.invalid`, `full_name` -> `Anonymised`, `cognito_sub` cleared, `deactivated`). A failure at the
+  provider leaves the customer unerased so the whole erasure can be retried; an already-erased login is skipped.
+- **`get_customer_by_email`** now returns `{id, name}` and matches case-insensitively (it selected only `id`, and compared exactly, so a re-cased email would have slipped past the duplicate check).
+- **Test-suite note:** `tests/unit/test_auth.py::TestIdentityResolutionFallback::test_explicit_tenant_claim_skips_the_db_entirely` asserted the vulnerable behaviour and was rewritten
+  (`..._does_not_use_the_identity_fallback`). A global autouse fixture in `tests/conftest.py` stubs the active-user check for handler-level tests, which build tokens from made-up claims; the check is covered by
+  `tests/unit/test_auth.py` and, against a real database, `tests/db/test_access_revocation.py`.
+- **Acceptance:** [x] a token issued before deactivation gets `401` on the next request; [x] an erased customer's token gets `401`; [x] new and existing registration emails get identical status and body;
+  [x] one tenant's traffic cannot throttle another's.
+
+## Implementation notes — tenant data export at offboarding (audit BE-10, 2026-11-17)
+
+**Gap closed.** FR-TN-004 and resolved question 11 of the PRD promise a full data export when a tenant leaves. Only the per-customer GDPR export existed, and the cleanup job deleted everything 90 days after offboarding, so a tenant's records could be destroyed without ever being handed over.
+
+**What happens now.**
+1. `DELETE /v1/platform/tenants/{id}` sets the status and queues an export (`tenant_offboarding_export`, migration 067) in one transaction. The platform audit `TENANT_OFFBOARDED` entry names the export.
+2. The hourly job `services/scheduled/offboarding_export.py` claims queued exports (`FOR UPDATE SKIP LOCKED`), reads every table in `shared/tenant_data.TENANT_TABLES` in the tenant's own RLS scope, and writes `{tenant_id}/exports/offboarding/{export_id}.zip`: `manifest.json` (format, version, per-table file, rows, omitted and decrypted columns), `README.txt`, `tenant.jsonl`, `tables/{table}.jsonl`. JSON Lines, not CSV: exact types (money as decimal strings, times ISO 8601 UTC) and nothing a spreadsheet runs as a formula. It records size, SHA-256 and row counts, and writes `TENANT_DATA_EXPORTED` to the platform audit log. A failure is retried hourly up to 3 attempts; a worker that dies leaves it `running`, reclaimed after 60 minutes.
+3. The platform tenant page shows the export and offers a download: `POST …/offboarding-export/link` signs a 300-second link with `Content-Disposition: attachment` and records `TENANT_EXPORT_LINK_ISSUED` (actor, IP). If that record cannot be written, no link is issued.
+4. The 90-day cleanup refuses to delete a tenant until an export requested at or after its latest offboarding has completed (`16_scheduled_jobs.md`). The archive lives in the tenant's own storage prefix, so it is deleted with the tenant: download it within the 90 days.
+5. Reactivation cancels an export not yet written, so a later offboarding queues its own; an export from an earlier offboarding never counts as this one's.
+
+**Threat model.**
+- *Trust boundaries:* platform admin (JWT, `platform_admin`) → tenant_management API; the export job (platform role, no user) → database → object storage; storage → the admin's browser through a presigned URL.
+- *Data:* every record the tenant kept, including customers' names, phones and addresses, and, decrypted, ID numbers (`pickup_record.id_number`) and bank details (`refund_request.account_number`, `account_name`). An archive the tenant cannot read is no handover, so these are decrypted; a field that fails to decrypt fails the export rather than handing over ciphertext.
+- *A non-platform caller asks for a link:* every `/v1/platform/*` route asserts `platform_admin` first (403; tested for tenant admin, staff and customer).
+- *A leaked link:* it expires after 5 minutes, and each issuance is audited with actor and IP.
+- *A forged or corrupted key:* the key comes from our own row and is still checked to sit under `{tenant_id}/exports/offboarding/` with no `..` before it is signed. IAM limits the job's `s3:PutObject` and tenant_management's `s3:GetObject` to `*/exports/offboarding/*`. Ids are UUID-checked before they become keys.
+- *Secrets in the archive:* left out by the inventory: `tenant_user_activation.token_hash`, `customer_invite.token_hash`, `release_note.pickup_code_hash`; inside `tenant_config`, `webhook_config.secret` and `paystack_config.secret_key_encrypted`. Tested against the archive bytes.
+- *Another tenant's rows:* each table is read with `execute_with_tenant(tenant_id, …)`, so RLS applies on top of the `WHERE tenant_id` (or parent join).
+- *Personal data in logs:* a failure logs the exception type and file:line, never its message or traceback text (a database or decryption error can quote a row); `last_error` stores the type name only. Tested.
+- *Deletion before handover:* the cleanup refuses, logs it, and counts it (`refused`).
+- **Residual risk (owner call):** the archive is protected at rest by the bucket's encryption only, not field-level, for up to 90 days; any platform admin can download it (audited). Delivering it encrypted to a passphrase the tenant supplies would close that; not done.
+
+**Wire format.** New: `GET /v1/platform/tenants/{id}/offboarding-export` → `{tenant_status, status, export_id, requested_at, completed_at, size_bytes, sha256, row_count, attempts, max_attempts, retrying, can_queue, deletion_scheduled_at}`; `status` is `none|pending|running|completed|failed|cancelled`. `POST …/offboarding-export` returns the same. `POST …/offboarding-export/link` → `{download_url, expires_at, filename, size_bytes, sha256}`. Errors: 404 (tenant id not a UUID, or unknown), 422 `OFFBOARDING_EXPORT_NOT_OFFBOARDED`, `OFFBOARDING_EXPORT_IN_PROGRESS`, `OFFBOARDING_EXPORT_NOT_READY`.
+
+**Verified locally (2026-11-17).** Migration 067 applied to the dev database. `tests/db/test_offboarding_lifecycle.py` offboards a tenant with rows in 20+ tables, writes the archive to local S3 (Moto), reads it back (no secrets or token hashes in the bytes, the ID number decrypted), then runs the cleanup's deletion against real foreign keys and finds nothing left; it fails if the delete order is reversed, a table is dropped from the inventory, or support sessions are left. Not yet run on AWS S3 or Azure Blob.
+
+Tests: `tests/unit/test_tenant_offboarding_export.py` (29), `test_offboarding_export.py` (25), `test_data_cleanup.py` (11), `test_tenant_data.py` (60). Mutation-checked: 12 protections removed one at a time, each caught.
+
+## Implementation notes — the service split by sub-domain (audit BE-13, 2026-11-17)
+
+`services/tenant_management/service.py` was 3,041 lines. The code moved, unchanged (every one of its 103 definitions compares equal before and after), into eight modules, none over 800 lines:
+
+| Module | Holds |
+|---|---|
+| `tenants.py` | tenant creation and lifecycle (suspend, activate, offboard, reactivate), onboarding leads, platform dashboard and activity |
+| `offboarding_export.py` | a leaving tenant's data export (BE-10) |
+| `activation.py` | account activation; the audit record for access emails (SEC-07) |
+| `users.py` | staff users |
+| `customers.py` | customers, GDPR erasure and export, self-registration, invites |
+| `tenant_config.py` | config keys, webhook, Paystack, notification templates, tenant report |
+| `rates.py` | dollar-rate markup, CBM rates, charge types, container capacities |
+| `platform.py` | platform settings, plans, quota overrides, notification gateways |
+
+`service.py` is now the entry point: it re-exports every public function (and `repo`), so `handler.py`, `services/excel` and every caller still use `service.<name>`. Dependencies run one way: `tenants` → `activation`; `users` → `tenants`, `activation`; `customers` → `users`; `offboarding_export` → `tenants`.
+
+Tests: no assertion changed; only patch targets moved. A collaborator held by one module is patched there (`patch("services.tenant_management.rates.get_effective_dollar_rate")`); one several modules use (`log_audit`, `get_identity_provider`, a public function a handler test stubs) goes through `tests/patching.py::patch_tenant_management`, which patches it in every module with one shared mock — what the old single `patch.object(service, ...)` did.
+
+
+### Tenant logo (FD-29, 2026-11-21)
+
+- **Storage:** `{tenant_id}/branding/logo/{random hex}-{safe name}` via `shared/uploads.py::TENANT_LOGO` (PNG, JPEG, WebP; 5 MB; 15-minute presign). SVG is refused: it can carry script, and the logo is shown to every user of the tenant and on its documents. `branding_config.logo_key` names the file; `services/tenant_management/branding_logo.py` owns it.
+- **The key is the server's.** `PUT /v1/tenant/config {branding}` drops any `logo_key` or `logo_url` the client sends and keeps the stored key, so the settings form's save never loses the logo and a client can never point it at a file of its choosing (another tenant's, say). `PUT .../logo` accepts only a key directly under this tenant's logo prefix (no `/`, `\` or `..` after it).
+- **Readers get a link, never the key:** `GET /v1/tenant/config` returns `branding_config.logo_url`, a presigned GET valid for 1 hour, in place of `logo_key`; a key outside the tenant's prefix is never signed. The read is open to every role that reads the config (staff print documents; customers see the bank panel), which is fine for a logo. The frontend re-reads the config once if a link has expired.
+- **Lifecycle:** confirming an upload reads its stored size (`confirm_stored_upload`) and deletes an oversize file; replacing or removing a logo deletes the old file (a failed delete is logged and leaves an orphan, never a broken logo). Each change writes the config row and `tenant.branding_config`, and audits `logo_set` / `logo_removed` (no file name or PII).
+- **Not yet consumers:** the server-rendered PDFs (`services/excel/export_*_pdf.py`) still draw the initials tile; the browser print views and the settings preview show the logo.

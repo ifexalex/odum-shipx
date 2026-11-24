@@ -18,7 +18,27 @@ export interface ApiErrorShape {
   errors?: { field: string; message: string }[]
 }
 
+/**
+ * What a person reads for an error (FD-20). A 409 or 422 carries the server's own words, which are written for users
+ * ("The file is larger than 5 MB."). Anything else is a system message ("Insufficient permissions for this operation.
+ * Required role: platform_admin"), so it gets plain words; the server's text stays on `detail` for logs and support.
+ */
+export function plainErrorMessage(status: number, serverText: string, errorCode?: string): string {
+  // A payment provider's refusal is written for the user ("Paystack rejected this key — check it's correct").
+  if (status === 409 || status === 422 || status === 400 || errorCode === 'EXTERNAL_SERVICE_ERROR') return serverText
+  if (status === 403) return "You don't have permission to do this. Ask your admin if you need it."
+  if (status === 404) return "We couldn't find that. It may have been removed, or the link is out of date."
+  if (status === 429) return 'Too many requests just now. Wait a moment and try again.'
+  if (status === 0 || status === 502 || status === 503 || status === 504) {
+    return "We couldn't reach the server. Check your connection and try again."
+  }
+  if (status >= 500) return 'Something went wrong on our side. Try again; if it keeps happening, contact support.'
+  return serverText
+}
+
 export class ApiError extends Error {
+  /** The server's own text, unchanged (`message` may be plainer). */
+  readonly detail: string
   readonly type: string
   readonly status: number
   readonly errorCode: string
@@ -31,7 +51,8 @@ export class ApiError extends Error {
   readonly requestId: string | null
 
   constructor(shape: ApiErrorShape, requestId: string | null) {
-    super(shape.detail || shape.title)
+    super(plainErrorMessage(shape.status, shape.detail || shape.title, shape.error_code))
+    this.detail = shape.detail || shape.title
     this.name = 'ApiError'
     this.type = shape.type
     this.status = shape.status
@@ -241,6 +262,8 @@ export async function apiRequestList<T>(opts: RequestOptions): Promise<ListRespo
 }
 
 export type ExportFormat = 'xlsx' | 'csv' | 'pdf'
+/** The formats of a data export: spreadsheets only. A PDF is a document with its own route (FD-39). */
+export type DataExportFormat = Exclude<ExportFormat, 'pdf'>
 
 interface ExportResultShape {
   filename: string
@@ -268,25 +291,58 @@ interface ExportResultShape {
  * xlsx/csv trigger a <a download> click against the same URL, forcing the
  * filename from the JSON response (S3's response has no Content-Disposition
  * override configured).
+ *
+ * `query` carries anything else the endpoint takes — a list export forwards the
+ * list's own filters and sort. `format` always wins over a stray `query.format`.
  */
-export async function apiDownloadFile(path: string, format: ExportFormat, defaultFilename: string): Promise<void> {
-  const response = await fetchWithAuth({ method: 'GET', path, query: { format } })
+export async function apiDownloadFile(
+  path: string,
+  format: ExportFormat,
+  defaultFilename: string,
+  query: Record<string, string | number | undefined> = {},
+): Promise<void> {
+  // A PDF opens in a new tab, and the tab must be opened now, inside the click (FD-44): opened after the request
+  // returns, Safari and most mobile browsers treat it as a pop-up and block it, so the button looked dead. It shows
+  // a holding line until the link arrives. Must run before the first await.
+  const tab = format === 'pdf' ? openPendingTab() : null
+  try {
+    const response = await fetchWithAuth({ method: 'GET', path, query: format === 'pdf' ? query : { ...query, format } })
+    if (!response.ok) {
+      throw await parseError(response)
+    }
+    const envelope = (await response.json()) as SuccessEnvelope<ExportResultShape>
+    const { download_url: downloadUrl, filename } = envelope.data
 
-  if (!response.ok) {
-    throw await parseError(response)
+    if (format === 'pdf') {
+      // A blocked tab (some browsers block even this) falls back to opening the document here.
+      if (tab) tab.location.replace(downloadUrl)
+      else window.location.assign(downloadUrl)
+    } else {
+      // The API names the file on the link itself (Content-Disposition); `download` is ignored cross-origin.
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = filename ?? defaultFilename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  } catch (err) {
+    tab?.close()
+    throw err
   }
+}
 
-  const envelope = (await response.json()) as SuccessEnvelope<ExportResultShape>
-  const { download_url: downloadUrl, filename } = envelope.data
-
-  if (format === 'pdf') {
-    window.open(downloadUrl, '_blank', 'noopener,noreferrer')
-  } else {
-    const a = document.createElement('a')
-    a.href = downloadUrl
-    a.download = filename ?? defaultFilename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+/** A new tab saying the document is on its way, detached from this page; null when the browser refuses it. */
+function openPendingTab(): Window | null {
+  const tab = window.open('', '_blank')
+  if (!tab) return null
+  try {
+    tab.opener = null
+    tab.document.title = 'Preparing document…'
+    tab.document.body.style.fontFamily = 'system-ui, sans-serif'
+    tab.document.body.textContent = 'Preparing your document…'
+  } catch {
+    // A tab we cannot write to still receives the document's address.
   }
+  return tab
 }

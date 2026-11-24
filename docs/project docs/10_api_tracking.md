@@ -50,6 +50,12 @@ loading → sealed → in_transit → arrived → customs_clearance → cleared 
 
 **ILLEGAL:** Any backward or skip transition → return 409
 
+**Invoice outcome on `cleared` (2026-11-14).** When the new status is `cleared`, the `PATCH` response carries an extra
+`billing_summary` array — one row per customer on the container — `{ customer_id, customer_name, status: created | existing | skipped | failed, billing_id, invoice_number, reason, detail }`.
+Clearing no longer hides a customer who could not be invoiced: they appear here with the reason, staff are notified in-app, and
+`POST /v1/billing { container_id }` (see `11_api_billing.md`) completes the rest. The per-customer `PaymentDue` event is now
+published only for customers whose invoice was actually created. The key is absent for every other transition.
+
 **Request body key is `new_status`, not `status`.** `PATCH /v1/containers/{id}/status` reads `body.get("new_status", "")`. Sending `{ "status": "sealed" }` results in an empty string and the error "Cannot transition container from 'loading' to ''". The Postman collection uses `new_status` correctly — the frontend `UpdateContainerStatusInput` was fixed to match (`new_status: ContainerStatus`).
 
 ### POST /v1/containers — request body
@@ -104,6 +110,7 @@ No date filter is applied when `created_after`/`created_before` (or `eta_after`/
 - Query: match tracking_code AND customer phone
 - Return: current_stage, stage_history, estimated_stages (optional)
 - Include tenant's company_name from branding config
+- `brand_color` (FD-28, 2026-11-21): the tenant's `branding_config.primary_color` when it is a plain `#rrggbb` value, else `null` (the public page puts it into a style, so anything else is dropped). Returned, like `company_name`, only after the code and phone matched: a tracking code alone reveals nothing about the tenant. Additive and nullable.
 
 **Ground-truth gap found and fixed (2026-11-02): the phone match was
 unnormalised, so public tracking did not work for most customers.** The query
@@ -152,7 +159,7 @@ Each event: `{ id, from_status, to_status, actor_id, notes, created_at }`
 - [x] `ShipmentStatusUpdated` events published for each stage change
 - [x] Container search by container_number
 - [x] Container status audit trail: every PATCH /containers/{id}/status writes to container_event; GET /containers/{id}/events returns ordered history (migration 019)
-- [x] POST /containers/{id}/documents/presigned-url (`filename` sanitised via `safe_filename`, 2026-09-23 — see `00_CROSS_CUTTING_STANDARDS.md` §2.2): generates a cloud-neutral presigned **PUT** URL (2026-10-05; was S3 presigned-POST — see cloud-portability note in `09_api_manifest.md`), returning `{ upload_url, upload_method, upload_headers, document_id, s3_key, expires_in_seconds }`; creates container_document row (migration 022); supports 5 document types (bill_of_lading, customs_certificate, insurance, inspection_report, other)
+- [x] POST /containers/{id}/documents/presigned-url (`filename` sanitised via `safe_filename`, 2026-09-23 — see `00_CROSS_CUTTING_STANDARDS.md` §2.2): generates a cloud-neutral presigned **PUT** URL (2026-10-05; was S3 presigned-POST — see cloud-portability note in `09_api_manifest.md`), returning `{ upload_url, upload_method, upload_headers, document_id, s3_key, expires_in_seconds }`; creates container_document row (migration 022); supports 5 document types (bill_of_lading, customs_certificate, insurance, inspection_report, other). **2026-11-17 (audit BE-12):** content types PDF, JPEG, PNG, WebP only — `application/octet-stream` is now refused (422 `INVALID_CONTENT_TYPE`); rules live in `shared/uploads.CONTAINER_DOCUMENT`
 - [x] GET /containers/{id}/documents: lists all uploaded documents for a container; service + handler wired to existing repo function
 - [x] GET /containers/{id}/documents/{doc-id}/download: returns 5-min S3 presigned GET URL with Content-Disposition; validates tenant prefix on s3_key; 404 (never 403) for wrong-tenant/container; writes EXPORT audit record
 - [x] `cleared → at_warehouse` enqueues `container_arrived` notification per customer across all three channels
@@ -164,3 +171,21 @@ Each event: `{ id, from_status, to_status, actor_id, notes, created_at }`
 **Ground-truth gap found live, reported by the user (2026-09-09) while investigating a separate missing notification on payment-claim rejection — asked to check every notification in the app:** `shipment_update` had full SMS/WhatsApp/email templates defined but no call site ever used it. `update_container_status` now enqueues it for the customer-visible transitions `in_transit`/`arrived`/`customs_clearance`/`fully_released` (not `at_warehouse`, which already has its own richer `container_arrived` notification above; not `cleared`, which is covered by `handle_payment_due`'s own `payment_due` notification — see `11_api_billing.md` — since a bare "status changed" ping would be redundant with "here's what you owe"). Best-effort, including the customer lookup itself — a DB read failure fetching affected customers must not abort an already-committed status transition. Full account in `15_api_notifications.md`. Tests: `TestShipmentUpdateNotification` in `tests/unit/test_tracking.py`.
 
 **Customer bell (2026-09-12):** both `container_arrived` and `shipment_update`'s customer notifications now also write an in-app row when the customer has a portal account, reusing the same `staff_notification` table as the staff bell (see `15_api_notifications.md`).
+
+## Implementation notes — container list export (2026-11-16)
+
+`GET /v1/containers/export` (excel service) exports the container list's filters and sort as xlsx or csv; see `19_excel_import_export.md`. The container list's WHERE clause moved to `shared/list_filters.py::container_filter` so the list and the export share it; the generated SQL is unchanged (checked for 7 filter combinations).
+
+## Upload size limit (2026-11-17)
+
+**2026-11-17 — 5 MB upload limit:** the presign request must carry `size_bytes` (the file's size in bytes). Missing or not a positive whole number → 422 `VALIDATION_ERROR`; over 5 MB (5,242,880 bytes) → 422 `rule_id: FILE_TOO_LARGE`. On AWS the size is signed into the URL (SigV4 `content-length`), so S3 refuses a different-sized body. Rules in `shared/uploads.py`.
+
+## Upload confirmation (2026-11-19)
+
+**New route:** `POST /v1/containers/{id}/documents/{doc-id}/confirm` — china_office_staff, nigeria_office_staff, tenant_admin. Call it after the PUT to storage. Returns the document row, now with `file_size_bytes` and `confirmed_at`. The row written at presign time is not listed until the client confirms the upload. The confirm call reads the stored file's size; a file over 5 MB is deleted, with its row, and refused (422 `FILE_TOO_LARGE`); nothing at the key is 422 `UPLOAD_NOT_FOUND` (the row stays hidden). Confirming twice returns the same result without reading storage again. This is the size check that holds on Azure, where an upload SAS cannot bind the length (AWS already refuses a different length at the PUT). Each upload's key now ends `{32 hex}-{safe name}`, so two uploads of one name never overwrite each other; `file_name` stays the plain name. Rows from before migration 069 were backfilled as confirmed. `GET /v1/containers/{id}/documents` and the download route see confirmed documents only (an unconfirmed one is a 404).
+
+## Tracking events export (2026-11-19)
+
+**New route:** `GET /v1/containers/{id}/events/export?format=xlsx|csv` (excel service) — tenant_admin, nigeria_office_staff, china_office_staff, warehouse_attendant (everyone who can read `GET /v1/containers/{id}/events`). The container's tracking events, oldest first: Time (UTC), From, To, Updated By, Role, Notes; statuses and roles in words ("In transit", "China office staff"). Notes are staff-typed, so formulas are neutralised (`_tables`). Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`; filename `{tenant}_tracking_{container_number}_{yyyymmdd}`. PDF → 422. Audited as `EXPORT` on the container (`scope: tracking_events`). Another tenant's container → 404.
+
+**Ground-truth gap closed:** the tracking tab's Export button had no handler and no endpoint existed (found 2026-11-17).

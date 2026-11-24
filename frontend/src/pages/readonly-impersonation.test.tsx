@@ -64,7 +64,7 @@ function renderReadOnly(path: string, routePattern: string, element: ReactNode, 
 }
 
 // The labels of the mutating openers on each page — none may render as a live
-// <button> under a read-only session (Action turns them into aria-disabled spans).
+// <button> under a read-only session (Button disables them).
 const MUTATING_LABELS = [
   /record payment/i, /add charge/i, /apply carryover/i, /generate release note/i, /cancel billing/i,
   /start inspection/i, /resolve/i,
@@ -75,8 +75,8 @@ const MUTATING_LABELS = [
 function assertNoLiveMutators(): void {
   const buttons = screen.queryAllByRole('button')
   for (const btn of buttons) {
-    // Action's read-only render is a <span role="button" aria-disabled="true">.
-    if (btn.tagName.toLowerCase() === 'span') continue
+    // Read-only renders a mutating Button disabled (FD-07: Button does it itself).
+    if ((btn as HTMLButtonElement).disabled) continue
     const label = btn.textContent ?? ''
     for (const re of MUTATING_LABELS) {
       expect(re.test(label), `Live mutating control "${label}" rendered under read-only`).toBe(false)

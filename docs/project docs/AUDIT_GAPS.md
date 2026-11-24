@@ -116,7 +116,7 @@ The prototype's responsive pass (F-F1–F-F8) landed 2026-07-09 except F-F3's se
 
 ## Intentional divergences (register — do not "fix" these)
 
-Kept deliberately; full rationale in the audit doc: register-without-password-fields (backend emails temp password) · code-based password reset (Cognito reality) · tenant-suspended error surfaces post-login (login never touches backend) · dispute detail inline on BillingDetail instead of a side panel · printable A4 as a dedicated print route · resolve-modal ₦ input (backend contract is NGN).
+Kept deliberately; full rationale in the audit doc: register-without-password-fields (backend emails temp password) · code-based password reset (Cognito reality) · tenant-suspended error surfaces post-login (login never touches backend) · dispute detail inline on BillingDetail instead of a side panel (for Nigeria staff and admins; China staff, who cannot open invoices, have `/billing/disputes/:id`, 2026-11-16) · printable A4 as a dedicated print route · resolve-modal ₦ input (backend contract is NGN).
 
 ---
 

@@ -5,7 +5,8 @@ export interface ToggleSwitchProps {
   checked: boolean
   onChange: (checked: boolean) => void
   disabled?: boolean
-  label?: string
+  /** What the switch turns on or off. Required: an unnamed switch is "switch, off" to a screen reader (FD-50). */
+  label: string
 }
 
 // Used for webhook event toggles and notification preferences (08_gap_closure_features.md).

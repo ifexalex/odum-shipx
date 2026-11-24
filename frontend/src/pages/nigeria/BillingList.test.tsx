@@ -6,10 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { billingApi } from '../../api/billing'
+import { ApiError } from '../../api/client'
 import { BillingList } from './BillingList'
 
 vi.mock('../../api/billing', () => ({
-  billingApi: { list: vi.fn(), stats: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn() },
+  billingApi: { list: vi.fn(), exportList: vi.fn(), stats: vi.fn(), listForCustomer: vi.fn(), recordPayment: vi.fn(), cancel: vi.fn(), applyCarryover: vi.fn(), unbilled: vi.fn(), generateForContainer: vi.fn() },
   disputeApi: { list: vi.fn(), acknowledge: vi.fn(), resolve: vi.fn(), reject: vi.fn() },
   carryoverApi: { list: vi.fn(), exempt: vi.fn() },
 }))
@@ -116,7 +117,7 @@ describe('BillingList', () => {
     await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
     await waitFor(() => expect(billingApi.list).toHaveBeenCalledWith({ cursor: undefined }))
     // Chip click refetches the table server-side with the status filter.
-    await userEvent.click(screen.getByRole('button', { name: /Unpaid/ }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter invoices' })).getByRole('button', { name: /Unpaid/ }))
     await waitFor(() => expect(billingApi.list).toHaveBeenCalledWith({ status: 'unpaid', cursor: undefined }))
   })
 
@@ -201,12 +202,14 @@ describe('BillingList', () => {
       expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ created_after: expect.any(String) })),
     )
 
+    await userEvent.click(screen.getByRole('button', { name: /^Billed:/ }))
+
     await userEvent.type(screen.getByLabelText('From'), '2026-01-01')
     await waitFor(() =>
       expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ created_after: '2026-01-01' })),
     )
-    // The preset reverts to unselected once a custom date wins.
-    expect(screen.getByRole('button', { name: /all time/i })).toBeInTheDocument()
+    // The button says the custom range is what applies.
+    expect(screen.getByRole('button', { name: /since/i })).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText('To'), '2026-01-31')
     await waitFor(() =>
@@ -224,13 +227,46 @@ describe('BillingList', () => {
     renderPage()
     await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
     await userEvent.click(screen.getByRole('checkbox', { name: /^unpaid$/i }))
-    await userEvent.click(screen.getByRole('checkbox', { name: /^partial$/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /^partly paid$/i }))
 
     await waitFor(() =>
       expect(billingApi.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ status: 'unpaid,partially_paid' }),
+      ),
+    )
+  })
+
+  it('the Overdue stat lists the invoices it counts, and a second click lifts it (FD-18)', async () => {
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    renderPage()
+    await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
+
+    const overdue = screen.getByRole('button', { name: /Overdue \(30\+ days\)/ })
+    expect(overdue).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(overdue)
+    await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: true })))
+    expect(overdue).toHaveAttribute('aria-pressed', 'true')
+
+    await userEvent.click(overdue)
+    await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith({ cursor: undefined }))
+  })
+
+  it('the Outstanding stat lists every invoice still owed', async () => {
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    renderPage()
+    await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
+    await userEvent.click(screen.getByRole('button', { name: /^Outstanding/ }))
+    await waitFor(() =>
+      expect(billingApi.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: 'unpaid,partially_paid,released_with_outstanding' }),
       ),
     )
   })
@@ -243,14 +279,14 @@ describe('BillingList', () => {
     renderPage()
     await waitFor(() => expect(billingApi.stats).toHaveBeenCalled())
 
-    await userEvent.click(screen.getByRole('button', { name: /Unpaid/ }))
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter invoices' })).getByRole('button', { name: /Unpaid/ }))
     await waitFor(() =>
       expect(billingApi.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ status: 'unpaid' }),
       ),
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /^filters$/i }))
+    await userEvent.click(screen.getByRole('button', { name: /^more filters/i }))
     await userEvent.click(screen.getByRole('button', { name: /clear all filters/i }))
 
     await waitFor(() =>
@@ -258,3 +294,165 @@ describe('BillingList', () => {
     )
   })
 })
+
+describe('BillingList — Generate billing', () => {
+  function renderWithTopBar(role: string) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SessionContext.Provider value={makeCtx(role)}>
+            <>
+              <BillingList />
+            </>
+          </SessionContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } },
+    })
+    vi.mocked(billingApi.unbilled).mockReset()
+    vi.mocked(billingApi.unbilled).mockResolvedValue([
+      { container_id: 'k1', container_number: 'ACME001', container_status: 'cleared', customer_id: 'c1', customer_name: 'Alice', total_cbm: '2.000' },
+    ])
+  })
+
+  it('opens the container picker for Nigeria staff', async () => {
+    renderWithTopBar('nigeria_office_staff')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Generate billing' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Generate billing' })
+    expect(await within(dialog).findByText('Alice')).toBeInTheDocument()
+  })
+
+  it('closes the picker with Cancel', async () => {
+    renderWithTopBar('tenant_admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Generate billing' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Generate billing' })).not.toBeInTheDocument()
+  })
+
+  it('is not offered to a role that cannot generate invoices', async () => {
+    renderWithTopBar('china_office_staff')
+
+    await waitFor(() => expect(billingApi.list).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Generate billing' })).not.toBeInTheDocument()
+  })
+})
+
+describe('BillingList — Export', () => {
+  function renderWithTopBar(role: string) {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <SessionContext.Provider value={makeCtx(role)}>
+            <>
+              <BillingList />
+            </>
+          </SessionContext.Provider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  }
+
+  const tooLarge = new ApiError(
+    {
+      type: 'about:blank',
+      title: 'Unprocessable Entity',
+      status: 422,
+      detail: 'More than 10,000 invoices match. Narrow the filters (status, dates or search) and export again.',
+      error_code: 'BUSINESS_RULE_VIOLATION',
+      rule_id: 'EXPORT_TOO_LARGE',
+    },
+    null,
+  )
+
+  beforeEach(() => {
+    vi.mocked(billingApi.list).mockResolvedValue({
+      data: [makeBillingRecord()],
+      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
+    })
+    vi.mocked(billingApi.exportList).mockReset()
+    vi.mocked(billingApi.exportList).mockResolvedValue(undefined)
+  })
+
+  it('exports the whole list as Excel from the primary button', async () => {
+    renderWithTopBar('tenant_admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+    await waitFor(() => expect(billingApi.exportList).toHaveBeenCalledWith({}, 'xlsx'))
+  })
+
+  it('offers CSV from the format picker', async () => {
+    renderWithTopBar('tenant_admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Choose export format' }))
+    await userEvent.click(screen.getByRole('button', { name: /CSV/ }))
+    await waitFor(() => expect(billingApi.exportList).toHaveBeenCalledWith({}, 'csv'))
+  })
+
+  it('exports the filters on screen at the moment of the click, not the ones it opened with', async () => {
+    renderWithTopBar('tenant_admin')
+    await screen.findByText('ACME001')
+    // The button is placed in the top bar once, on mount; it must still see filters chosen afterwards.
+    await userEvent.click(within(screen.getByRole('search', { name: 'Filter invoices' })).getByRole('button', { name: /Unpaid/ }))
+    await userEvent.type(screen.getByPlaceholderText(/Reference, customer, container/), 'acme')
+    await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'unpaid', q: 'acme' })))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+    await waitFor(() => expect(billingApi.exportList).toHaveBeenCalledWith({ status: 'unpaid', q: 'acme' }, 'xlsx'))
+  })
+
+  it('exports the same sort and date range the list is using', async () => {
+    renderWithTopBar('tenant_admin')
+    await screen.findByText('ACME001')
+    await userEvent.click(screen.getByRole('button', { name: /Reference/ }))
+    await waitFor(() => expect(billingApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'invoice_number' })))
+    const listParams = vi.mocked(billingApi.list).mock.calls.at(-1)?.[0] ?? {}
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+    await waitFor(() => expect(billingApi.exportList).toHaveBeenCalled())
+    const [exported] = vi.mocked(billingApi.exportList).mock.calls[0]!
+    expect(exported).toEqual({ sort: listParams.sort, direction: listParams.direction })
+  })
+
+  it('says why a refused export was refused, and lets the message be dismissed', async () => {
+    vi.mocked(billingApi.exportList).mockRejectedValue(tooLarge)
+    renderWithTopBar('tenant_admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+
+    const banner = await screen.findByText(/Couldn't export invoices/)
+    expect(banner).toBeInTheDocument()
+    expect(screen.getByText(/More than 10,000 invoices match/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /dismiss/i }))
+    expect(screen.queryByText(/Couldn't export invoices/)).not.toBeInTheDocument()
+  })
+
+  it('clears an old failure when the next export is started', async () => {
+    vi.mocked(billingApi.exportList).mockRejectedValueOnce(tooLarge).mockResolvedValueOnce(undefined)
+    renderWithTopBar('tenant_admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Export' }))
+    await screen.findByText(/Couldn't export invoices/)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+    await waitFor(() => expect(screen.queryByText(/Couldn't export invoices/)).not.toBeInTheDocument())
+  })
+
+  it('is not offered to Nigeria office staff, who see the same list but not this button', async () => {
+    renderWithTopBar('nigeria_office_staff')
+    await waitFor(() => expect(billingApi.list).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument()
+  })
+})
+

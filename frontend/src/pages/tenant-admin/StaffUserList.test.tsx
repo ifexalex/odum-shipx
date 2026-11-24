@@ -54,7 +54,7 @@ describe('StaffUserList (B4)', () => {
     renderPage()
     expect(await screen.findByText('Amara Okafor')).toBeInTheDocument()
     expect(screen.queryByText('A Customer')).toBeNull()
-    expect(screen.getAllByText('2026-01-14').length).toBe(3)
+    expect(screen.getAllByText('14 Jan 2026').length).toBe(3)
     // "All 3" chip (customers excluded from the count)
     const allChip = screen.getAllByText('All').find((el) => el.closest('button'))!
     expect(allChip.closest('button')).toHaveTextContent('3')
@@ -63,7 +63,7 @@ describe('StaffUserList (B4)', () => {
   it('filters by role chip', async () => {
     renderPage()
     await screen.findByText('Amara Okafor')
-    const chinaChip = screen.getAllByText('China').find((el) => el.closest('button'))!
+    const chinaChip = screen.getAllByText('China office').find((el) => el.closest('button'))!
     await userEvent.click(chinaChip)
     expect(screen.getByText('Kwame Asante')).toBeInTheDocument()
     expect(screen.queryByText('Amara Okafor')).toBeNull()
@@ -83,11 +83,11 @@ describe('StaffUserList (B4)', () => {
     expect(await screen.findByLabelText(/full name/i)).toBeInTheDocument()
   })
 
-  it('opens a staff profile on view', async () => {
+  it('opens a staff profile from its row', async () => {
     renderPage()
     await screen.findByText('Amara Okafor')
     const row = screen.getByText('Amara Okafor').closest('tr')!
-    await userEvent.click(within(row).getByText('View'))
+    await userEvent.click(within(row).getAllByRole('button')[0]!)
     expect(await screen.findByText('Staff profile')).toBeInTheDocument()
   })
 
@@ -136,7 +136,7 @@ describe('StaffUserList (B4)', () => {
     const dialog = within(await screen.findByRole('dialog'))
     await dialog.findByLabelText(/email/i)
 
-    await userEvent.click(dialog.getByText('Nigeria'))
+    await userEvent.click(dialog.getByText('Nigeria office'))
 
     expect(dialog.getByText('Send invite').closest('button')).toBeDisabled()
   })

@@ -11,39 +11,24 @@ import {
 import { staffKeys } from '../../api/keys'
 import { useStaffList } from '../../hooks/useStaff'
 import {
-  Badge,
   Banner,
   Button,
-  Card,
   Chip,
   Field,
-  Icon,
+  Modal,
   Table,
-  ViewLink,
-  type BadgeVariant,
-} from '../../design/components'
-import { useTopBarSlot } from '../../shell/TopBarContext'
+  RoleBadge,
+  StatusBadge,
+  SearchField,
+  EmptyState } from '../../design/components'
 import { RoleCheckboxList } from './RoleCheckboxList'
 import styles from './admin.module.css'
-
-const ROLE_VARIANT: Record<TenantUserRole, BadgeVariant> = {
-  tenant_admin: 'error',
-  china_office_staff: 'info',
-  nigeria_office_staff: 'success',
-  warehouse_attendant: 'warning',
-  customer: 'neutral',
-}
-
-function roleLabel(r: TenantUserRole): string {
-  const map: Record<TenantUserRole, string> = {
-    tenant_admin: 'Admin',
-    china_office_staff: 'China',
-    nigeria_office_staff: 'Nigeria',
-    warehouse_attendant: 'Warehouse',
-    customer: 'Customer',
-  }
-  return map[r]
-}
+import { formatDate } from '../../lib/format'
+import { roleLabel } from '../../design/status'
+import { toast } from '../../design/toast'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage } from '../../shell/ListPage'
+import { PageHeader } from '../../shell/PageHeader'
 
 const ROLES: TenantUserRole[] = [
   'tenant_admin',
@@ -77,6 +62,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
         primary_role: primaryRole ?? roles[0],
       }
       const user = await usersApi.create(body)
+      toast.success('Staff member invited', user.full_name)
       onSuccess(user)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not invite user.')
@@ -86,19 +72,9 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
   }
 
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <div
-        className={styles.modalPanel}
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <h3 className={styles.modalTitle}>Invite staff member</h3>
-        {error && (
-          <div className={styles.modalBanner}>
-            <Banner variant="error">{error}</Banner>
-          </div>
-        )}
+    <Modal open onClose={onCancel} title="Invite staff member" size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error">{error}</Banner>}
         <Field
           label="Email"
           name="email"
@@ -118,12 +94,12 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
           <label
             style={{
               fontWeight: 600,
-              fontSize: '0.875rem',
+              fontSize: 'var(--text-md)',
               display: 'block',
-              marginBottom: 6,
+              marginBottom: 'var(--space-2)',
             }}
           >
-            Roles <span style={{ color: 'var(--color-error)' }}>*</span>
+            Roles
           </label>
           <RoleCheckboxList
             options={ROLES}
@@ -150,7 +126,7 @@ function InviteModal({ onCancel, onSuccess }: InviteModalProps): JSX.Element {
           </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -171,107 +147,111 @@ export function StaffUserList(): JSX.Element {
 
   const counts = useMemo(() => {
     const map: Record<string, number> = {}
-    for (const u of staff) map[u.role] = (map[u.role] ?? 0) + 1
+    for (const u of staff) {
+      const userRoles = Array.from(new Set([u.role, ...(u.roles ?? [])]))
+      for (const r of userRoles) map[r] = (map[r] ?? 0) + 1
+    }
     return map
   }, [staff])
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return staff.filter((u) => {
-      if (roleFilter && u.role !== roleFilter) return false
+      const userRoles = Array.from(new Set([u.role, ...(u.roles ?? [])]))
+      if (roleFilter && !userRoles.includes(roleFilter)) return false
       if (!q) return true
       return u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
     })
   }, [staff, roleFilter, query])
 
-  useTopBarSlot({
-    subtitle: 'Manage team members and their access roles.',
-    actions: (
-      <Button variant="primary" icon="plus" onClick={() => setShowInvite(true)}>
-        Invite user
-      </Button>
-    ),
-  })
-
   return (
-    <div>
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error">{error.message}</Banner>
-        </div>
-      )}
-
-      <Card padding={16}>
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={roleFilter === null} onClick={() => setRoleFilter(null)}>
-              All <span style={{ opacity: 0.6 }}>{staff.length}</span>
-            </Chip>
-            {ROLES.map((r) => (
-              <Chip
-                key={r}
-                active={roleFilter === r}
-                onClick={() => setRoleFilter(roleFilter === r ? null : r)}
-              >
-                {roleLabel(r)} <span style={{ opacity: 0.6 }}>{counts[r] ?? 0}</span>
-              </Chip>
-            ))}
-          </div>
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
-              aria-label="Search staff"
-              placeholder="Search by name or email…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding={0}>
-          <Table
-            columns={[
-              { title: 'Name' },
-              { title: 'Email' },
-              { title: 'Role' },
-              { title: 'Status' },
-              { title: 'Created' },
-              { title: '', width: '60px' },
-            ]}
-            rows={visible.map((u) => ({
+    <>
+      <ListPage
+        header={
+          <PageHeader
+            title="Staff"
+            meta={'Manage team members and their access roles.'}
+            primary={
+              <Button variant="primary" icon="plus" onClick={() => setShowInvite(true)}>
+                Invite user
+              </Button>
+            }
+          />
+        }
+        notices={<>{error && <Banner variant="error">{error.message}</Banner>}</>}
+        filters={
+          <FilterBar
+            label="Filter staff"
+            status={
+              <>
+                <Chip active={roleFilter === null} onClick={() => setRoleFilter(null)}>
+                  All <span style={{ opacity: 0.6 }}>{staff.length}</span>
+                </Chip>
+                {ROLES.map((r) => (
+                  <Chip
+                    key={r}
+                    active={roleFilter === r}
+                    onClick={() => setRoleFilter(roleFilter === r ? null : r)}
+                  >
+                    {roleLabel(r)} <span style={{ opacity: 0.6 }}>{counts[r] ?? 0}</span>
+                  </Chip>
+                ))}
+              </>
+            }
+            search={
+              <>
+                <SearchField
+                  label="Search staff"
+                  placeholder="Search by name or email…"
+                  value={query}
+                  onChange={setQuery}
+                />
+              </>
+            }
+          />
+        }
+      >
+        <Table
+          columns={[
+            { title: 'Name' },
+            { title: 'Email' },
+            { title: 'Roles' },
+            { title: 'Status', type: 'status' },
+            { title: 'Created', type: 'date' },
+          ]}
+          rows={visible.map((u) => {
+            const userRoles = Array.from(new Set([u.role, ...(u.roles ?? [])]))
+            return {
+              onOpen: () => navigate(`/admin/users/${u.id}`, { state: { user: u } }),
               cells: [
                 <span key="name">{u.full_name}</span>,
                 <span key="email">{u.email}</span>,
-                <Badge key="role" variant={ROLE_VARIANT[u.role]}>
-                  {roleLabel(u.role)}
-                </Badge>,
-                <Badge key="status" variant={u.status === 'active' ? 'success' : 'neutral'}>
-                  {u.status}
-                </Badge>,
-                <span key="created" style={{ fontSize: 12, color: 'var(--color-ink-3)' }}>
-                  {u.created_at?.slice(0, 10) ?? '—'}
+                <div key="role" style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+                  {userRoles.map((r) => (
+                    <RoleBadge key={r} role={r} />
+                  ))}
+                </div>,
+                <StatusBadge key="status" kind="staffUser" status={u.status} />,
+                <span
+                  key="created"
+                  style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}
+                >
+                  {formatDate(u.created_at)}
                 </span>,
-                <ViewLink
-                  key="view"
-                  onClick={() => navigate(`/admin/users/${u.id}`, { state: { user: u } })}
-                />,
               ],
-            }))}
-            loading={loading}
-            emptyState={
-              !loading && visible.length === 0 ? (
-                <span>
-                  {staff.length === 0 ? 'No staff members yet.' : 'No staff match this filter.'}
-                </span>
-              ) : undefined
             }
-          />
-        </Card>
-      </div>
-
+          })}
+          loading={loading}
+          emptyState={
+            !loading && visible.length === 0 ? (
+              <EmptyState
+                compact
+                title={staff.length === 0 ? 'No staff members yet' : 'No staff match this filter'}
+              />
+            ) : undefined
+          }
+        />
+      </ListPage>
       {showInvite && (
         <InviteModal
           onCancel={() => setShowInvite(false)}
@@ -281,6 +261,6 @@ export function StaffUserList(): JSX.Element {
           }}
         />
       )}
-    </div>
+    </>
   )
 }

@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 import type { TenantUserRole } from '../../api/tenantManagement'
-import { Check } from '../../design/components'
+import { Check, CellRadio } from '../../design/components'
 
 export interface RoleCheckboxListProps {
   /** Assignable roles, in display order. */
@@ -34,18 +34,18 @@ export function RoleCheckboxList({ options, selected, primary, onChange, roleLab
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
       {options.map((role) => {
         const checked = selected.includes(role)
         return (
-          <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Check checked={checked} onChange={(next) => toggleRole(role, next)} />
-            <span style={{ flex: 1, fontSize: '0.875rem', cursor: 'pointer' }} onClick={() => toggleRole(role, !checked)}>
+          <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <Check label={roleLabel(role)} checked={checked} onChange={(next) => toggleRole(role, next)} />
+            <span style={{ flex: 1, fontSize: 'var(--text-md)', cursor: 'pointer' }} onClick={() => toggleRole(role, !checked)}>
               {roleLabel(role)}
             </span>
             {checked && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--color-ink-3)', cursor: 'pointer' }}>
-                <input type="radio" name="primary-role" checked={primary === role} onChange={() => onChange(selected, role)} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)', cursor: 'pointer' }}>
+                <CellRadio label={`Primary role: ${roleLabel(role)}`} name="primary-role" checked={primary === role} onChange={() => onChange(selected, role)} />
                 Primary
               </label>
             )}

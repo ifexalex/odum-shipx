@@ -13,7 +13,7 @@ Create the Terraform module for Amazon API Gateway HTTP API with JWT authorizer 
 - **HTTP API** (not REST API) — 70% cheaper, sufficient for this use case
 - Base URL: `https://api.logistics.example.com/v1`
 - JWT Authorizer validates Cognito tokens and extracts claims
-- Rate limiting: 1000 req/s platform-wide; per-API-key throttling
+- Rate limiting: a stage-wide throttle (50 req/s, burst 100) plus per-route throttles on the public routes. ~~per-API-key throttling~~: an HTTP API has no usage plans or API keys. Per-client and per-tenant limits are in the Lambdas (`shared/rate_limit.py`, ADR-007).
 - CORS enabled for web client origins
 
 ## Deliverables
@@ -29,6 +29,12 @@ Create the Terraform module for Amazon API Gateway HTTP API with JWT authorizer 
   - jwt_configuration: audience = [cognito_client_id], issuer = cognito_issuer_url
 - `aws_apigatewayv2_stage` — "$default" with auto_deploy = true
   - default_route_settings: throttling_burst_limit = 100, throttling_rate_limit = 50
+  - Route added 2026-11-16: `GET /v1/billing/disputes/{id}` -> billing (measurement-only dispute detail, audit UX-01).
+  - Route added 2026-11-16: `GET /v1/search` -> search (global search, audit UX-05).
+  - Route added 2026-11-16: `POST /v1/release-notes/{id}/pickup-code` -> payment_release (send a new pickup code, audit UX-09).
+  - Routes added 2026-11-16: `GET /v1/billing/export` and `GET /v1/containers/export` -> excel (whole-list exports). A literal segment wins over the `{id}` routes on the same path.
+  - Route added 2026-11-20: `GET /v1/billing/report/export` -> excel (the reports page's billing by container).
+  - `route_settings` per public route (`public_route_throttles`, 2026-11-15): auth refresh 30/s (burst 60), the other auth routes 10/s, `/auth/login` 5/s, register 3/s, onboarding-requests 2/s. These are per ROUTE, not per client; they stop a flood of one public route from using the stage-wide budget. The stage `depends_on` the public routes, because API Gateway rejects a route key that does not exist yet.
   - access_log_settings → CloudWatch log group
 - Route integrations (one per Lambda, using `aws_apigatewayv2_integration` + `aws_apigatewayv2_route`):
 
@@ -135,7 +141,12 @@ variable "cors_allow_origins" { type = list(string) }
 
 ## Per-Tenant Rate Limiting
 
-API Gateway usage plans enforce per-tenant throttling via API keys. Each tenant receives an API key mapped to a usage plan:
+> **Correction (2026-11-15):** the section below was never implemented and cannot be: an HTTP API (protocol 2.0) has no
+> usage plans and no API keys, so the Terraform never created any. The per-tenant limit is application-level,
+> `shared/rate_limit.py` (600 requests/min per tenant by default, enforced in `get_tenant_context`; see ADR-007 and
+> `00_CROSS_CUTTING_STANDARDS.md` §8.7). The tier table below is the *intended* quota shape, not what runs.
+
+~~API Gateway usage plans enforce per-tenant throttling via API keys.~~ Each tenant receives an API key mapped to a usage plan:
 
 | Tier | Burst limit (RPS) | Steady-state limit (RPS) | Monthly quota |
 |---|---|---|---|
@@ -201,5 +212,12 @@ targets a service key with no deployed Lambda, or a route key is duplicated.
 - [x] CORS configured for web client
 - [x] Access logging enabled
 - [x] Stage with auto-deploy and throttling
-- [x] Per-tenant usage plans with tier-based rate limits configured
+- [x] ~~Per-tenant usage plans with tier-based rate limits configured~~ never existed (HTTP API has none); replaced by `shared/rate_limit.py` per-tenant limit (2026-11-15)
+- [x] Per-route throttles on the public routes (`public_route_throttles`)
 - [ ] `terraform plan` succeeds — `terraform validate` passes (2026-09-23); a real plan/apply against AWS is still outstanding
+
+- Routes added 2026-11-17 (audit BE-10): `GET` and `POST /v1/platform/tenants/{id}/offboarding-export`, `POST /v1/platform/tenants/{id}/offboarding-export/link` → tenant_management.
+
+**Tenant logo routes (FD-29, 2026-11-21):** `POST /v1/tenant/config/logo/upload-url`, `PUT /v1/tenant/config/logo` and `DELETE /v1/tenant/config/logo` → `tenant_management` (added to `infrastructure/aws/modules/api-gateway/main.tf`). JWT-authorised like the other tenant-admin routes; the handler asserts `tenant_admin`.
+
+**Document routes (FD-39, 2026-11-21):** `GET /v1/billing/{id}/pdf` and `GET /v1/manifests/{id}/pdf` → `excel`. `shared/http_routing._EXCEL_PDF_PREFIXES` gains `/v1/billing/` and `/v1/manifests/` so the local server and the container app route them the same way.

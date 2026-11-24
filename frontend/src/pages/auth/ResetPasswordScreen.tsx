@@ -11,11 +11,11 @@
  *    password to establish the session.
  */
 import { useState, type FormEvent, type JSX } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { completeNewPassword, confirmForgotPassword, hasPendingNewPasswordChallenge } from '../../auth/authClient'
 import { homePathForRole } from '../../auth/roleHome'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Field, Icon } from '../../design/components'
+import { Banner, Button, Field, Icon, IconButton } from '../../design/components'
 import { AuthShell, FormHead, PasswordStrength } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -93,13 +93,13 @@ export function ResetPasswordScreen(): JSX.Element {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 24px',
+              margin: '0 auto var(--space-6)',
             }}
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 8 }}>Password updated.</h2>
-          <p className={styles.formSub} style={{ marginBottom: 32 }}>
+          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Password updated.</h2>
+          <p className={styles.formSub} style={{ marginBottom: 'var(--space-8)' }}>
             Your password has been changed. Sign in with your new password.
           </p>
           <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
@@ -112,6 +112,13 @@ export function ResetPasswordScreen(): JSX.Element {
 
   return (
     <AuthShell>
+      <Link
+        to="/login"
+        className={styles.link}
+        style={{ marginBottom: 'var(--space-6)', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
+      >
+        <Icon name="arrowleft" size={14} /> Back to sign in
+      </Link>
       <FormHead
         title="Set a new password"
         sub={
@@ -122,7 +129,7 @@ export function ResetPasswordScreen(): JSX.Element {
       />
 
       {error && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: 'var(--space-5)' }}>
           <Banner variant="error" title="Could not update password">{error}</Banner>
         </div>
       )}
@@ -164,19 +171,18 @@ export function ResetPasswordScreen(): JSX.Element {
           autoComplete="new-password"
           required
           trailing={
-            <button
-              type="button"
+            <IconButton
               className={styles.trailingButton}
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              size="sm"
+              icon={showPassword ? 'eyeoff' : 'eye'}
+              label={showPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowPassword((v) => !v)}
-            >
-              <Icon name={showPassword ? 'eyeoff' : 'eye'} size={16} />
-            </button>
+            />
           }
         />
         <PasswordStrength password={password} />
 
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 'var(--space-4)' }}>
           <Field
             label="Confirm new password"
             type={showPassword ? 'text' : 'password'}
@@ -196,20 +202,20 @@ export function ResetPasswordScreen(): JSX.Element {
           style={{
             background: 'var(--color-surface-muted)',
             border: '1px solid var(--color-line-soft)',
-            borderRadius: 8,
-            padding: '12px 14px',
-            margin: '8px 0 24px',
-            fontSize: 12,
-            lineHeight: 1.7,
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-3) var(--space-4)',
+            margin: 'var(--space-2) 0 var(--space-6)',
+            fontSize: 'var(--text-xs)',
+            lineHeight: 'var(--leading-body)',
           }}
         >
-          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
             Password requirements
           </div>
           {REQUIREMENTS.map((r) => {
             const met = r.ok(password)
             return (
-              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 6, color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}>
+              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}>
                 <Icon name={met ? 'check' : 'minus'} size={12} stroke={3} />
                 {r.label}
               </div>
@@ -221,6 +227,24 @@ export function ResetPasswordScreen(): JSX.Element {
           {firstLogin ? 'Set password & sign in' : 'Update password'}
         </Button>
       </form>
+
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
+        {firstLogin ? (
+          <>
+            Need to start over?{' '}
+            <Link to="/login" className={styles.footerLinkStrong}>
+              Sign in again <Icon name="arrowright" size={12} />
+            </Link>
+          </>
+        ) : (
+          <>
+            Code expired or missing?{' '}
+            <Link to="/forgot-password" className={styles.footerLinkStrong}>
+              Request a new code <Icon name="arrowright" size={12} />
+            </Link>
+          </>
+        )}
+      </p>
     </AuthShell>
   )
 }

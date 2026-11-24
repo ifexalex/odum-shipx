@@ -1,8 +1,19 @@
 .wrapper {
   width: 100%;
   overflow-x: auto;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-line-soft);
+  box-shadow: var(--shadow-rest);
+  background: var(--color-surface);
+}
+
+/* Inside a card the card's edge is the table's frame (FD-10): no second border just inside it. */
+:global([data-surface='card']) .wrapper {
+  border: 0;
+  box-shadow: none;
+  /* The card's own radius (when the table is its direct child), so its overflow clips the header row and card rows
+     to the card's rounded corners instead of poking past them. */
+  border-radius: inherit;
 }
 
 .table {
@@ -13,14 +24,15 @@
 
 .th {
   text-align: left;
-  padding: 12px 12px;
-  font-size: 12px;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-ink-3);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
+  white-space: nowrap;
   background: var(--color-surface-muted);
-  border-bottom: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line-soft);
 }
 
 .thRight {
@@ -32,13 +44,13 @@
 
 .thSelect {
   width: 36px;
-  padding: 12px 0 12px 16px;
+  padding: var(--space-3) 0 var(--space-3) var(--space-4);
 }
 
 .thHead {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .thHeadRight {
   justify-content: flex-end;
@@ -47,7 +59,7 @@
 .sortButton {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   background: none;
   border: none;
   padding: 0;
@@ -64,12 +76,12 @@
 }
 
 .sortActive {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
 }
 
 .row {
   background: var(--color-surface);
-  transition: background 0.1s;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 .row:hover {
   background: var(--color-primary-tint);
@@ -80,25 +92,29 @@
 }
 
 .rowSuspended {
-  background: var(--color-error-soft, #fee2e2);
+  background: var(--color-error-soft);
   border-left: 2px solid var(--color-error);
 }
 
 .td {
-  padding: 14px 12px;
-  border-bottom: 1px solid var(--color-line);
-  font-size: 13px;
+  /* Falcon Advance Table row density: crisp hairline divider, balanced horizontal padding. */
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-line-soft);
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
   vertical-align: middle;
 }
+.row:last-child .td {
+  border-bottom: 0;
+}
 .tdDense {
-  padding: 10px 12px;
+  padding: var(--space-3) var(--space-4);
 }
 .tdSelect {
-  padding: 14px 0 14px 16px;
+  padding: var(--space-3) 0 var(--space-3) var(--space-4);
 }
 .tdSelectDense {
-  padding: 10px 0 10px 16px;
+  padding: var(--space-3) 0 var(--space-3) var(--space-4);
 }
 .tdRight {
   text-align: right;
@@ -108,13 +124,13 @@
 }
 
 .emptyCell {
-  padding: 60px;
+  padding: var(--space-8);
   text-align: center;
 }
 
 .skeletonBar {
   height: 12px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--color-line-soft);
   animation: pulse 1.4s ease-in-out infinite;
 }
@@ -139,25 +155,43 @@
 .cardList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 4px;
+  gap: var(--space-3);
+  padding: var(--space-1);
 }
 
 .cardSelectAll {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  font-size: 13px;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
   color: var(--color-ink-3);
   cursor: pointer;
 }
 
 .card {
   background: var(--color-surface);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
-  padding: 14px 16px;
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-rest);
+  padding: var(--space-4) var(--space-4);
+}
+
+/* Inside a card the rows are divided, not boxed: no card inside a card (FD-10). */
+:global([data-surface='card']) .cardList {
+  gap: 0;
+  padding: 0;
+}
+
+:global([data-surface='card']) .card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px solid var(--color-line-soft);
+}
+
+:global([data-surface='card']) .card:last-child {
+  border-bottom: 0;
 }
 
 .cardSelected {
@@ -166,15 +200,15 @@
 }
 
 .cardSuspended {
-  background: var(--color-error-soft, #fee2e2);
+  background: var(--color-error-soft);
   border-color: var(--color-error);
 }
 
 .cardHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 15px;
+  gap: var(--space-3);
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--color-ink);
 }
@@ -186,37 +220,69 @@
 
 .cardBody {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px 16px;
-  margin-top: 12px;
-  padding-top: 12px;
+  /* Two fields a row while each still holds a whole word ("COMPLETED"); one a row on the narrowest phones, so a
+     status never splits or runs out of its cell (FD-10). */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 136px), 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--color-line);
 }
 
 .cardField {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 
 .cardLabel {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--color-ink-3);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
 
 .cardValue {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-ink-2);
+  min-width: 0;
+  /* break-word, not anywhere: anywhere also shrinks the cell's minimum width, so ordinary words split (FD-10). */
+  overflow-wrap: break-word;
 }
 
 .cardAction {
   display: flex;
   justify-content: flex-end;
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--color-line);
+}
+
+/* Column types (FD-13). */
+.cellReference {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.cellNumeric {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A row that opens its record (FD-07): the whole row is the target; its first cell is the keyboard control. */
+.openable {
+  cursor: pointer;
+}
+tr.openable:hover {
+  background: var(--color-primary-tint);
+}
+.openButton {
+  all: unset;
+  display: inline-flex;
+  max-width: 100%;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.openButton:focus-visible {
+  box-shadow: var(--shadow-focus-ring);
 }

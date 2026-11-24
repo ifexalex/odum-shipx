@@ -22,8 +22,14 @@ class S3StorageProvider:
     def _s3(self) -> Any:
         if self._client is None:
             import boto3
+            from botocore.config import Config
 
-            self._client = boto3.client("s3", region_name=self._region)
+            # Real AWS: SigV4, which signs the upload's Content-Type and Content-Length into a presigned PUT (so S3
+            # refuses a different type or size). Botocore's default for presigning can be SigV2, which signs neither.
+            # Against a local endpoint (Moto) keep the default: the dev upload proxy rewrites the host, which SigV4
+            # also signs (see LOCAL_TESTING.md, "uploads").
+            config = None if os.environ.get("AWS_ENDPOINT_URL") else Config(signature_version="s3v4")
+            self._client = boto3.client("s3", region_name=self._region, config=config)
         return self._client
 
     def presigned_get_url(
@@ -43,12 +49,14 @@ class S3StorageProvider:
         )
         return url
 
-    def presigned_upload(self, key: str, *, content_type: str, expires_in: int) -> UploadTicket:
-        url: str = self._s3().generate_presigned_url(
-            "put_object",
-            Params={"Bucket": self._bucket, "Key": key, "ContentType": content_type},
-            ExpiresIn=expires_in,
-        )
+    def presigned_upload(
+        self, key: str, *, content_type: str, expires_in: int, content_length: int | None = None
+    ) -> UploadTicket:
+        params: dict[str, object] = {"Bucket": self._bucket, "Key": key, "ContentType": content_type}
+        if content_length is not None:
+            # Signed: S3 refuses a body of any other length (the browser sets Content-Length from the file itself).
+            params["ContentLength"] = content_length
+        url: str = self._s3().generate_presigned_url("put_object", Params=params, ExpiresIn=expires_in)
         # The browser must send Content-Type matching the signed value, or S3
         # rejects the PUT with SignatureDoesNotMatch.
         return UploadTicket(url=url, method="PUT", headers={"Content-Type": content_type})
@@ -66,6 +74,10 @@ class S3StorageProvider:
         except self._s3().exceptions.ClientError:
             return None
         return int(resp["ContentLength"])
+
+    def delete_object(self, key: str) -> None:
+        # A plain delete; on a versioned bucket the old version is purged by the lifecycle rule.
+        self._s3().delete_object(Bucket=self._bucket, Key=key)
 
     def delete_prefix(self, prefix: str) -> int:
         """Delete all objects, versions, and delete-markers under `prefix`.

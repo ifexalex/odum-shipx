@@ -2,8 +2,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-md);
-  margin-bottom: var(--space-lg);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .titleBlock {
@@ -11,40 +11,96 @@
   min-width: 0;
 }
 
-.eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  font-weight: 600;
-  color: var(--color-primary);
-  margin-bottom: 6px;
+.titleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
 }
 
 .title {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 26px;
+  font-size: var(--text-2xl);
   margin: 0;
   color: var(--color-ink);
-  letter-spacing: -0.015em;
-  line-height: 1.15;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--text-2xl-line);
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
-.subtitle {
-  margin: 6px 0 0;
-  font-size: 14px;
+.reference {
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* One line of facts, joined by middle dots; wraps between facts, never inside one. */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-md);
+  line-height: var(--text-md-line);
   color: var(--color-ink-3);
+}
+
+.fact {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.dot {
+  color: var(--color-ink-4);
 }
 
 .actions {
   display: flex;
-  gap: var(--space-sm);
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 /* Stack title over actions on narrow shells (prototype .sx-pagehead). */
-@container sxapp (max-width: 560px) {
+@container sxapp (max-width: 600px) {
   .header {
     flex-direction: column;
   }
+
+  .actions {
+    justify-content: flex-start;
+  }
+
+  /* The primary action becomes a bar fixed to the bottom of the screen (FD-35): always in reach of a thumb, however
+     far the page scrolls. The shell pads its content by --app-bottom-bar so nothing hides behind it. */
+  .primary {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--layer-sticky);
+    padding: var(--space-3) var(--space-4) calc(var(--space-3) + var(--safe-area-bottom));
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-line);
+    box-shadow: var(--shadow-popover);
+  }
+
+  .primary > * {
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  :global(body):has([data-sticky-action]) {
+    --app-bottom-bar: 72px; /* scale-exempt: the fixed action bar's height (a 40px button and its padding) */
+  }
+}
+
+/* Focus lands here after a navigation (FD-48); the heading is not a control, so no ring. */
+.title:focus {
+  outline: none;
 }

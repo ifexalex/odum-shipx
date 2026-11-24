@@ -23,12 +23,13 @@ import uuid
 from typing import Any
 
 from shared.auth import get_tenant_context
+from shared.client_ip import client_ip
 from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
-from shared.idempotency import check_idempotency, store_idempotency
+from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
-from shared.pagination import decode_cursor
+from shared.pagination import parse_pagination_params
 from shared.responses import (
     created,
     error_response,
@@ -84,7 +85,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     http = event.get("requestContext", {}).get("http", {})
     method = http.get("method", "")
     path = http.get("path", "")
-    ip_address = event.get("requestContext", {}).get("identity", {}).get("sourceIp")
+    ip_address = client_ip(event)
 
     if method == "GET" and path.strip("/") == "v1/health":
         return _health_response(request_id)
@@ -98,18 +99,33 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             extra={"request_id": request_id, "tenant_id": tenant_ctx.tenant_id},
         )
 
-        # Idempotency for POST requests
+        # Idempotency for POST requests, scoped to caller + route + payload
         idempotency_key = None
         if method == "POST":
-            idempotency_key = (event.get("headers") or {}).get("idempotency-key")
-            cached = check_idempotency(idempotency_key, tenant_ctx.tenant_id)
+            idempotency_key = get_idempotency_key(event)
+            cached = check_idempotency(
+                idempotency_key,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
             if cached:
                 return cached
 
         response: dict[str, Any] = _dispatch(event, method, path, tenant_ctx, request_id, ip_address)
 
         if method == "POST" and idempotency_key and response.get("statusCode", 500) < 400:
-            store_idempotency(idempotency_key, response, tenant_ctx.tenant_id)
+            store_idempotency(
+                idempotency_key,
+                response,
+                tenant_ctx.tenant_id,
+                actor_id=tenant_ctx.user_id,
+                method=method,
+                path=path,
+                body=event.get("body"),
+            )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
         return response
@@ -180,8 +196,7 @@ def _container_packing_lists(
         filters["status"] = _qp(event, "status")
     if _qp(event, "customer_id"):
         filters["customer_id"] = _qp(event, "customer_id")
-    limit = int(_qp(event, "limit", 50))
-    cursor = decode_cursor(_qp(event, "cursor"))
+    cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
     page, next_cursor, has_more, total = service.list_packing_lists(ctx.tenant_id, filters, limit, cursor, ctx)
     return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
@@ -231,7 +246,7 @@ def _packing_list_routes(
         return success(result, request_id=request_id)
 
     if pl_id == "bulk-submit" and method == "POST":
-        ctx.assert_role(*_WORKFLOW_ROLES)
+        ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
         body = _parse_body(event)
         req = parse_validated(BulkSubmitRequest, body)
         result = service.bulk_submit_packing_lists(
@@ -269,6 +284,7 @@ def _packing_list_routes(
                 actor_id=ctx.user_id,
                 request_id=request_id,
                 ip_address=ip_address,
+                ctx=ctx,
             )
             pl_id_new = str(result["id"])
             return created(
@@ -296,8 +312,7 @@ def _packing_list_routes(
                 filters["created_after"] = _qp(event, "created_after")
             if _qp(event, "created_before"):
                 filters["created_before"] = _qp(event, "created_before")
-            limit = int(_qp(event, "limit", 50))
-            cursor = decode_cursor(_qp(event, "cursor"))
+            cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more, total = service.list_packing_lists(tenant_id, filters, limit, cursor, ctx)
             return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
@@ -311,7 +326,7 @@ def _packing_list_routes(
 
             # PUT /v1/packing-lists/{id}
             if method == "PUT":
-                ctx.assert_role(UserRole.CHINA_OFFICE_STAFF)
+                ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
                 body = _parse_body(event)
                 req = parse_validated(UpdatePackingListRequest, body)
                 result = service.update_packing_list(
@@ -327,7 +342,7 @@ def _packing_list_routes(
         else:
             # PATCH /v1/packing-lists/{id}/submit
             if action == "submit" and method == "PATCH":
-                ctx.assert_role(*_WORKFLOW_ROLES)
+                ctx.assert_role(UserRole.CHINA_OFFICE_STAFF, UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
                 result = service.submit_packing_list(
                     pl_id,
                     tenant_id,

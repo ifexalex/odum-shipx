@@ -74,6 +74,8 @@ def normalize_phone(raw: str | None, dial_code: str = DEFAULT_DIAL_CODE) -> str 
         return None
     if text.startswith("+"):
         return f"+{digits}"
+    if digits.startswith("00") and len(digits) > 4:
+        return f"+{digits[2:]}"
     if digits.startswith(dial_code):
         return f"+{digits}"
     if digits.startswith("0"):

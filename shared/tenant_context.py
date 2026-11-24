@@ -35,15 +35,28 @@ class TenantContext:
     is_platform_admin: bool = field(init=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "is_platform_admin", self.tenant_id == PLATFORM_TENANT_ID)
         if not self.roles:
             object.__setattr__(self, "roles", frozenset({self.role}))
+        object.__setattr__(
+            self,
+            "is_platform_admin",
+            self.tenant_id == PLATFORM_TENANT_ID and UserRole.PLATFORM_ADMIN in self.roles,
+        )
+
+    def has_role(self, *allowed_roles: UserRole) -> bool:
+        """Return True if any of the user's assigned roles is in `allowed_roles`."""
+        return bool(self.roles & set(allowed_roles))
+
+    @property
+    def is_customer_only(self) -> bool:
+        """True when the caller holds solely the CUSTOMER role (no staff or admin role)."""
+        return self.roles == frozenset({UserRole.CUSTOMER})
 
     def assert_role(self, *allowed_roles: UserRole) -> None:
         """Raise InsufficientPermissionsError if none of the user's roles are allowed."""
         from shared.exceptions import InsufficientPermissionsError
 
-        if not (self.roles & set(allowed_roles)):
+        if not self.has_role(*allowed_roles):
             raise InsufficientPermissionsError(
                 action="this operation",
                 required_role=" or ".join(r.value for r in allowed_roles),

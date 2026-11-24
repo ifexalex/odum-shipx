@@ -27,7 +27,7 @@ test.describe('bulk packing-list actions', () => {
     // above already covers the react-query settle race).
     await page.locator('table thead').getByRole('checkbox').click()
 
-    const bulkBar = page.getByText(/packing list\(s\) selected/i)
+    const bulkBar = page.getByText(/packing lists? selected/i)
     await expect(bulkBar).toBeVisible()
 
     // If every selected list was created by this same seeded user, the
@@ -83,7 +83,7 @@ test.describe('bulk packing-list actions', () => {
     await expect(dialog).not.toBeVisible()
 
     // Cancelling must not have submitted anything — selection survives.
-    await expect(page.getByText(/packing list\(s\) selected/i)).toBeVisible()
+    await expect(page.getByText(/packing lists? selected/i)).toBeVisible()
   })
 
   test('bulk submit: draft lists move to pending_approval without a wrong_status error', async ({ page }) => {

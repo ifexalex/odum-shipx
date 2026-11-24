@@ -10,13 +10,13 @@ For each tenant with storage_fee.enabled = true:
 """
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from shared.db import execute_with_tenant
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
-from shared.observability import init_tracing
+from shared.observability import init_tracing, record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 setup_logging()
@@ -48,6 +48,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             sent += count
         except Exception:
             logger.exception("Storage reminders failed for tenant %s", tenant_id)
+            record_failure("scheduled_job_step")
             errors += 1
 
     logger.info(
@@ -72,7 +73,7 @@ def _process_tenant(tenant_id: str) -> int:
     first_reminder_day = int(reminder_config.get("storage_first_reminder", _DEFAULT_FIRST_REMINDER))
     final_reminder_day = int(reminder_config.get("storage_final_reminder", _DEFAULT_FINAL_REMINDER))
     grace_period = int(storage_config.get("grace_period_days", _DEFAULT_GRACE_PERIOD))
-    today = date.today()
+    today = datetime.now(UTC).date()
 
     active_notes = _get_active_release_notes(tenant_id)
     sent = 0
@@ -93,6 +94,7 @@ def _process_tenant(tenant_id: str) -> int:
                 note["id"],
                 extra={"tenant_id": tenant_id},
             )
+            record_failure("scheduled_job_step")
 
     return sent
 
@@ -149,6 +151,7 @@ def _maybe_send_reminder(
                 template_id=template_id,
                 template_vars=template_vars,
                 locale=locale,
+                customer_id=str(note["customer_id"]),
             )
             sent += 1
         except Exception:
@@ -167,6 +170,7 @@ def _maybe_send_reminder(
                 template_id=template_id,
                 template_vars=template_vars,
                 locale=locale,
+                customer_id=str(note["customer_id"]),
             )
             sent += 1
         except Exception:
@@ -230,9 +234,13 @@ def _get_active_release_notes(tenant_id: str) -> list[dict[str, Any]]:
     return execute_with_tenant(
         tenant_id,
         """
-        SELECT id, customer_id, reference_number, total_cartons, created_at
-        FROM release_note
-        WHERE tenant_id = %s AND status = 'active'
+        SELECT rn.id, rn.customer_id, rn.reference_number, rn.total_cartons, rn.created_at
+        FROM release_note rn
+        JOIN billing b
+          ON b.id = rn.billing_id AND b.tenant_id = rn.tenant_id
+        WHERE rn.tenant_id = %s
+          AND rn.status = 'active'
+          AND b.status NOT IN ('cancelled', 'waived')
         """,
         (tenant_id,),
     )

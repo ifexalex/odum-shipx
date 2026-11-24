@@ -109,13 +109,16 @@ def is_activation_valid(activation: dict[str, Any] | None) -> bool:
 
 
 def consume_activation(tenant_id: str, activation_id: str) -> dict[str, Any] | None:
-    """Stamp `consumed_at`. Only succeeds if still unconsumed (single-use guard)."""
+    """Stamp `consumed_at`. Only succeeds if still unconsumed and unexpired (single-use guard)."""
     return execute_write_with_tenant(
         tenant_id,
         """
         UPDATE tenant_user_activation
         SET consumed_at = NOW()
-        WHERE tenant_id = %(tenant_id)s AND id = %(id)s AND consumed_at IS NULL
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND consumed_at IS NULL
+          AND expires_at > NOW()
         RETURNING *
         """,
         {"tenant_id": tenant_id, "id": activation_id},

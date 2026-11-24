@@ -1,5 +1,7 @@
-.PHONY: install lint check test test-unit test-integration test-isolation test-all migrate seed deploy clean security-scan \
-        up down bootstrap dev e2e
+.PHONY: install lint check test test-unit test-integration test-isolation test-db test-all migrate migrate_db seed seed-stress deploy clean security-scan \
+        up down bootstrap dev frontend e2e
+
+PYTHON := $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 
 # ─── Local stack ─────────────────────────────────────────────────────────────
 
@@ -30,14 +32,18 @@ bootstrap: .env.local
 # Start the local Flask API server (loads .env.local automatically)
 dev: .env.local
 	@lsof -ti :3000 | xargs kill -9 2>/dev/null || true
-	set -a; source .env.local; set +a; PYTHONPATH=. python3 scripts/local_server.py
+	set -a; source .env.local; set +a; PYTHONPATH=. $(PYTHON) scripts/local_server.py
+
+# Start the Vite frontend dev server on http://localhost:5173
+frontend:
+	cd frontend && npm run dev
 
 # Full first-time setup: start containers + bootstrap + migrate + seed + start server
 # Usage: make stack
 stack: up bootstrap
 	@echo "==> Resetting database..."
-	set -a; source .env.local; set +a && PYTHONPATH=. python3 scripts/reset_db.py
-	set -a; source .env.local; set +a && PYTHONPATH=. python3 scripts/migrate.py && PYTHONPATH=. python3 scripts/seed.py
+	set -a; source .env.local; set +a && PYTHONPATH=. $(PYTHON) scripts/reset_db.py
+	set -a; source .env.local; set +a && PYTHONPATH=. $(PYTHON) scripts/migrate.py && PYTHONPATH=. $(PYTHON) scripts/seed.py
 	@echo ""
 	@echo "Stack is ready. Run 'make dev' to start the API server on http://localhost:3000"
 	@echo ""
@@ -49,6 +55,7 @@ install:
 
 lint:
 	uv run ruff check .
+	uv run ruff format --check .
 	uv run mypy shared/ services/ --ignore-missing-imports
 
 security-scan:
@@ -67,12 +74,18 @@ test-integration:
 test-isolation:
 	PYTHONPATH=.:services uv run pytest tests/tenant_isolation/ -v -m isolation
 
+# Invoice/payment integrity under real concurrency. Needs the stack up and migrated
+# (`make stack`); skips itself if no database is reachable.
+test-db:
+	PYTHONPATH=.:services uv run pytest tests/db/ -v -m db
+
 test-all:
 	PYTHONPATH=.:services uv run pytest tests/ -v --cov=services --cov=shared --cov-report=xml
 
 # Run lint + type-check + unit tests in one shot
 check:
 	uv run ruff check .
+	uv run ruff format --check .
 	uv run mypy shared/ services/ --ignore-missing-imports
 	PYTHONPATH=.:services uv run pytest tests/unit/ -v --cov=services --cov=shared --cov-report=term-missing
 
@@ -82,18 +95,21 @@ check:
 #        make e2e ARGS="--stop-on-fail --output results.json"
 e2e:
 	@echo "Tip: ensure 'make dev' is running in another terminal."
-	python3 scripts/e2e_test.py $(ARGS)
+	$(PYTHON) scripts/e2e_test.py $(ARGS)
 
-migrate:
-	python scripts/migrate.py
+# Run Alembic database migrations using .env.local and the project virtualenv.
+migrate_db: .env.local
+	set -a; source .env.local; set +a; PYTHONPATH=. $(PYTHON) scripts/migrate.py
 
-seed:
-	python scripts/seed.py
+migrate: migrate_db
+
+seed: .env.local
+	set -a; source .env.local; set +a; PYTHONPATH=. $(PYTHON) scripts/seed.py
 
 # Adds ~200 containers / ~50 customers to Acme Shipping Ltd for volume/UI
 # testing. Additive — run after `make seed` (or `make stack`).
-seed-stress:
-	python scripts/seed_stress.py
+seed-stress: .env.local
+	set -a; source .env.local; set +a; PYTHONPATH=. $(PYTHON) scripts/seed_stress.py
 
 package-layer:
 	mkdir -p build/layer/python

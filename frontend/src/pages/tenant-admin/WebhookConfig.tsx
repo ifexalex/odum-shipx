@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
 import {
   configApi,
@@ -6,9 +6,13 @@ import {
   type WebhookEventType,
   type WebhookTestResult,
 } from '../../api/tenantManagement'
-import { Banner, Button, Card, Field, Icon, Mono, ToggleSwitch } from '../../design/components'
+import { Banner, Button, Card, ConfirmDialog, Field, Icon, Mono, ToggleSwitch, IconButton, PageSkeleton } from '../../design/components'
+import { useTenantConfig } from '../../hooks/useConfig'
+import { useSeedOnce } from '../../hooks/useSeedOnce'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './WebhookConfig.module.css'
+import { toast } from '../../design/toast'
+import { PageHeader } from '../../shell/PageHeader'
 
 // ─── Event toggle row ──────────────────────────────────────────────────────────
 const WEBHOOK_EVENTS: Array<{ type: WebhookEventType; label: string }> = [
@@ -28,10 +32,10 @@ interface EventToggleProps {
 function EventToggleRow({ label, code, checked, onChange }: EventToggleProps): JSX.Element {
   return (
     <div className={styles.eventRow}>
-      <ToggleSwitch checked={checked} onChange={onChange} />
+      <ToggleSwitch label={`Send ${label} events`} checked={checked} onChange={onChange} />
       <div className={styles.eventInfo}>
         <span className={styles.eventLabel}>{label}</span>
-        <Mono color="var(--color-ink-4)"><span style={{ fontSize: 11 }}>{code}</span></Mono>
+        <Mono color="var(--color-ink-4)"><span style={{ fontSize: 'var(--text-xs)' }}>{code}</span></Mono>
       </div>
     </div>
   )
@@ -46,33 +50,19 @@ interface RotateModalProps {
 
 function RotateModal({ onCancel, onConfirm, rotating }: RotateModalProps): JSX.Element {
   return (
-    <div className={styles.modalOverlay} onClick={onCancel}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.modalHeader}>
-          <h3 className={styles.modalTitle}>Rotate signing secret</h3>
-          <button type="button" className={styles.closeBtn} onClick={onCancel}>
-            <Icon name="x" size={18} />
-          </button>
-        </div>
-        <div className={styles.modalBody}>
-          <Banner variant="warning" icon="warn" title="This is irreversible">
-            Rotating the secret immediately invalidates the current one. Any endpoint still verifying
-            with the old secret will start receiving <strong>401 Unauthorized</strong> responses.
-            Update your integration before confirming.
-          </Banner>
-          <p className={styles.modalText}>
-            After rotation, the new secret is shown <strong>once</strong>. Copy it immediately — it
-            cannot be retrieved again.
-          </p>
-        </div>
-        <div className={styles.modalFooter}>
-          <Button variant="secondary" onClick={onCancel} disabled={rotating}>Cancel</Button>
-          <Button variant="danger" loading={rotating} onClick={onConfirm}>
-            Rotate secret
-          </Button>
-        </div>
-      </div>
-    </div>
+    <ConfirmDialog
+      open
+      title="Rotate signing secret"
+      confirmLabel="Rotate secret"
+      undo={false}
+      busy={rotating}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      Rotating the secret immediately invalidates the current one — any endpoint still verifying with the old secret
+      will start receiving 401 Unauthorized responses. After rotation, the new secret is shown once; copy it
+      immediately because it cannot be retrieved again.
+    </ConfirmDialog>
   )
 }
 
@@ -90,13 +80,11 @@ function NewSecretBanner({ secret, onDismiss }: { secret: string; onDismiss: () 
     <div className={styles.newSecretBanner}>
       <div className={styles.newSecretTop}>
         <span className={styles.newSecretTitle}>New signing secret — copy now, it won't be shown again</span>
-        <button type="button" className={styles.closeBtn} onClick={onDismiss}>
-          <Icon name="x" size={16} />
-        </button>
+        <IconButton icon="x" label="Close" size="sm" onClick={onDismiss} />
       </div>
       <div className={styles.newSecretRow}>
         <Mono color="var(--color-ink)">{secret}</Mono>
-        <Button variant="secondary" size="sm" icon={copied ? 'check' : 'download'} onClick={() => void handleCopy()}>
+        <Button variant="secondary" size="sm" icon={copied ? 'check' : 'copy'} onClick={() => void handleCopy()}>
           {copied ? 'Copied' : 'Copy'}
         </Button>
       </div>
@@ -120,10 +108,11 @@ function maskSecret(raw: string): string {
 
 export function WebhookConfig(): JSX.Element {
   const [config, setConfig] = useState<WebhookConfigType>(EMPTY_CONFIG)
-  const [loading, setLoading] = useState(true)
+  const tenantConfig = useTenantConfig({ freshOnOpen: true })
+  // A failed read shows the empty form, as before, not an endless "Loading…".
+  const loading = !tenantConfig.isFetchedAfterMount && !tenantConfig.isError
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   const [showRotateModal, setShowRotateModal] = useState(false)
   const [rotating, setRotating] = useState(false)
@@ -132,14 +121,9 @@ export function WebhookConfig(): JSX.Element {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<WebhookTestResult | null>(null)
 
-  useEffect(() => {
-    void configApi.getConfig()
-      .then((res) => {
-        if (res.webhook_config) setConfig(res.webhook_config)
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+  useSeedOnce(tenantConfig, (res) => {
+    if (res.webhook_config) setConfig(res.webhook_config)
+  })
 
   function toggleEvent(type: WebhookEventType, on: boolean): void {
     setConfig((prev) => ({
@@ -154,7 +138,6 @@ export function WebhookConfig(): JSX.Element {
     if (!endpointValid && config.endpoint_url.length > 0) return
     setSaving(true)
     setError(null)
-    setSaveSuccess(false)
     try {
       const updated = await configApi.updateConfig({
         webhook_config: {
@@ -164,8 +147,7 @@ export function WebhookConfig(): JSX.Element {
         },
       })
       if (updated.webhook_config) setConfig(updated.webhook_config)
-      setSaveSuccess(true)
-      setTimeout(() => setSaveSuccess(false), 3000)
+      toast.success('Webhook settings saved')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save webhook config.')
     } finally {
@@ -203,28 +185,24 @@ export function WebhookConfig(): JSX.Element {
     }
   }
 
-  if (loading) return <div style={{ padding: 32, color: 'var(--color-ink-4)' }}>Loading…</div>
+  if (loading) return <PageSkeleton kind="form" label="Loading the page" />
 
   return (
     <div>
+      <PageHeader title="Webhooks" meta="Send ShipX events to your own systems as they happen." />
       {error && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner variant="error">{error}</Banner>
         </div>
       )}
-      {saveSuccess && (
-        <div style={{ marginBottom: 16 }}>
-          <Banner variant="success">Webhook configuration saved.</Banner>
-        </div>
-      )}
       {newSecret && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <NewSecretBanner secret={newSecret} onDismiss={() => setNewSecret(null)} />
         </div>
       )}
 
       {/* Card 1 — Endpoint + secret */}
-      <Card padding={24} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead
           title="Outbound webhook"
           sub="Push domain events to your ERP / WMS in real time."
@@ -234,6 +212,7 @@ export function WebhookConfig(): JSX.Element {
                 {config.enabled ? 'Enabled' : 'Disabled'}
               </span>
               <ToggleSwitch
+                label="Outbound webhook"
                 checked={config.enabled}
                 onChange={(v) => setConfig((p) => ({ ...p, enabled: v }))}
               />
@@ -241,7 +220,7 @@ export function WebhookConfig(): JSX.Element {
           }
         />
 
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Field
             label="Endpoint URL"
             name="endpoint_url"
@@ -275,7 +254,7 @@ export function WebhookConfig(): JSX.Element {
       </Card>
 
       {/* Card 2 — Events */}
-      <Card padding={24} style={{ marginBottom: 16 }}>
+      <Card padding="large" style={{ marginBottom: 'var(--space-4)' }}>
         <SectionHead title="Subscribed events" sub="Choose which events fire a webhook." />
         {WEBHOOK_EVENTS.map(({ type, label }) => (
           <EventToggleRow
@@ -290,7 +269,7 @@ export function WebhookConfig(): JSX.Element {
 
       {/* Test result */}
       {testResult && (
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 'var(--space-4)' }}>
           <Banner
             variant={testResult.success ? 'success' : 'error'}
             title={testResult.success ? 'Test event delivered' : 'Test event failed'}

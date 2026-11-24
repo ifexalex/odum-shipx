@@ -3,18 +3,22 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { containerKeys } from '../../api/keys'
 import { STALE_5_MIN } from '../../lib/queryClient'
-import { CONTAINER_STATUS_LABELS, containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
+import { containerCapacityCbm, utilizationLevel } from '../../api/containerRules'
 import { containersApi, type Container, type ContainerStatus } from '../../api/tracking'
-import { Badge, Banner, Button, Card, Chip, DateRangeFilter, Icon, KebabBtn, Mono, StatCard, Table, ListFooter, type TableRow } from '../../design/components'
+import { Banner, Button, Chip, DateRangeFilter, ExportButton, Icon, ListFooter, Mono, StatCard, StatusBadge, Table, type IconName, type TableRow, Pressable, SearchField, EmptyState, ErrorState } from '../../design/components'
 import { useSession } from '../../auth/useSession'
 import { useContainerList } from '../../hooks/useContainers'
 import { useDateRangeFilter } from '../../hooks/useDateRangeFilter'
+import { useListExport } from '../../hooks/useListExport'
 import { type SortableColumn, useTableSort } from '../../hooks/useTableSort'
-import { useTopBarSlot } from '../../shell/TopBarContext'
 import styles from './ContainerList.module.css'
+import { formatCbm, formatDate, isoDateOffset, todayIso } from '../../lib/format'
+import { statusLabel } from '../../design/status'
+import { FilterBar } from '../../shell/FilterBar'
+import { ListPage, StatRow } from '../../shell/ListPage'
+import { PageHeader } from '../../shell/PageHeader'
 
 const SEARCH_DEBOUNCE_MS = 300
-const DAY_MS = 24 * 60 * 60 * 1000
 
 // 'Container' (container_number, text) defaults asc; 'ETA' is a forward-looking
 // scheduling date (not a "created at" timestamp) so it defaults asc too —
@@ -50,9 +54,15 @@ const CHINA_PACKED: ContainerStatus[] = ['sealed']
 const IN_TRANSIT: ContainerStatus[] = ['in_transit']
 const ARRIVED_NG: ContainerStatus[] = ['arrived', 'customs_clearance']
 const CLEARED: ContainerStatus[] = ['cleared', 'at_warehouse', 'fully_released']
-const CHINA_SIDE: ContainerStatus[] = [...CHINA_ACTIVE, ...CHINA_PACKED]
-
 // Filter chips match the design exactly: All · Active · Packed · In transit · Arrived NG · Cleared
+// The four stats a container list shows (FD-18): work waiting at each stage, each a filter.
+const STAT_GROUPS: Array<{ label: string; sublabel: string; icon: IconName; statuses: ContainerStatus[] }> = [
+  { label: 'Active', sublabel: 'China-side', icon: 'container', statuses: CHINA_ACTIVE },
+  { label: 'Packed', sublabel: 'ready to ship', icon: 'package', statuses: CHINA_PACKED },
+  { label: 'In transit', sublabel: 'at sea', icon: 'ship', statuses: IN_TRANSIT },
+  { label: 'Arrived (NG)', sublabel: 'handed off', icon: 'map', statuses: ARRIVED_NG },
+]
+
 const CHIP_FILTERS: Array<{ label: string; statuses: ContainerStatus[] }> = [
   { label: 'Active', statuses: CHINA_ACTIVE },
   { label: 'Packed', statuses: CHINA_PACKED },
@@ -71,33 +81,42 @@ const DEST_CODE: Record<string, string> = {
   Lagos: 'NG-LOS', Abuja: 'NG-ABV', 'Port Harcourt': 'NG-PHC', Nigeria: 'NG',
 }
 
-function statusBadgeVariant(status: ContainerStatus): 'warning' | 'info' | 'success' {
-  if (CLEARED.includes(status)) return 'success'
-  if (CHINA_SIDE.includes(status)) return 'warning'
-  if (ARRIVED_NG.includes(status)) return 'warning'
-  return 'info'
+const ARRIVED_OR_DONE: ContainerStatus[] = ['arrived', 'customs_clearance', 'cleared', 'at_warehouse', 'fully_released', 'cancelled']
+
+function overdueDays(container: Container): number {
+  if (!container.estimated_arrival_date || ARRIVED_OR_DONE.includes(container.status)) return 0
+  const today = todayIso()
+  if (container.estimated_arrival_date >= today) return 0
+  const etaMs = Date.parse(`${container.estimated_arrival_date}T00:00:00Z`)
+  const todayMs = Date.parse(`${today}T00:00:00Z`)
+  return Math.max(1, Math.round((todayMs - etaMs) / 86_400_000))
 }
 
+// ETA stays a date after clearance (FD-13): the Status column already says "Cleared", and a word in a date column
+// can't be sorted or compared.
 function etaColor(container: Container): string {
-  if (CLEARED.includes(container.status)) return 'var(--color-success)'
   if (!container.estimated_arrival_date) return 'var(--color-ink-4)'
-  if (container.estimated_arrival_date === new Date().toISOString().slice(0, 10)) return 'var(--color-warning)'
+  if (CLEARED.includes(container.status)) return 'var(--color-ink-3)'
+  if (overdueDays(container) > 0) return 'var(--color-error)'
+  if (container.estimated_arrival_date === todayIso()) return 'var(--color-warning)'
   return 'var(--color-ink)'
 }
 
 function etaLabel(container: Container): string {
-  if (CLEARED.includes(container.status)) return 'Cleared'
-  return container.estimated_arrival_date ?? '—'
+  if (!container.estimated_arrival_date) return '—'
+  const dateStr = formatDate(container.estimated_arrival_date, 'short')
+  const late = overdueDays(container)
+  return late > 0 ? `${dateStr} · ${late}d late` : dateStr
 }
 
 /** ISO date (YYYY-MM-DD) for "N days ago" — used as the `created_after` query param. */
 function daysAgoIso(days: number): string {
-  return new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10)
+  return isoDateOffset(-days)
 }
 
 /** ISO date (YYYY-MM-DD) for "N days from now" — used as the `eta_before` query param. */
 function daysFromNowIso(days: number): string {
-  return new Date(Date.now() + days * DAY_MS).toISOString().slice(0, 10)
+  return isoDateOffset(days)
 }
 
 /** Maps an "Arriving" preset to the `eta_after`/`eta_before` query params. */
@@ -127,11 +146,11 @@ function UtilizationCell({ container }: { container: Container }): JSX.Element {
   return (
     <div className={styles.utilCell}>
       <div className={styles.utilTop}>
-        <Mono color="var(--color-ink)">{packed.toFixed(1)}</Mono>
+        <Mono color="var(--color-ink)">{formatCbm(packed)}</Mono>
         {pct != null && <span className={styles.utilPct}>{pct}%</span>}
       </div>
       {pct != null && (
-        <div className={styles.utilTrack} title={`${packed.toFixed(1)} / ${capacity} CBM`}>
+        <div className={styles.utilTrack} title={`${formatCbm(packed)} / ${capacity} CBM`}>
           <div className={[styles.utilFill, fillClass].join(' ')} style={{ width: `${Math.min(pct, 100)}%` }} />
         </div>
       )}
@@ -139,7 +158,7 @@ function UtilizationCell({ container }: { container: Container }): JSX.Element {
   )
 }
 
-function containerRow(container: Container, onView: () => void): TableRow {
+function containerRow(container: Container, onOpen: () => void): TableRow {
   const plTotal = container.packing_list_count ?? 0
   const plApproved = container.approved_packing_list_count ?? 0
 
@@ -147,6 +166,8 @@ function containerRow(container: Container, onView: () => void): TableRow {
   const destCode = DEST_CODE[container.destination] ?? container.destination
 
   return {
+    onOpen,
+    openLabel: `Open container ${container.container_number}`,
     cells: [
       <Mono key="num" color="var(--color-ink)">{container.container_number}</Mono>,
       // Vessel · voyage — two-line cell
@@ -163,9 +184,7 @@ function containerRow(container: Container, onView: () => void): TableRow {
         <Icon name="arrowright" size={10} color="var(--color-ink-4)" />
         <Mono color="var(--color-accent)">{destCode}</Mono>
       </span>,
-      <Badge key="status" variant={statusBadgeVariant(container.status)}>
-        {CONTAINER_STATUS_LABELS[container.status]}
-      </Badge>,
+      <StatusBadge key="status" kind="container" status={container.status} />,
       // Packing lists: "approved / total"
       <Mono key="pls" color={plTotal === 0 ? 'var(--color-ink-4)' : plApproved === plTotal && plTotal > 0 ? 'var(--color-success)' : 'var(--color-ink)'}>
         {plApproved} / {plTotal}
@@ -174,7 +193,6 @@ function containerRow(container: Container, onView: () => void): TableRow {
       // absolute-CBM business rule. Bar hidden when capacity is unknown.
       <UtilizationCell key="util" container={container} />,
       <Mono key="eta" color={etaColor(container)}>{etaLabel(container)}</Mono>,
-      <KebabBtn key="actions" label={`Open ${container.container_number}`} onClick={onView} />,
     ],
   }
 }
@@ -194,10 +212,8 @@ export function ContainerList(): JSX.Element {
   // "Arriving" (ETA range) — lives only in the Filters panel, distinct from
   // the standalone date button above which filters on `created_at`.
   const [etaPreset, setEtaPreset] = useState<EtaPresetKey | null>(null)
-  const [filtersOpen, setFiltersOpen] = useState(false)
 
-  // Debounce the search term (table search box and header search box both
-  // write to `search`); the query hook only refetches once typing settles.
+  // Debounce the search term; the query hook only refetches once typing settles.
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
@@ -240,34 +256,23 @@ export function ContainerList(): JSX.Element {
   const status = activeStatuses?.length ? activeStatuses.join(',') : undefined
   const { etaAfter, etaBefore } = etaRangeFor(etaPreset)
   const { sort, onSort, sortField, sortDirection } = useTableSort(SORT_COLUMNS)
-  const { items: containers, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount } =
-    useContainerList({
-      status,
-      q: debouncedSearch || undefined,
-      created_after: createdRange.createdAfter,
-      created_before: createdRange.createdBefore,
-      eta_after: etaAfter,
-      eta_before: etaBefore,
-      ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
-    })
+  // What the list is showing: the same object drives the query and the Export button, so an export is the rows
+  // on screen (every page of them), not a second reading of the filters.
+  const listParams = {
+    status,
+    q: debouncedSearch || undefined,
+    created_after: createdRange.createdAfter,
+    created_before: createdRange.createdBefore,
+    eta_after: etaAfter,
+    eta_before: etaBefore,
+    ...(sortField ? { sort: sortField, direction: sortDirection } : {}),
+  }
+  const { items: containers, isLoading, error, hasMore, loadMore, isFetchingMore, totalCount, refetch } = useContainerList(listParams)
+  const exportList = useListExport((format: 'xlsx' | 'csv') => containersApi.exportList(listParams, format))
 
   const canCreate = session?.role === 'china_office_staff'
 
-  // Inject action buttons + a search handler into the shared TopBar (prototype:
-  // actions sit between the search box and the bell, not in the page body).
-  // The header search box shares `search` state with the table's own search
-  // input below, rather than running an independent search implementation.
-  useTopBarSlot({
-    actions: canCreate ? (
-      <>
-        <Button variant="secondary" icon="download">Export</Button>
-        <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
-          Create container
-        </Button>
-      </>
-    ) : null,
-    onSearch: setSearch,
-  })
+  // Everyone who can open the list can export it; only China staff create containers (header actions below).
 
   function selectGroup(statuses: ContainerStatus[]): void {
     const alreadyActive = activeStatuses?.join() === statuses.join()
@@ -291,179 +296,200 @@ export function ContainerList(): JSX.Element {
     setActiveStatuses(null)
     setSearch('')
     setEtaPreset(null)
-    setFiltersOpen(false)
+    createdRange.clear()
   }
 
   const chipCount = (statuses: ContainerStatus[]): number => sumStatuses(statuses)
 
+  // Filters applied besides the search, shown on the More filters / Filters button.
+  const activeFilters = (activeStatuses ? 1 : 0) + (etaPreset ? 1 : 0) + (createdRange.isActive ? 1 : 0)
+
   return (
-    <div>
-      {error && (
-        <div className={styles.banner}>
-          <Banner variant="error" title="Couldn't load containers">{error.message}</Banner>
-        </div>
-      )}
-
-      {/* Stats row — matches design exactly: Active · Packed · In transit · Arrived (NG) · Cleared */}
-      <div className={styles.statsRow}>
-        <StatCard label="Active"       value={stats.active}    sublabel="China-side"   icon="container" />
-        <StatCard label="Packed"       value={stats.packed}    sublabel="ready to ship" icon="package" />
-        <StatCard label="In transit"   value={stats.inTransit} sublabel="at sea"        icon="ship" />
-        <StatCard label="Arrived (NG)" value={stats.arrivedNg} sublabel="handed off"    icon="map" />
-        <StatCard label="Cleared (30d)" value={stats.cleared}  sublabel="released"      icon="check" />
-      </div>
-
-      {/* Filter bar */}
-      <Card padding={16}>
-        <div className={styles.filterRow}>
-          <div className={styles.chips}>
-            <Chip active={activeStatuses === null} onClick={() => setActiveStatuses(null)}>
-              All{stats.total > 0 && <span className={styles.chipCount}>{stats.total}</span>}
-            </Chip>
-            {CHIP_FILTERS.map((group) => (
-              <Chip
-                key={group.label}
-                active={activeStatuses?.join() === group.statuses.join()}
-                onClick={() => selectGroup(group.statuses)}
-              >
-                {group.label}
-                {statsRaw && (
-                  <span className={styles.chipCount}>{chipCount(group.statuses)}</span>
-                )}
+    <ListPage
+      header={
+        <PageHeader
+          title="Containers"
+          primary={
+            canCreate && (
+              <Button variant="primary" icon="plus" onClick={() => navigate('/containers/new')}>
+                Create container
+              </Button>
+            )
+          }
+          actions={<ExportButton formats={['xlsx', 'csv']} onExport={exportList.onExport} />}
+        />
+      }
+      notices={
+        <>
+          {error && (
+            <ErrorState
+              compact
+              title="Couldn't load containers"
+              error={error}
+              onRetry={() => void refetch()}
+            />
+          )}
+          {exportList.error && (
+            <Banner
+              variant="error"
+              title="Couldn't export containers"
+              dismissible
+              onDismiss={exportList.dismissError}
+            >
+              {exportList.error}
+            </Banner>
+          )}
+        </>
+      }
+      // Four numbers worth acting on (FD-18); each applies its filter. "Cleared (30d)" was history, not work.
+      stats={
+        <StatRow>
+          {STAT_GROUPS.map((group) => (
+            <StatCard
+              key={group.label}
+              label={group.label}
+              value={sumStatuses(group.statuses)}
+              sublabel={group.sublabel}
+              icon={group.icon}
+              selected={activeStatuses?.join() === group.statuses.join()}
+              onSelect={() => selectGroup(group.statuses)}
+            />
+          ))}
+        </StatRow>
+      }
+      filters={
+        <FilterBar
+          status={
+            <>
+              <Chip active={activeStatuses === null} onClick={() => setActiveStatuses(null)}>
+                All{stats.total > 0 && <span className={styles.chipCount}>{stats.total}</span>}
               </Chip>
-            ))}
-          </div>
-
-          <div className={styles.searchWrap}>
-            <Icon name="search" size={14} color="var(--color-ink-4)" />
-            <input
-              className={styles.searchInput}
+              {CHIP_FILTERS.map((group) => (
+                <Chip
+                  key={group.label}
+                  active={activeStatuses?.join() === group.statuses.join()}
+                  onClick={() => selectGroup(group.statuses)}
+                >
+                  {group.label}
+                  {statsRaw && (
+                    <span className={styles.chipCount}>{chipCount(group.statuses)}</span>
+                  )}
+                </Chip>
+              ))}
+            </>
+          }
+          search={
+            <SearchField
+              label="Search containers"
               placeholder="Container number, vessel name, voyage…"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={setSearch}
             />
-          </div>
+          }
+          dateRange={<DateRangeFilter label="Created" range={createdRange} />}
+          more={
+            <>
+              {/* Granular multi-select across all 9 statuses — independent
+            entry point from the grouped chips above, same underlying
+            `activeStatuses` state (see toggleStatus). */}
+              <div className={styles.filtersPanelLabel}>Any status</div>
+              <div className={styles.filtersPanelScroll}>
+                {ALL_STATUSES.map((s) => {
+                  const isChecked = activeStatuses?.includes(s) ?? false
+                  return (
+                    <Pressable
+                      key={s}
+                      type="button"
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      className={[
+                        styles.filtersPanelItem,
+                        isChecked ? styles.filtersPanelItemActive : '',
+                      ].join(' ')}
+                      onClick={() => toggleStatus(s)}
+                    >
+                      <span className={styles.checkSlot}>
+                        {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
+                      </span>
+                      {statusLabel('container', s)}
+                    </Pressable>
+                  )
+                })}
+              </div>
 
-          <DateRangeFilter value={createdRange.daysBack} onChange={createdRange.handlePreset} />
-
-          <div className={styles.customDateWrap}>
-            <label htmlFor="container_created_from" className={styles.customDateLabel}>From</label>
-            <input
-              id="container_created_from"
-              type="date"
-              className={styles.customDateInput}
-              value={createdRange.dateFrom}
-              max={createdRange.dateTo || undefined}
-              onChange={(e) => createdRange.handleCustomFrom(e.target.value)}
-            />
-            <label htmlFor="container_created_to" className={styles.customDateLabel}>To</label>
-            <input
-              id="container_created_to"
-              type="date"
-              className={styles.customDateInput}
-              value={createdRange.dateTo}
-              min={createdRange.dateFrom || undefined}
-              onChange={(e) => createdRange.handleCustomTo(e.target.value)}
-            />
-          </div>
-
-          <div className={styles.filtersWrap}>
-            <Button variant="secondary" icon="filter" onClick={() => setFiltersOpen((o) => !o)}>
-              Filters
-            </Button>
-            {filtersOpen && (
-              <>
-                <div className={styles.filtersOverlay} onClick={() => setFiltersOpen(false)} />
-                <div className={styles.filtersPanel} role="dialog" aria-label="Filters">
-                  <div className={styles.filtersPanelHeader}>Filters</div>
-
-                  {/* Granular multi-select across all 9 statuses — independent
-                      entry point from the grouped chips above, same underlying
-                      `activeStatuses` state (see toggleStatus). */}
-                  <div className={styles.filtersPanelLabel}>Status</div>
-                  <div className={styles.filtersPanelScroll}>
-                    {ALL_STATUSES.map((s) => {
-                      const isChecked = activeStatuses?.includes(s) ?? false
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          role="checkbox"
-                          aria-checked={isChecked}
-                          className={[styles.filtersPanelItem, isChecked ? styles.filtersPanelItemActive : ''].join(' ')}
-                          onClick={() => toggleStatus(s)}
-                        >
-                          <span className={styles.checkSlot}>
-                            {isChecked && <Icon name="check" size={13} color="var(--color-primary)" />}
-                          </span>
-                          {CONTAINER_STATUS_LABELS[s]}
-                        </button>
-                      )
-                    })}
-                  </div>
-
-                  {/* ETA range — distinct from the standalone "date created"
-                      button, which stays outside this panel and is untouched
-                      by Clear all filters below. */}
-                  <div className={styles.filtersPanelLabel}>Arriving</div>
-                  {ETA_PRESET_KEYS.map((key) => {
-                    const isActive = etaPreset === key
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        role="option"
-                        aria-selected={isActive}
-                        className={[styles.filtersPanelItem, isActive ? styles.filtersPanelItemActive : ''].join(' ')}
-                        onClick={() => setEtaPreset(isActive ? null : key)}
-                      >
-                        <span className={styles.checkSlot}>
-                          {isActive && <Icon name="check" size={13} color="var(--color-primary)" />}
-                        </span>
-                        {ETA_PRESET_LABELS[key]}
-                      </button>
-                    )
-                  })}
-
-                  <button type="button" className={styles.filtersPanelClear} onClick={clearAllFilters}>
-                    Clear all filters
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      <div className={styles.tableWrap}>
-        <Card padding={0}>
-          <Table
-            columns={[
-              { title: 'Container', sortable: true },
-              { title: 'Vessel · voyage' },
-              { title: 'Route' },
-              { title: 'Status' },
-              { title: 'Packing lists', align: 'right' },
-              { title: 'Utilization' },
-              { title: 'ETA', sortable: true },
-              { title: '', width: '40px' },
-            ]}
-            rows={containers.map((c) => containerRow(c, () => navigate(`/containers/${c.id}`)))}
-            loading={isLoading}
-            emptyState={!isLoading && containers.length === 0 ? <span>No containers yet — create one to get started.</span> : undefined}
-            sort={sort}
-            onSort={onSort}
-          />
-        </Card>
+              {/* ETA range — distinct from the standalone "date created"
+            button, which stays outside this panel and is untouched
+            by Clear all filters below. */}
+              <div className={styles.filtersPanelLabel}>Arriving</div>
+              {ETA_PRESET_KEYS.map((key) => {
+                const isActive = etaPreset === key
+                return (
+                  <Pressable
+                    key={key}
+                    type="button"
+                    role="option"
+                    aria-selected={isActive}
+                    className={[
+                      styles.filtersPanelItem,
+                      isActive ? styles.filtersPanelItemActive : '',
+                    ].join(' ')}
+                    onClick={() => setEtaPreset(isActive ? null : key)}
+                  >
+                    <span className={styles.checkSlot}>
+                      {isActive && <Icon name="check" size={13} color="var(--color-primary)" />}
+                    </span>
+                    {ETA_PRESET_LABELS[key]}
+                  </Pressable>
+                )
+              })}
+            </>
+          }
+          activeCount={activeFilters}
+          onClear={clearAllFilters}
+          label="Filter containers"
+        />
+      }
+      footer={
         <ListFooter
-        shown={containers.length}
-        total={totalCount}
-        hasMore={hasMore}
-        loading={isFetchingMore}
-        onLoadMore={loadMore}
-        noun="containers"
+          shown={containers.length}
+          total={totalCount}
+          hasMore={hasMore}
+          loading={isFetchingMore}
+          onLoadMore={loadMore}
+          noun="containers"
+          nounOne="container"
+        />
+      }
+    >
+      <Table
+        columns={[
+          { title: 'Container', type: 'reference', sortable: true },
+          { title: 'Vessel · voyage' },
+          { title: 'Route' },
+          { title: 'Status', type: 'status' },
+          { title: 'Packing lists', type: 'number' },
+          { title: 'Packed (CBM)', type: 'number' },
+          { title: 'ETA', type: 'date', sortable: true },
+        ]}
+        rows={containers.map((c) => containerRow(c, () => navigate(`/containers/${c.id}`)))}
+        loading={isLoading}
+        emptyState={
+          !isLoading && containers.length === 0 ? (
+            activeFilters > 0 || Boolean(debouncedSearch) ? (
+              <EmptyState
+                compact
+                title="No containers match these filters"
+                body="Try broadening your status, date, or search criteria."
+                action={{ label: 'Clear filters', onClick: clearAllFilters }}
+              />
+            ) : (
+              <EmptyState compact title="No containers yet" body="Create one to get started." />
+            )
+          ) : undefined
+        }
+        sort={sort}
+        onSort={onSort}
       />
-      </div>
-    </div>
+    </ListPage>
   )
 }

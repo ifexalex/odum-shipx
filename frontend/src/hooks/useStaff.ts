@@ -23,6 +23,7 @@ export function useStaffUser(id: string) {
 export function useCreateStaffUser() {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Staff member invited' },
     mutationFn: (body: CreateUserInput) => usersApi.create(body),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: staffKeys.all }) },
   })
@@ -31,6 +32,7 @@ export function useCreateStaffUser() {
 export function useUpdateStaffUser(id: string) {
   const qc = useQueryClient()
   return useMutation({
+    meta: { successToast: 'Staff member updated' },
     mutationFn: (body: UpdateUserInput) => usersApi.update(id, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: staffKeys.detail(id) })

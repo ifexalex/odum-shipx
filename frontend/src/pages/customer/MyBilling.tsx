@@ -1,36 +1,17 @@
-import { type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { type Billing } from '../../api/billing'
 import { useBillingList } from '../../hooks/useBilling'
-import { Badge, Banner, ListFooter, Mono, type BadgeVariant } from '../../design/components'
+import { Banner, Card, Chip, EmptyState, Icon, ListFooter, Mono, StatCard, StatusBadge, LinesSkeleton } from '../../design/components'
 import { PageHeader } from '../../shell/PageHeader'
 import styles from './customer.module.css'
+import { formatDate, formatNgn, formatNgnCompact } from '../../lib/format'
 
-const STATUS_VARIANT: Record<Billing['payment_status'], BadgeVariant> = {
-  unpaid: 'error',
-  partially_paid: 'warning',
-  paid: 'success',
-  overpaid: 'warning',
-  waived: 'neutral',
-  released_with_outstanding: 'warning',
-  cancelled: 'neutral',
-}
-
-function statusLabel(s: Billing['payment_status']): string {
-  switch (s) {
-    case 'unpaid': return 'Unpaid'
-    case 'partially_paid': return 'Partially paid'
-    case 'paid': return 'Paid'
-    case 'overpaid': return 'Overpaid'
-    case 'waived': return 'Waived'
-    case 'released_with_outstanding': return 'Released (outstanding)'
-    case 'cancelled': return 'Cancelled'
-  }
-}
+type BillingFilter = 'all' | 'unpaid' | 'settled'
 
 export function MyBilling(): JSX.Element {
   const navigate = useNavigate()
+  const [filter, setFilter] = useState<BillingFilter>('all')
 
   // `useBillingList` is the same paginated hook the staff BillingList uses — the
   // backend force-scopes GET /v1/billing to the caller's own customer_id for the
@@ -51,9 +32,32 @@ export function MyBilling(): JSX.Element {
       : 'Could not load billing records.'
     : null
 
+  const { totalDue, totalPaid, totalBalance, unpaidCount, settledCount } = useMemo(() => {
+    let due = 0
+    let paid = 0
+    let balance = 0
+    let unpaid = 0
+    let settled = 0
+    for (const b of records) {
+      const out = Number(b.outstanding_ngn ?? 0)
+      due += Number(b.total_due_ngn ?? 0)
+      paid += Number(b.total_paid_ngn ?? 0)
+      balance += out
+      if (out > 0) unpaid += 1
+      else settled += 1
+    }
+    return { totalDue: due, totalPaid: paid, totalBalance: balance, unpaidCount: unpaid, settledCount: settled }
+  }, [records])
+
+  const visibleRecords = useMemo(() => {
+    if (filter === 'unpaid') return records.filter((b) => Number(b.outstanding_ngn ?? 0) > 0)
+    if (filter === 'settled') return records.filter((b) => Number(b.outstanding_ngn ?? 0) <= 0)
+    return records
+  }, [records, filter])
+
   return (
     <div className={styles.page}>
-      <PageHeader title="My Billing" subtitle="Your payment history and outstanding balances." />
+      <PageHeader title="My billing" meta="Your payment history and outstanding balances." />
 
       {error && (
         <div className={styles.banner}>
@@ -61,18 +65,71 @@ export function MyBilling(): JSX.Element {
         </div>
       )}
 
-      {loading && <p style={{ color: 'var(--color-text-muted)' }}>Loading…</p>}
+      {loading && <LinesSkeleton label="Loading" />}
 
       {!loading && records.length === 0 && (
-        <div className={styles.empty}>
-          <p className={styles.emptyTitle}>You're all caught up!</p>
-          <p>No billing records yet.</p>
-        </div>
+        <Card padding="default">
+          <EmptyState icon="coin" title="You're all caught up!" body="No billing records yet." />
+        </Card>
+      )}
+
+      {!loading && records.length > 0 && (
+        <>
+          <div className={styles.statsRow}>
+            <StatCard
+              label="Total billed"
+              value={formatNgnCompact(totalDue)}
+              icon="file"
+              sublabel={`${records.length} ${records.length === 1 ? 'invoice' : 'invoices'}`}
+            />
+            <StatCard
+              label="Total paid"
+              value={formatNgnCompact(totalPaid)}
+              icon="check"
+              sublabel="confirmed payments"
+            />
+            <StatCard
+              label="Balance due"
+              value={totalBalance > 0 ? formatNgnCompact(totalBalance) : '₦0'}
+              icon="coin"
+              accentColor={totalBalance > 0 ? 'var(--color-error)' : undefined}
+              sublabel={totalBalance > 0 ? `${unpaidCount} awaiting payment` : 'all settled'}
+            />
+          </div>
+
+          <div className={styles.filterRow} role="group" aria-label="Filter invoices">
+            <Chip active={filter === 'all'} count={records.length} onClick={() => setFilter('all')}>
+              All
+            </Chip>
+            <Chip active={filter === 'unpaid'} count={unpaidCount} onClick={() => setFilter('unpaid')}>
+              Unpaid
+            </Chip>
+            <Chip active={filter === 'settled'} count={settledCount} onClick={() => setFilter('settled')}>
+              Settled
+            </Chip>
+          </div>
+        </>
+      )}
+
+      {!loading && records.length > 0 && visibleRecords.length === 0 && (
+        <Card padding="default">
+          <EmptyState
+            compact
+            icon="coin"
+            title="No matching invoices"
+            body="Try switching the filter above to see your other billing records."
+            onClearFilters={() => setFilter('all')}
+          />
+        </Card>
       )}
 
       <div className={styles.cardList}>
-        {records.map((b) => {
-          const outstanding = Number(b.outstanding_ngn)
+        {visibleRecords.map((b) => {
+          const due = Number(b.total_due_ngn ?? 0)
+          const paid = Number(b.total_paid_ngn ?? 0)
+          const outstanding = Number(b.outstanding_ngn ?? 0)
+          const paidPct = due > 0 ? Math.min(100, Math.round((paid / due) * 100)) : 100
+          const showBar = due > 0 && outstanding > 0 && paid > 0
           return (
             <div
               key={b.id}
@@ -83,19 +140,35 @@ export function MyBilling(): JSX.Element {
               onKeyDown={(e) => e.key === 'Enter' && navigate(`/my-billing/${b.id}`, { state: { billing: b } })}
             >
               <div className={styles.cardLeft}>
-                <p className={styles.cardTitle}>{b.container_number ?? b.container_id}</p>
+                <p className={styles.cardTitle}>{b.container_number ?? b.invoice_number ?? 'Invoice'}</p>
                 <div className={styles.cardMeta}>
-                  <span>Total due: <Mono>₦{Number(b.total_due_ngn).toLocaleString()}</Mono></span>
-                  <span>Paid: <Mono>₦{Number(b.total_paid_ngn).toLocaleString()}</Mono></span>
+                  {b.invoice_number && b.container_number && <span>Ref <Mono>{b.invoice_number}</Mono></span>}
+                  {b.billed_at && <span>Billed {formatDate(b.billed_at)}</span>}
+                  <span>Total due: <Mono>{formatNgn(b.total_due_ngn)}</Mono></span>
+                  <span>Paid: <Mono>{formatNgn(b.total_paid_ngn)}</Mono></span>
                 </div>
-              </div>
-              <div className={styles.cardRight}>
-                <Badge variant={STATUS_VARIANT[b.payment_status]}>{statusLabel(b.payment_status)}</Badge>
-                {outstanding > 0 && (
-                  <span className={styles.amountSub} style={{ color: 'var(--color-error)' }}>
-                    ₦{outstanding.toLocaleString()} outstanding
-                  </span>
+                {showBar && (
+                  <div className={styles.progressWrap}>
+                    <div className={styles.progressHead}>
+                      <span>Payment progress</span>
+                      <span>{paidPct}% paid</span>
+                    </div>
+                    <div className={styles.progressTrack}>
+                      <div className={styles.progressFill} style={{ width: `${paidPct}%` }} />
+                    </div>
+                  </div>
                 )}
+              </div>
+              <div className={styles.cardTrailing}>
+                <div className={styles.cardRight}>
+                  <StatusBadge kind="invoice" status={b.payment_status} audience="customer" />
+                  {outstanding > 0 && (
+                    <span className={styles.amountSub} style={{ color: 'var(--color-error)' }}>
+                      {formatNgn(outstanding)} outstanding
+                    </span>
+                  )}
+                </div>
+                <Icon name="chevright" size={16} color="var(--color-ink-4)" />
               </div>
             </div>
           )
@@ -109,6 +182,7 @@ export function MyBilling(): JSX.Element {
         loading={isFetchingMore}
         onLoadMore={loadMore}
         noun="billing records"
+        nounOne="billing record"
       />
     </div>
   )

@@ -50,12 +50,12 @@ describe('ContainerPipeline', () => {
   it('shows every stage with its count — no horizontal-scroll kanban, nothing hidden', async () => {
     renderPipeline()
     // All eight stages + the "All active" lead tile are always rendered.
-    for (const label of ['All active', 'Loading', 'Sealed', 'In Transit', 'Arrived (NG)', 'Customs Clearance', 'Cleared', 'At Warehouse', 'Fully Released']) {
+    for (const label of ['All active', 'Loading', 'Sealed', 'In transit', 'Arrived in Nigeria', 'Customs clearance', 'Cleared', 'At warehouse', 'Fully released']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
     // Counts come straight from the stats (no 6-card cap).
     expect(screen.getByText('5')).toBeInTheDocument() // in_transit
-    expect(screen.getByText('20')).toBeInTheDocument() // all active total
+    expect(screen.getByText('19')).toBeInTheDocument() // all active total (excludes fully_released)
   })
 
   it('defaults to the full active list', async () => {
@@ -63,7 +63,7 @@ describe('ContainerPipeline', () => {
     await waitFor(() =>
       expect(containersApi.list).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: 'loading,sealed,in_transit,arrived,customs_clearance,cleared,at_warehouse,fully_released',
+          status: 'loading,sealed,in_transit,arrived,customs_clearance,cleared,at_warehouse',
         }),
       ),
     )
@@ -78,7 +78,7 @@ describe('ContainerPipeline', () => {
       }) as never,
     )
     renderPipeline()
-    await userEvent.click(screen.getByText('At Warehouse'))
+    await userEvent.click(screen.getByText('At warehouse'))
     await waitFor(() =>
       expect(containersApi.list).toHaveBeenCalledWith(expect.objectContaining({ status: 'at_warehouse' })),
     )
@@ -118,6 +118,6 @@ describe('ContainerPipeline', () => {
     const row = num.closest('tr')!
     expect(within(row).getByText('Guangzhou → Lagos')).toBeInTheDocument()
     expect(within(row).getByText('4')).toBeInTheDocument()
-    expect(within(row).getByRole('button', { name: 'View' })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: /MSCU1234567/ })).toBeInTheDocument()
   })
 })
