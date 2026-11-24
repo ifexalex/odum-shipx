@@ -843,6 +843,22 @@ def get_customer_by_email(tenant_id: str, email: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def get_customer_by_phone(tenant_id: str, phone: str) -> dict[str, Any] | None:
+    """Look up a customer by normalised phone within one tenant.
+
+    Needed because `idx_customer_tenant_phone_unique` enforces one customer per
+    phone per tenant, and self-registration checked only the email. A returning
+    customer who used a different email therefore hit a raw
+    `psycopg2.UniqueViolation`, surfacing as an unexplained 500.
+    """
+    rows = execute_with_tenant(
+        tenant_id,
+        "SELECT * FROM customer WHERE tenant_id = %s AND phone = %s AND anonymised_at IS NULL LIMIT 1",
+        (tenant_id, phone),
+    )
+    return rows[0] if rows else None
+
+
 def link_customer_user(tenant_id: str, customer_email: str, user_id: str) -> None:
     """Set customer.user_id for the customer record matching the given email."""
     execute_write_with_tenant(

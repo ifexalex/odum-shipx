@@ -452,7 +452,26 @@ export interface PaystackTestResult {
   environment: 'test' | 'live' | null
 }
 
+/** The company-facing view of the public customer signup link. */
+export interface RegistrationLinkSettings {
+  /** False means the public signup route refuses this tenant. */
+  enabled: boolean
+  /** The tenant's URL slug — the `{slug}` in /register/{slug}. */
+  slug: string | null
+  updated_at?: string | null
+}
+
 export const configApi = {
+  getRegistrationLink: () =>
+    apiRequest<RegistrationLinkSettings>({ method: 'GET', path: '/v1/tenant/registration-link' }),
+
+  setRegistrationLinkEnabled: (enabled: boolean) =>
+    apiRequest<RegistrationLinkSettings>({
+      method: 'PATCH',
+      path: '/v1/tenant/registration-link',
+      body: { enabled },
+    }),
+
   getDollarRate: () =>
     apiRequest<DollarRateConfig>({ method: 'GET', path: '/v1/tenant/dollar-rate' }),
 

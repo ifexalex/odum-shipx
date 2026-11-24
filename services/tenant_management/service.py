@@ -26,6 +26,7 @@ from .activation import (
     resend_activation,
 )
 from .customers import (
+    SELF_REGISTRATION_CONFIG_KEY,
     accept_customer_invite,
     anonymise_customer,
     create_customer,
@@ -34,9 +35,11 @@ from .customers import (
     get_customer_for_user,
     get_customer_invite_public,
     get_customer_stats,
+    get_self_registration_setting,
     issue_customer_invite,
     list_customers,
     self_register_customer,
+    set_self_registration_enabled,
     update_customer,
 )
 from .offboarding_export import (
@@ -178,6 +181,9 @@ __all__ = [
     "resend_user_invite",
     "reset_user_password",
     "rotate_webhook_secret",
+    "SELF_REGISTRATION_CONFIG_KEY",
+    "get_self_registration_setting",
+    "set_self_registration_enabled",
     "self_register_customer",
     "set_quota_override",
     "suspend_tenant",

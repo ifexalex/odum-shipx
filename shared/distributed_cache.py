@@ -204,6 +204,31 @@ class DistributedCache:
             self._trip("window read", key, exc)
             return None
 
+    def incr(self, key: str, ttl: int | None = None) -> int | None:
+        """Atomically increment a counter, setting its TTL on first write.
+
+        Returns the new count, or **None** when Redis is unreachable — the
+        caller decides what an unknown count means. Separate from get/set
+        because a read-modify-write across two round trips is not atomic, and a
+        rate limiter built on one would undercount exactly when it matters: a
+        burst of concurrent requests.
+
+        The TTL is applied only when the counter is created (count == 1), so a
+        fixed window starts at the first request and is not extended by later
+        ones — otherwise a steady trickle would hold the window open forever
+        and never reset.
+        """
+        try:
+            client = self._get_client()
+            full_key = self._key(key)
+            count = int(client.incr(full_key))
+            if count == 1:
+                client.expire(full_key, ttl if ttl is not None else self._default_ttl)
+            return count
+        except Exception as exc:
+            logger.warning("Redis INCR failed for key=%s: %s", key, exc)
+            return None
+
     def clear(self) -> None:
         """No-op for distributed cache — flushing the whole keyspace is unsafe
         in a shared Redis instance. Call delete() per key instead."""

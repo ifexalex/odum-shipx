@@ -398,3 +398,14 @@ class TenantUsageResponse(BaseModel):
     limits: UsageLimitsNested
     api_calls: int = 0
     notifications: NotificationsNested
+
+
+class SelfRegistrationUpdateRequest(BaseModel):
+    """Turn customer self-signup on or off for the calling tenant.
+
+    A single required field rather than an optional one: a PATCH that silently
+    did nothing when `enabled` was omitted would be indistinguishable, to the
+    caller, from one that worked.
+    """
+
+    enabled: bool

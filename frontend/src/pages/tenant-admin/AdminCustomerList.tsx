@@ -6,6 +6,7 @@ import { customerKeys } from '../../api/keys'
 import { customersApi, type Customer } from '../../api/tenantManagement'
 import { useCustomerList } from '../../hooks/useCustomers'
 import { Badge, Banner, Button, Chip, Field, Mono, PhoneField, Table, ListFooter, DialogGuard, SearchField, CheckboxField, EmptyState } from '../../design/components'
+import { CustomerSignupLink } from './CustomerSignupLink'
 import styles from './admin.module.css'
 import { formatDate } from '../../lib/format'
 import { toast } from '../../design/toast'
@@ -271,7 +272,12 @@ export function AdminCustomerList(): JSX.Element {
             }
           />
         }
-        notices={<>{error && <Banner variant="error">{error.message}</Banner>}</>}
+        notices={
+          <>
+            {error && <Banner variant="error">{error.message}</Banner>}
+            <CustomerSignupLink />
+          </>
+        }
         filters={
           <FilterBar
             label="Filter customers"

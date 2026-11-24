@@ -307,6 +307,59 @@ def _notify_account_exists(tenant_id: str, email: str, name: str | None, request
         logger.warning("registration_existing_account notification failed: %s", exc)
 
 
+SELF_REGISTRATION_CONFIG_KEY = "self_registration"
+
+
+def _self_registration_enabled(tenant_id: str) -> bool:
+    """Whether this tenant currently accepts public self-registration."""
+    import json
+
+    rows = repo.get_all_configs(tenant_id)
+    row = next((r for r in rows if r["config_key"] == SELF_REGISTRATION_CONFIG_KEY), None)
+    value = row["config_value"] if row else {}
+    if isinstance(value, str):
+        value = json.loads(value)
+    return bool(value.get("enabled", True))
+
+
+def get_self_registration_setting(tenant_id: str) -> dict[str, Any]:
+    """Return whether customer self-signup is enabled for this tenant, plus its slug."""
+    rows = repo.get_all_configs(tenant_id)
+    row = next((r for r in rows if r["config_key"] == SELF_REGISTRATION_CONFIG_KEY), None)
+    tenant = repo.get_tenant_by_id(tenant_id)
+    return {
+        "enabled": _self_registration_enabled(tenant_id),
+        "slug": (tenant or {}).get("slug"),
+        "updated_at": (row or {}).get("updated_at"),
+    }
+
+
+def set_self_registration_enabled(
+    tenant_id: str,
+    enabled: bool,
+    actor_id: str | None = None,
+    actor_role: str = "",
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Turn customer self-signup on or off for this tenant (audited)."""
+    before = get_self_registration_setting(tenant_id)
+    repo.upsert_config(tenant_id, SELF_REGISTRATION_CONFIG_KEY, {"enabled": enabled}, updated_by=actor_id)
+    after = get_self_registration_setting(tenant_id)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="tenant_config",
+        entity_id=SELF_REGISTRATION_CONFIG_KEY,
+        action="UPDATE_SELF_REGISTRATION",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        before_state={"enabled": before["enabled"]},
+        after_state={"enabled": after["enabled"]},
+        ip_address=ip_address,
+    )
+    return after
+
+
 def self_register_customer(
     req: CustomerRegistrationRequest,
     slug: str | None = None,
@@ -361,6 +414,12 @@ def self_register_customer(
     if not tenant:
         raise ResourceNotFoundError("tenant", resolved_slug or host)
 
+    if not _self_registration_enabled(str(tenant["id"])):
+        raise BusinessRuleViolationError(
+            "This tenant is not accepting new registrations",
+            rule_id="SELF_REGISTRATION_DISABLED",
+        )
+
     if tenant["status"] != "active":
         raise BusinessRuleViolationError(
             "This tenant is not accepting new registrations",
@@ -381,6 +440,9 @@ def self_register_customer(
     dial_code = dial_code_for_country(tenant.get("destination_country"))
     phone = normalize_phone(req.phone, dial_code)
     whatsapp = normalize_phone(req.whatsapp, dial_code) if req.whatsapp else None
+
+    if phone and repo.get_customer_by_phone(tenant_id, phone):
+        raise DuplicateResourceError("customer", req.phone)
 
     # Provision Cognito user (sends temp-password email via Cognito)
     cognito = get_identity_provider()
