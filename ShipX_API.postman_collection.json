@@ -1940,6 +1940,48 @@
             },
             "description": "DELETE /v1/tenant/users/{id} — deactivate a tenant user; returns 204 (tenant_admin)"
           }
+        },
+        {
+          "name": "Reactivate User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "tenant_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/tenant/users/{{staff_user_id}}/reactivate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "tenant",
+                "users",
+                "{{staff_user_id}}",
+                "reactivate"
+              ]
+            },
+            "description": "POST /v1/tenant/users/{id}/reactivate \u2014 undo a deactivation; re-enables the identity and sets status back to active, returning the updated row (tenant_admin). 422 if the user is not deactivated; 429 if the tenant is at its tier seat limit."
+          }
         }
       ]
     },

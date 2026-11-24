@@ -513,6 +513,14 @@ New: `tests/unit/test_phone.py`, `tests/unit/test_invites.py`; extended:
   the *tenant_user row's id*, not the bare sub — pinning `customer.user_id` to a real `tenant_user`
   the way its `FOREIGN KEY REFERENCES tenant_user(id)` requires. Plus explicit-slug tenant resolution,
   unknown-slug 404, duplicate-email 409.
+- `test_tenant_management.py::TestReactivateUser` — the undo for `deactivate_user`. Reactivation
+  re-checks the tier seat limit, so `test_at_seat_limit_raises` is the one that earns its keep: it
+  asserts the refusal happens *before* either `enable_user` or `set_user_status` is called, so a
+  rejected reactivation cannot leave an enabled identity behind a still-deactivated row. Plus the
+  happy path (Cognito `enable_user` on the user's email, `status = 'active'`), an already-active
+  user raising `BusinessRuleViolationError`, and an unknown id raising `ResourceNotFoundError`.
+  Frontend counterpart: `StaffUserDetail.test.tsx`'s "activation controls" block, which pins the
+  per-status control and the 429-at-seat-limit banner.
 - `test_tenant_management.py::TestIssueCustomerInvite` / `TestAcceptCustomerInvite` — issuing deletes
   prior unconsumed invites first (resend invalidates the old link); refuses a customer who already has
   `user_id` set; `accept_customer_invite` has the same FK-regression assertion as self-register (its

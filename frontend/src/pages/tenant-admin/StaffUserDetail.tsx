@@ -126,7 +126,9 @@ export function StaffUserDetail(): JSX.Element {
     }
   }
 
-  async function handleAction(action: 'resend' | 'activate' | 'reset' | 'deactivate'): Promise<void> {
+  async function handleAction(
+    action: 'resend' | 'activate' | 'reset' | 'deactivate' | 'reactivate',
+  ): Promise<void> {
     if (!user) return
     setSaving(true)
     setActionError(null)
@@ -140,9 +142,13 @@ export function StaffUserDetail(): JSX.Element {
       } else if (action === 'reset') {
         await usersApi.resetPassword(user.id)
         toast.success('Password reset email sent.')
+      } else if (action === 'reactivate') {
+        const updated = await usersApi.reactivate(user.id)
+        applyUser({ ...user, ...updated })
+        toast.success('User reactivated — they can sign in again.')
       } else {
         await usersApi.deactivate(user.id)
-        applyUser({ ...user, status: 'inactive' })
+        applyUser({ ...user, status: 'deactivated' })
         toast.success('User deactivated.')
       }
     } catch (err) {
@@ -354,13 +360,13 @@ export function StaffUserDetail(): JSX.Element {
         sub={
           user.status === 'active'
             ? 'Send a password reset link or deactivate this account.'
-            : user.status === 'inactive'
+            : user.status === 'deactivated'
               ? 'This account is deactivated and cannot sign in.'
               : 'This staff member has not finished setting up their account yet.'
         }
       >
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          {user.status !== 'active' && user.status !== 'inactive' && (
+          {user.status !== 'active' && user.status !== 'deactivated' && (
             <>
               <Button
                 variant="secondary"
@@ -399,6 +405,16 @@ export function StaffUserDetail(): JSX.Element {
                 Deactivate user
               </Button>
             </>
+          )}
+          {user.status === 'deactivated' && (
+            <Button
+              variant="primary"
+              size="sm"
+              loading={saving}
+              onClick={() => void handleAction('reactivate')}
+            >
+              Reactivate user
+            </Button>
           )}
         </div>
       </Section>

@@ -77,6 +77,7 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | PATCH | `/v1/tenant/users/{id}` | Update user (full_name, locale, and/or roles/primary_role). **Breaking change:** `role` (singular) removed, replaced by `roles`/`primary_role` | tenant_admin |
 | PATCH | `/v1/tenant/me` | Self-service locale update — any authenticated role | all authenticated |
 | DELETE | `/v1/tenant/users/{id}` | Deactivate user | tenant_admin |
+| POST | `/v1/tenant/users/{id}/reactivate` | Reactivate a deactivated user — re-enables the identity and sets `status = 'active'`. Returns the updated row. 422 if the user is not deactivated, 429 if the tenant is at its tier seat limit | tenant_admin |
 | POST | `/v1/tenant/users/{id}/resend-invite` | Resend Cognito temp-password email | tenant_admin |
 | POST | `/v1/tenant/users/{id}/reset-password` | Trigger Cognito password-reset email | tenant_admin |
 | GET | `/v1/tenant/dollar-rate` | Get effective rate (Bybit base + this tenant's markup) | tenant_admin, china_office_staff, nigeria_office_staff |
@@ -125,6 +126,8 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | GET | `/v1/customers/{id}/export` | GDPR data portability export (Art. 20) | tenant_admin, customer (own) |
 
 **Implementation notes (2026-07-11 — audit gap A1):** `branding_config` now has a canonical shape the frontend writes via `PUT /v1/tenant/config {branding}` and every consumer reads: `display_name`, `tagline`, `primary_color`, `warehouse_address`, `pickup_hours`, `pickup_phone`, `support_email`, `support_whatsapp`, `document_footer` (all optional; JSONB is free-form so no backend model change was needed — see `frontend/src/api/tenantManagement.ts` `BrandingConfig`). `GET /v1/tenant/config` (exact path, GET only) was widened to all staff roles so the printable packing list / release note can render the tenant's branding for whoever prints them; writes and the webhook sub-routes stay tenant_admin-only, and the guard is covered by `TestTenantConfigReadAccess` in `tests/unit/test_tenant_management.py`.
+
+**Implementation notes / ground-truth gaps found (2026-11-13 — deactivating a staff user was a one-way door):** a tenant admin who deactivated a user had no way to undo it, and no control appeared offering to. Three separate gaps, each of which alone would have been enough: (1) **no endpoint** — `deactivate_user` existed, nothing reversed it, even though `enable_user` had been on every identity provider (Cognito, Entra, the base class) since they were written and was called from nowhere; (2) the frontend's `TenantUser.status` type was `'active' | 'inactive'`, but the database CHECK constraint is `('active','deactivated')` — the type named a value the column cannot hold, and the deactivate handler optimistically wrote exactly that value, so any status-based branch would have compared against a status that never occurs; (3) `StaffUserDetail.tsx` rendered the Deactivate button under `user.status === 'active' && …`, so on deactivation the button simply vanished with nothing in its place. Fixed: `POST /v1/tenant/users/{id}/reactivate` (`service.reactivate_user`, audited as a `STATUS_CHANGE`), the status union corrected to `'active' | 'deactivated'`, and the button turned into a ternary whose else-branch is "Reactivate user". Reactivation re-checks the tier seat limit — deactivation frees a seat, so without it a tenant at its ceiling could cycle users past the plan. Also fixed in passing: `usersApi.deactivate` was typed `apiRequest<TenantUser>` although the endpoint returns 204 with no body, so its result was `undefined` at runtime while the type promised a row. Verified live (local stack, `tenant_admin`): deactivate → 204 / `deactivated`, reactivate → 200 / `active`, reactivating an already-active user → 422, non-admin → 403, and on a starter tenant over its ceiling the UI shows `Usage limit exceeded for users: 14/10` with the Reactivate control still present.
 
 **Implementation notes / ground-truth gaps found (2026-07-18 — platform admin impersonation was broken at four layers):** (1) `impersonation.py`'s `_get_tenant_admin()` selected non-existent columns `tu.user_id` / `tu.is_active` (real schema: `id` PK, `status` enum) — every `POST /v1/platform/tenants/{id}/impersonate` 500'd against the real DB; (2) `platform_audit_log.actor_id` had an FK to `tenant_user(id)`, but platform admins have no `tenant_user` row by design, so **every platform audit insert silently failed** (swallowed with a warning) and the platform audit-log page was permanently empty — FK dropped in migration 037 (same class as migration 014); (3) the frontend read `result.id_token` where the wire field is `token`; (4) `buildSession()` required `custom:tenant_id`/`cognito:groups` claims, but the raw impersonation token carries bare `tenant_id`/`role` — now accepted as a fallback shape. Also: `scripts/local_server.py` now maps impersonation-token claims the same way the production REQUEST authorizer does, and `LocalAuthProvider` implements `startImpersonation`/`exitImpersonation` (was a hard throw), so "Impersonate" works in both local auth modes. Full loop verified live: start → tenant-scoped read → write blocked 422 → end session.
 
@@ -585,6 +588,19 @@ See `13_api_payment_release.md`'s "Payment Claims" section for the customer's "I
 
 Both are tenant_admin only.
 
+### Deactivate / Reactivate
+- **DELETE /v1/tenant/users/{id}** — `status = 'deactivated'` + `admin_disable_user`. Returns **204 with no body**.
+- **POST /v1/tenant/users/{id}/reactivate** — the way back: `admin_enable_user` + `status = 'active'`, returning the updated `TenantUser` row.
+
+The seat limit is re-checked on reactivate, and that is the part that matters:
+deactivation frees a seat (`count_active_users` counts only active rows), so
+without the check a tenant sitting at its tier ceiling could deactivate one
+user, reactivate another, and run over the plan through a door `create_user`
+already guards. A refused reactivation is a `429 USAGE_LIMIT_EXCEEDED` and
+touches neither Cognito nor the database.
+
+Both are tenant_admin only.
+
 ### Tier Limits (from Task 03)
 - Starter: 10 users, 5 containers/month, 5 GB storage
 - Business: 50 users, 25 containers/month, 25 GB storage
@@ -842,6 +858,7 @@ Repository functions (`insert_onboarding_request`, `list_onboarding_requests`, `
 - [x] Outbound webhook fires on `container.status_updated` with HMAC-SHA256 signature
 - [x] `POST /v1/tenant/users/{id}/resend-invite` re-sends Cognito temp-password email
 - [x] `POST /v1/tenant/users/{id}/reset-password` triggers Cognito password reset
+- [x] `POST /v1/tenant/users/{id}/reactivate` undoes a deactivation (Cognito `admin_enable_user` + `status = 'active'`), re-checking the tier seat limit so a tenant cannot reactivate past its plan
 - [x] `GET /v1/health` on all Lambdas (no JWT, returns `{"status":"healthy"}`)
 - [x] Customer search supports `?q=` parameter with ILIKE
 - [x] Platform dashboard aggregates cross-tenant metrics

@@ -312,6 +312,52 @@ def deactivate_user(
     return updated
 
 
+def reactivate_user(
+    tenant_id: str,
+    user_id: str,
+    actor_id: str,
+    ip_address: str | None = None,
+    actor_role: str = "tenant_admin",
+) -> dict[str, Any]:
+    """Bring a deactivated staff user back, in both the directory and the database.
+
+    Re-checks the tenant's seat limit before re-enabling the user in the identity
+    provider or database so deactivation cannot be used to bypass plan limits.
+    """
+    existing = get_user(tenant_id, user_id)
+    if existing["status"] != "deactivated":
+        raise BusinessRuleViolationError(f"User is not deactivated (status: {existing['status']})")
+
+    tenant = get_tenant(tenant_id)
+    limit = TIER_USER_LIMITS.get(tenant["subscription_tier"], 10)
+    current_count = repo.count_active_users(tenant_id)
+    if current_count >= limit:
+        raise UsageLimitExceededError("users", current_count, limit)
+
+    cognito = get_identity_provider()
+    if existing.get("email"):
+        cognito.enable_user(existing["email"])
+
+    updated = repo.set_user_status(tenant_id, user_id, "active")
+    if updated is None:
+        raise RuntimeError("set_user_status returned None unexpectedly")
+
+    evict_identity_cache(user_id)
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="tenant_user",
+        entity_id=user_id,
+        action="STATUS_CHANGE",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        before_state={"status": "deactivated"},
+        after_state={"status": "active"},
+        ip_address=ip_address,
+    )
+    return updated
+
+
 def resend_user_invite(
     tenant_id: str,
     user_id: str,

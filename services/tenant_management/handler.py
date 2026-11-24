@@ -849,6 +849,12 @@ def _tenant_admin_routes(
                     tenant_id, user_id, actor_id=ctx.user_id, actor_role=ctx.role.value, ip_address=ip_address
                 )
                 return success({"message": "Password reset email sent"}, request_id=request_id)
+            if action == "reactivate" and method == "POST":
+                # POST sub-action rather than reusing PATCH: deactivation is a
+                # DELETE, so its inverse is a deliberate named action, not a
+                # field someone could flip by accident in a partial update.
+                result = service.reactivate_user(tenant_id, user_id, actor_id=ctx.user_id, ip_address=ip_address)
+                return success(result, request_id=request_id)
             if action == "resend-activation" and method == "POST":
                 result = service.resend_activation(
                     tenant_id,
