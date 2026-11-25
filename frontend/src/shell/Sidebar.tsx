@@ -25,6 +25,7 @@ export interface NavGroup {
 export interface SidebarProps {
   role: Role
   brand?: ReactNode
+  footer?: ReactNode
   items: NavGroup[]
   collapsed?: boolean
 }
@@ -88,7 +89,7 @@ function NavItem({ icon, label, active, badge, count, onClick, accent }: NavItem
  * The staff sidebar: brand, role badge and the menu. The signed-in user, profile and sign-out live in the top bar's
  * account menu (FD-15), so the sidebar does not repeat them.
  */
-export function Sidebar({ role, brand, items, collapsed = false }: SidebarProps): JSX.Element {
+export function Sidebar({ role, brand, footer, items, collapsed = false }: SidebarProps): JSX.Element {
   const accent = navAccentColor(role)
   const roleLabel = ROLE_LABEL[role]
 
@@ -113,6 +114,7 @@ export function Sidebar({ role, brand, items, collapsed = false }: SidebarProps)
           </div>
         ))}
       </nav>
+      {footer && <div className={styles.footerSlot}>{footer}</div>}
     </aside>
   )
 }

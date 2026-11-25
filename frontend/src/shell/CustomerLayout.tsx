@@ -2,6 +2,7 @@ import { ContentErrorBoundary, QuietBoundary } from './ErrorBoundary'
 import { useState, type JSX, type ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
+import { PoweredByShipx, TenantBrand } from '../design/components'
 import { ThemeProvider } from '../design/ThemeProvider'
 import { useBranding } from '../hooks/useConfig'
 import { useCustomerBanner, useCustomerNotifUnreadCount } from '../hooks/useCustomerNotifications'
@@ -44,6 +45,7 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
   const trail = breadcrumbTrail(pathname, session.roles, breadcrumbLabels.labels)
 
   const links = navConfig.customer.flatMap((group) => group.items)
+  const tenantName = branding?.display_name?.trim()
 
   return (
     <ThemeProvider primaryColor={branding?.primary_color ?? null} style={{ height: '100%' }}>
@@ -54,6 +56,27 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
             topnav={
               <CustomerTopNav
                 links={links}
+                brand={
+                  tenantName ? (
+                    <TenantBrand
+                      name={tenantName}
+                      logoUrl={branding?.logo_url}
+                      color={branding?.primary_color}
+                      surface="dark"
+                    />
+                  ) : undefined
+                }
+                drawerBrand={
+                  tenantName ? (
+                    <TenantBrand
+                      name={tenantName}
+                      logoUrl={branding?.logo_url}
+                      color={branding?.primary_color}
+                      surface="light"
+                    />
+                  ) : undefined
+                }
+                drawerFooter={tenantName ? <PoweredByShipx surface="light" /> : undefined}
                 onLogout={logout}
                 search={<GlobalSearch audience="customer" placeholder={searchPlaceholderFor('customer') ?? 'Search…'} />}
                 notifications={unreadData?.unread_count ?? 0}
@@ -63,6 +86,7 @@ export function CustomerLayout({ children }: CustomerLayoutProps): JSX.Element |
                 }
               />
             }
+            footer={tenantName ? <PoweredByShipx surface="light" /> : undefined}
           >
             <BreadcrumbContext.Provider value={breadcrumbLabels}>
               <QuietBoundary>

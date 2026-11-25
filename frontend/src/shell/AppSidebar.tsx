@@ -1,6 +1,8 @@
 import type { JSX } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useSession } from '../auth/useSession'
+import { PoweredByShipx, TenantBrand } from '../design/components'
+import { useBranding } from '../hooks/useConfig'
 import { useOnboardingPendingCount } from '../hooks/useOnboardingRequests'
 import { activeNavPath, navConfig, visualRoleFor, type NavLinkGroup } from './navConfig'
 import { Sidebar, type NavGroup } from './Sidebar'
@@ -38,10 +40,13 @@ export function AppSidebar(): JSX.Element | null {
   const location = useLocation()
   const navigate = useNavigate()
 
+  const isPlatformShell = session?.role === 'platform_admin'
   // Live pending-lead badge on the platform "Onboarding Requests" entry. The
   // hook short-circuits to a no-op query for every non-platform role, so the
   // call is unconditional (Rules of Hooks) but only fetches for platform admins.
-  const pendingOnboarding = useOnboardingPendingCount(session?.role === 'platform_admin')
+  const pendingOnboarding = useOnboardingPendingCount(isPlatformShell)
+  // Reuses StaffLayout's cached tenant branding query (zero extra requests).
+  const { branding } = useBranding(!!session && !isPlatformShell)
 
   if (!session) return null
 
@@ -49,9 +54,21 @@ export function AppSidebar(): JSX.Element | null {
     pendingOnboarding > 0 ? { [ONBOARDING_REQUESTS_PATH]: pendingOnboarding } : {}
   const groups = toNavGroups(navConfig[session.role], location.pathname, navigate, liveCounts)
 
+  const tenantName = !isPlatformShell ? branding?.display_name?.trim() : undefined
+
   return (
     <Sidebar
       role={visualRoleFor(session.role)}
+      brand={
+        tenantName ? (
+          <TenantBrand
+            name={tenantName}
+            logoUrl={branding?.logo_url}
+            color={branding?.primary_color}
+          />
+        ) : undefined
+      }
+      footer={tenantName ? <PoweredByShipx surface="dark" /> : undefined}
       items={groups}
     />
   )

@@ -22,6 +22,7 @@ import {
   LocaleCard,
   PageSkeleton,
   PhoneField,
+  PoweredByShipx,
   Pressable,
   QuickActionCard,
   Skeleton,
@@ -172,6 +173,7 @@ export function ComponentCatalog(): JSX.Element {
           <ShipxWordmark />
           <ShipxWordmark showBy />
           <TenantBrand name="Acme Logistics" />
+          <PoweredByShipx surface="dark" />
         </div>
       </Section>
 
