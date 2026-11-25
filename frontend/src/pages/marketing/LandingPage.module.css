@@ -8,6 +8,7 @@
  * LandingPage.tsx, mirroring the prototype's inline script).
  */
 .page {
+  --landing-accent-on-dark: #fed7aa;
   font-family: var(--font-body);
   color: var(--color-ink);
   background: var(--color-surface);
@@ -369,7 +370,7 @@
 }
 .routePinLagos {
   background: color-mix(in srgb, var(--color-accent) 25%, transparent);
-  color: #fed7aa;
+  color: var(--landing-accent-on-dark);
 }
 
 /* ---- section shells ---- */

@@ -226,7 +226,7 @@ function NavLogo(): JSX.Element {
   return (
     <Link to="/" className={styles.logo}>
       <KolaMark size={30} color="var(--color-primary-bright)" />
-      <ShipxWordmark size={22} color="#fff" xColor="#fed7aa" />
+      <ShipxWordmark size={22} color="#fff" xColor="var(--landing-accent-on-dark)" />
     </Link>
   )
 }
