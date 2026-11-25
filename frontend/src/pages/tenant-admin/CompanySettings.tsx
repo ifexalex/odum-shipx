@@ -20,6 +20,7 @@ import { useMemo, useRef, useState, type JSX } from 'react'
 import { Link } from 'react-router-dom'
 import { type BrandingConfig } from '../../api/tenantManagement'
 import { isValidHexColor } from '../../design/deriveBrandShades'
+import { ThemeProvider } from '../../design/ThemeProvider'
 import { ApiError } from '../../api/client'
 import { LogoFileError } from '../../api/uploads'
 import { Banner, Button, Card, Field, Modal, PageSkeleton, PhoneField, Pressable, ColorField, ConfirmDialog, ErrorState, FileInput } from '../../design/components'
@@ -383,9 +384,32 @@ function CompanySettingsForm({
               value={form.primary_color}
               onChange={(hex) => setForm((f) => ({ ...f, primary_color: hex }))}
               error={colorInvalid ? 'Use a hex colour like #1a73e8.' : undefined}
-              helper="Buttons and highlights across your workspace, and the initials tile when there is no logo."
+              helper="Automatically generates a coordinated sidebar, button, highlight, and accent palette across your workspace."
               disabled={isLoading}
             />
+            {isValidHexColor(form.primary_color.trim()) && (
+              <ThemeProvider primaryColor={form.primary_color.trim()}>
+                <div className={styles.palettePreview}>
+                  <div className={styles.paletteHeader}>
+                    <span className={styles.paletteTitle}>Generated workspace palette</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={isLoading}
+                      onClick={() => setForm((f) => ({ ...f, primary_color: '' }))}
+                    >
+                      Reset to default
+                    </Button>
+                  </div>
+                  <div className={styles.paletteSwatches}>
+                    <span className={`${styles.paletteSwatch} ${styles.swatchSidebar}`}>Sidebar</span>
+                    <span className={`${styles.paletteSwatch} ${styles.swatchPrimary}`}>Primary</span>
+                    <span className={`${styles.paletteSwatch} ${styles.swatchAccent}`}>Accent</span>
+                    <span className={`${styles.paletteSwatch} ${styles.swatchSoft}`}>Highlight</span>
+                  </div>
+                </div>
+              </ThemeProvider>
+            )}
           </Card>
 
           <Card>

@@ -27,6 +27,9 @@ describe('ThemeProvider', () => {
     const scope = container.querySelector('[data-tenant-theme]') as HTMLElement
     expect(scope).not.toBeNull()
     expect(scope.style.getPropertyValue('--color-primary')).toBe('#1a5276')
+    expect(scope.style.getPropertyValue('--color-forest-dark')).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(scope.style.getPropertyValue('--color-accent')).toMatch(/^#[0-9a-f]{6}$/i)
+    expect(scope.style.getPropertyValue('--color-primary-text')).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
   it('never sets status color custom properties, regardless of input', () => {
