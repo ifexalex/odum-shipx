@@ -7,7 +7,23 @@ import type { PackingListForm } from './useCreatePackingListForm'
 
 /** Who and where this cargo is for, kept in view while the items are entered. */
 export function ContextBar({ form }: { form: PackingListForm }): JSX.Element {
-  const { selectedCustomer, selectedContainer } = form
+  const {
+    selectedCustomer,
+    selectedContainer,
+    containerCapacity,
+    otherUsedCbm,
+    totals,
+    exceedsCapacity,
+  } = form
+  const projectedCbm = otherUsedCbm + totals.cbm
+  const capacityVariant =
+    containerCapacity == null
+      ? 'neutral'
+      : exceedsCapacity
+        ? 'error'
+        : projectedCbm >= containerCapacity * 0.9
+          ? 'warning'
+          : 'success'
   return (
     <Card padding="default">
       <div className={styles.contextBar}>
@@ -37,6 +53,11 @@ export function ContextBar({ form }: { form: PackingListForm }): JSX.Element {
           </div>
         </div>
         <span className={styles.contextSpacer} />
+        {containerCapacity != null && (
+          <Badge variant={capacityVariant}>
+            {formatCbm(projectedCbm)} / {formatCbm(containerCapacity)} CBM
+          </Badge>
+        )}
         <Badge variant="neutral">Draft — assigned on save</Badge>
       </div>
     </Card>

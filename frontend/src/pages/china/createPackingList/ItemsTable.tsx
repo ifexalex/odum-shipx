@@ -111,6 +111,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                     <td>
                       <CellSelect
                         label={`Package type for item ${index + 1}`}
+                        className={styles.typeSelect}
                         value={item.package_unit ?? 'carton'}
                         onChange={(event) =>
                           updateItem(index, {

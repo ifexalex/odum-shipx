@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
-import { packingListApi, type PackingList, type PackingListItem, type UpdatePackingListItemInput } from '../../api/packingList'
+import { packingListApi, type PackageUnit, type PackingList, type PackingListItem, type UpdatePackingListItemInput } from '../../api/packingList'
 import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { applyMinCbm, canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit, isSelfApproval } from '../../api/packingListRules'
@@ -178,6 +178,7 @@ export function PackingListDetail(): JSX.Element {
           height_cm: item.height_cm != null ? Number(item.height_cm) : undefined,
           declared_value_usd:
             item.declared_value_usd != null ? Number(item.declared_value_usd) : undefined,
+          package_unit: (item.package_unit as PackageUnit | null) ?? 'carton',
           quantity: qty,
           identical_confirmed: qty > 1,
         }
@@ -437,7 +438,7 @@ export function PackingListDetail(): JSX.Element {
             { title: 'Weight (kg)', type: 'number' as const },
             { title: 'L × W × H (cm)', align: 'center' },
             { title: 'Volume (CBM)', type: 'number' as const },
-            { title: 'Declared ($)', type: 'money' as const },
+            { title: 'Decl. / unit ($)', type: 'money' as const },
             ...(showFlagColumn ? [{ title: 'Flag' }] : []),
             ...(editing ? [{ title: '', type: 'action' as const, width: '40px' }] : []),
           ]}
