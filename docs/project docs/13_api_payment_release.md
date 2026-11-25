@@ -519,3 +519,11 @@ Both are built on the shared PDF theme (`services/excel/pdf_theme.py`). The rele
 ### Receipts reachable from the app (FD-43, 2026-11-21)
 
 `GET /v1/payments/{id}/receipt/pdf` is now called from each payment row on the staff and customer invoice pages and from the payment-success page (the payment found on `GET /v1/billing/{id}/detail` by its `payment_reference`). No API change.
+
+### Multi-unit carton tags and partial pickup deduction (2026-11-25, PR #174)
+
+With single-tag multi-quantity packing-list items (`08_api_packing_list.md`), one `carton_tag` can represent `quantity = N` physical packages:
+
+- **Authorised carton count:** `generate_release_note` sums `packing_list_item.quantity` across the selected `carton_tags` (instead of counting tags with `len(carton_tags)`).
+- **Multi-trip partial pickup:** `record_pickup` deducts `cartons_released` against the release note's remaining cartons across multiple visits; the release note flips to `picked_up` only once cumulative pickups reach the total authorised quantity.
+- **Progress fields:** `GET /v1/release-notes` and `GET /v1/release-notes/{id}` include `cartons_picked_up` and `cartons_remaining` so the warehouse counter and release-note detail page show live collection progress.

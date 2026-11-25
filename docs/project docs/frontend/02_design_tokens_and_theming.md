@@ -264,3 +264,14 @@ A WCAG contrast audit of the dark palette found a few combinations below usable 
 Left as acceptable: primary-coloured links/text (~3.1–3.4 on dark) — a single `--color-primary` can't satisfy both "link text on dark" and "white text on a primary button", and it's tenant-overridable, so splitting it is deferred; the green reads as interactive and passes large-text AA. `success`-button white text (~2.7) matches the same marginal choice already shipped in light mode.
 
 - **Print documents follow the tokens too (FD-41, 2026-11-21).** `services/excel/pdf_theme.py` carries the light-theme ink, line and surface colours, the default brand green `#1c7922` and the type scale (12-24 px scaled to 7.5-17 pt). Change a token there when it changes here.
+
+## OKLCH single-color tenant palette generator (2026-11-25, PR #175)
+
+Picking one `primary_color` now derives a full, contrast-safe **15-token workspace palette** in perceptual OKLCH space (`frontend/src/design/deriveBrandShades.ts::deriveTenantPalette`), replacing the earlier 5-shade primary-only derivation:
+
+- **Primary ramp (7 tokens):** `--color-primary`, `--color-primary-deep`, `--color-primary-strong`, `--color-primary-text`, `--color-primary-soft`, `--color-primary-on-soft`, `--color-primary-tint` — all WCAG-AA contrast-checked in both light and dark themes while keeping `--color-on-brand` white.
+- **Branded sidebar surface:** `--color-forest-dark` derives a deep, low-lightness brand-tinted sidebar background that preserves `--color-on-dark` contrast.
+- **Harmonised split-complementary accent (7 tokens):** `--color-accent`, `--color-accent-deep`, `--color-accent-strong`, `--color-accent-text`, `--color-accent-soft`, `--color-accent-on-soft`, `--color-accent-tint` — rotated away from the semantic error red hue range so accents never look like errors.
+- **Non-overridable status tokens:** `success`, `warning`, `error`, and `info` remain locked to canonical tokens.
+- **Brand-aware focus ring:** `--shadow-focus-ring` in `tokens.css` uses `color-mix(in srgb, var(--color-primary) ...)` so keyboard focus rings inherit the tenant's brand colour automatically.
+- **Modals & Customer Portal:** `ThemeProvider` exposes a portal container (`design/themePortal.ts`) so `Modal` portals render inside `[data-tenant-theme]` rather than escaping to `document.body`; `CustomerLayout` is now wrapped in `ThemeProvider` so customer portals receive the full tenant palette too.
