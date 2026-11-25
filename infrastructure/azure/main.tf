@@ -117,10 +117,11 @@ module "frontend" {
 module "storage" {
   source = "./modules/storage"
 
-  name_prefix         = local.name_prefix
-  resource_group_name = azurerm_resource_group.main.name
-  location            = var.location
-  common_tags         = local.common_tags
+  name_prefix          = local.name_prefix
+  resource_group_name  = azurerm_resource_group.main.name
+  location             = var.location
+  common_tags          = local.common_tags
+  cors_allowed_origins = local.storage_cors_origins
 }
 
 module "keyvault" {

@@ -41,6 +41,20 @@ resource "azurerm_storage_account" "assets" {
     delete_retention_policy {
       days = 7
     }
+
+    # CORS for browser presigned-SAS PUT uploads (logos, claim evidence,
+    # container documents, packing-list imports). Without this rule, Azure Blob
+    # rejects the OPTIONS preflight triggered by Content-Type + x-ms-blob-type.
+    dynamic "cors_rule" {
+      for_each = length(var.cors_allowed_origins) > 0 ? [1] : []
+      content {
+        allowed_headers    = ["*"]
+        allowed_methods    = ["GET", "HEAD", "OPTIONS", "PUT"]
+        allowed_origins    = var.cors_allowed_origins
+        exposed_headers    = ["ETag", "x-ms-request-id"]
+        max_age_in_seconds = 3600
+      }
+    }
   }
 
   tags = var.common_tags

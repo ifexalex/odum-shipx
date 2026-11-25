@@ -154,8 +154,8 @@ resource "aws_cloudfront_response_headers_policy" "frontend" {
         "img-src 'self' data: https://*.amazonaws.com",
         # Fonts are self-hosted (frontend/src/design/fonts.css, audit FD-06)
         "font-src 'self'",
-        # API calls: API Gateway + Cognito
-        "connect-src 'self' https://${var.api_gateway_domain} https://${var.cognito_domain}",
+        # API calls: API Gateway + Cognito + S3 presigned browser uploads
+        "connect-src 'self' https://${var.api_gateway_domain} https://${var.cognito_domain} https://*.amazonaws.com",
         # No frames, objects, or base-tag overrides
         "frame-ancestors 'none'",
         "object-src 'none'",
