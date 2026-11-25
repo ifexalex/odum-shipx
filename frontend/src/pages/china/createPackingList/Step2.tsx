@@ -41,6 +41,20 @@ export function Step2({ form }: { form: PackingListForm }): JSX.Element {
       <div className={styles.spacer} />
       <PricingEstimate form={form} />
 
+      {exceedsCapacity && containerCapacity != null && remainingCapacityCbm != null && (
+        <>
+          <div className={styles.spacer} />
+          <Banner variant="error" title="Cannot proceed — exceeds container CBM capacity">
+            Your line items total {formatCbm(totals.cbm)} CBM, which is{' '}
+            {formatCbm(totals.cbm - remainingCapacityCbm)} CBM over{' '}
+            {selectedContainer?.container_number ?? 'this container'}&apos;s remaining capacity of{' '}
+            {formatCbm(remainingCapacityCbm)} CBM ({formatCbm(otherUsedCbm)} /{' '}
+            {formatCbm(containerCapacity)} CBM already used). Reduce item quantity or dimensions to
+            continue.
+          </Banner>
+        </>
+      )}
+
       <div className={styles.actionsRow}>
         <Button variant="ghost" icon="arrowleft" onClick={() => setStep(1)}>
           Back: Details

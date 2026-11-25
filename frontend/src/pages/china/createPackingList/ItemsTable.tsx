@@ -30,6 +30,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
     setItems,
     minCbm,
     totals,
+    exceedsCapacity,
+    remainingCapacityCbm,
     rawCbm,
     qtyOf,
     updateItem,
@@ -387,7 +389,17 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
           </span>
           <span>
             <span className={styles.itemTotalKey}>Volume</span>{' '}
-            <Mono color="var(--color-primary-text)">{formatCbm(totals.cbm)} CBM</Mono>
+            <Mono color={exceedsCapacity ? 'var(--color-error)' : 'var(--color-primary-text)'}>
+              {formatCbm(totals.cbm)} CBM
+            </Mono>
+            {exceedsCapacity && remainingCapacityCbm != null && (
+              <>
+                {' '}
+                <Badge variant="error" size="sm">
+                  +{formatCbm(totals.cbm - remainingCapacityCbm)} CBM over capacity
+                </Badge>
+              </>
+            )}
           </span>
           <span>
             <span className={styles.itemTotalKey}>Declared</span>{' '}
