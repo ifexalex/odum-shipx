@@ -23,3 +23,9 @@ variable "common_tags" {
   description = "Tags applied to all resources."
   type        = map(string)
 }
+
+variable "cors_allowed_origins" {
+  description = "Browser origins permitted to upload/read presigned blobs directly via CORS."
+  type        = list(string)
+  default     = []
+}
