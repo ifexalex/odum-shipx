@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, type JSX } from 'react'
+import { useEffect, useRef, type JSX } from 'react'
 import {
   applyMinCbm,
   baleSizeAbbr,
@@ -6,14 +6,24 @@ import {
   formatPackageMix,
 } from '../../../api/packingListRules'
 import { MAX_ITEM_QUANTITY, PACKAGE_UNITS, type PackageUnit } from '../../../api/packingList'
-import { Badge, Button, Card, Icon, Mono, IconButton, CellSelect, CellInput, CellCheckbox } from '../../../design/components'
+import {
+  Badge,
+  Button,
+  Card,
+  Icon,
+  Mono,
+  IconButton,
+  CellSelect,
+  CellInput,
+  CellCheckbox,
+} from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import styles from '../CreatePackingList.module.css'
 import { blockInvalidNumberKeys, clampQuantity, emptyItem, sanitizeNumber } from './items'
 import type { PackingListForm } from './useCreatePackingListForm'
 import { formatCbm, formatKg } from '../../../lib/format'
 
-/** The line items: one row per carton or batch, with package type, size, CBM, weight and value. */
+/** The line items: spacious two-row cards with package type, dimensions, CBM, weight, qty and declared value. */
 export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
   const {
     items,
@@ -28,14 +38,14 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
     removeBatch,
     batchSize,
   } = form
-  const tableRef = useRef<HTMLTableElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   const focusRowIndexRef = useRef<number | null>(null)
 
   useEffect(() => {
     const idx = focusRowIndexRef.current
     if (idx === null) return
     focusRowIndexRef.current = null
-    const input = tableRef.current?.querySelector<HTMLInputElement>(
+    const input = listRef.current?.querySelector<HTMLInputElement>(
       `input[aria-label="Description, item ${idx + 1}"]`,
     )
     input?.focus()
@@ -51,367 +61,344 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
       <div className={styles.itemsHead}>
         <SectionHead
           title="Line items"
-          sub={`Pick a package type per row. CBM is computed from L × W × H and floored at ${minCbm} CBM.`}
+          sub={`Pick a package type per item. CBM is computed from L × W × H and floored at ${minCbm} CBM per unit.`}
         />
         <div className={styles.actionsGroup}>
-          <Button
-            variant="primary"
-            size="sm"
-            icon="plus"
-            onClick={handleAddRow}
-          >
+          <Button variant="primary" size="sm" icon="plus" onClick={handleAddRow}>
             Add item
           </Button>
         </div>
       </div>
-      <div className={styles.itemsTableWrap}>
-        <table ref={tableRef} className={styles.itemsTable}>
-          <thead>
-            <tr>
-              <th>Tag</th>
-              <th>Description</th>
-              <th>Type</th>
-              <th className={styles.right}>Wt disp. (kg)</th>
-              <th className={styles.right}>Wt act. (kg)</th>
-              <th className={styles.center}>L × W × H (cm)</th>
-              <th className={[styles.right, styles.cbmHead].join(' ')}>CBM</th>
-              <th className={styles.center}>Qty</th>
-              <th className={styles.right}>Decl. / unit (USD)</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, index) => {
-              const raw = rawCbm(item)
-              const hasData = item.description.trim() !== '' || raw > 0
-              const effectiveCbm = applyMinCbm(raw, minCbm)
-              const floored = raw > 0 && raw < minCbm
-              const isBale = item.package_unit === 'bale'
-              return (
-                // Fragment: a bulk line renders its own preview row
-                // beneath the inputs, so the map yields two <tr>s.
-                <Fragment key={index}>
-                  <tr key={index}>
-                    <td>
-                      <span className={styles.assignedOnSave}>On save</span>
-                    </td>
-                    <td>
-                      <CellInput
-                        label={`Description, item ${index + 1}`}
-                        className={styles.cellInput}
-                        value={item.description}
-                        placeholder="e.g. Electronics (mixed)"
-                        onChange={(event) =>
-                          updateItem(index, {
-                            description: event.target.value,
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <CellSelect
-                        label={`Package type for item ${index + 1}`}
-                        className={styles.typeSelect}
-                        value={item.package_unit ?? 'carton'}
-                        onChange={(event) =>
-                          updateItem(index, {
-                            package_unit: event.target.value as PackageUnit,
-                          })
-                        }
+
+      <div ref={listRef} className={styles.itemList}>
+        {items.map((item, index) => {
+          const raw = rawCbm(item)
+          const hasData = item.description.trim() !== '' || raw > 0
+          const effectiveCbm = applyMinCbm(raw, minCbm)
+          const floored = raw > 0 && raw < minCbm
+          const isBale = item.package_unit === 'bale'
+          const qty = qtyOf(item)
+          const lineCbm = effectiveCbm * qty
+          return (
+            <div key={index} className={styles.itemCard}>
+              {/* Header bar: item index + tag status on the left, live CBM/bale badges + row actions on the right */}
+              <div className={styles.itemCardHead}>
+                <div className={styles.itemIndexGroup}>
+                  <span className={styles.itemNumber}>#{index + 1}</span>
+                  <span className={styles.assignedOnSave}>Tag assigned on save</span>
+                </div>
+                <div className={styles.itemBadgesAndActions}>
+                  <div className={styles.cbmCell}>
+                    <span className={styles.cbmChip}>
+                      {hasData ? `${formatCbm(lineCbm)} CBM` : '— CBM'}
+                    </span>
+                    {hasData && floored && (
+                      <span
+                        className={styles.minTag}
+                        title={`Floored to the ${minCbm} CBM minimum per unit`}
                       >
-                        {PACKAGE_UNITS.map((u) => (
-                          <option key={u.value} value={u.value}>
-                            {u.label}
-                          </option>
-                        ))}
-                      </CellSelect>
-                    </td>
-                    <td className={styles.right}>
-                      <CellInput
-                        label={`Dispatch weight (kg), item ${index + 1}`}
-                        className={styles.cellInputNumber}
-                        type="number"
-                        min={0}
-                        inputMode="decimal"
-                        value={item.weight_dispatch_kg ?? ''}
-                        onKeyDown={blockInvalidNumberKeys}
+                        min
+                      </span>
+                    )}
+                    {isBale && hasData && (
+                      <Badge variant={effectiveCbm >= 0.3 ? 'info' : 'neutral'} size="sm">
+                        {baleSizeAbbr(effectiveCbm)}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className={styles.itemRowActions}>
+                    <IconButton
+                      icon="copy"
+                      variant="ghost"
+                      size="sm"
+                      label={`Duplicate item ${index + 1}`}
+                      title="Duplicate this item"
+                      onClick={() => {
+                        focusRowIndexRef.current = index + 1
+                        duplicateItem(index)
+                      }}
+                    />
+                    <IconButton
+                      icon="x"
+                      variant="danger-ghost"
+                      size="sm"
+                      label={
+                        batchSize(item.batch_ref) > 1
+                          ? `Remove all ${batchSize(item.batch_ref)} packages in this batch`
+                          : `Remove item ${index + 1}`
+                      }
+                      title={
+                        batchSize(item.batch_ref) > 1
+                          ? `Removes all ${batchSize(item.batch_ref)} identical packages entered together`
+                          : 'Remove item'
+                      }
+                      disabled={items.length === 1}
+                      onClick={() =>
+                        batchSize(item.batch_ref) > 1 && item.batch_ref
+                          ? removeBatch(item.batch_ref)
+                          : removeItem(index)
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 1: Description and Package Type */}
+              <div className={styles.itemRowPrimary}>
+                <div className={styles.itemField}>
+                  <span className={styles.itemFieldLabel}>Description</span>
+                  <CellInput
+                    label={`Description, item ${index + 1}`}
+                    className={styles.cellInput}
+                    value={item.description}
+                    placeholder="e.g. Electronics (mixed)"
+                    onChange={(event) =>
+                      updateItem(index, {
+                        description: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+
+                <div className={styles.itemField}>
+                  <span className={styles.itemFieldLabel}>Type</span>
+                  <CellSelect
+                    label={`Package type for item ${index + 1}`}
+                    className={styles.typeSelect}
+                    value={item.package_unit ?? 'carton'}
+                    onChange={(event) =>
+                      updateItem(index, {
+                        package_unit: event.target.value as PackageUnit,
+                      })
+                    }
+                  >
+                    {PACKAGE_UNITS.map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </CellSelect>
+                </div>
+              </div>
+
+              {/* Row 2: Dispatch weight, Actual weight, Dimensions (L × W × H cm), Qty, Declared value per unit */}
+              <div className={styles.itemRowMetrics}>
+                <div className={styles.itemField}>
+                  <span className={styles.itemFieldLabel}>Wt disp. (kg)</span>
+                  <CellInput
+                    label={`Dispatch weight (kg), item ${index + 1}`}
+                    className={styles.cellInputNumber}
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    inputMode="decimal"
+                    value={item.weight_dispatch_kg ?? ''}
+                    onKeyDown={blockInvalidNumberKeys}
+                    onChange={(event) =>
+                      updateItem(index, {
+                        weight_dispatch_kg: sanitizeNumber(event.target.value),
+                      })
+                    }
+                  />
+                </div>
+
+                <div className={styles.itemField}>
+                  <span className={styles.itemFieldLabel}>Wt act. (kg)</span>
+                  <CellInput
+                    label={`Actual weight (kg), item ${index + 1}`}
+                    className={styles.cellInputNumber}
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    inputMode="decimal"
+                    value={item.weight_actual_kg ?? ''}
+                    onKeyDown={blockInvalidNumberKeys}
+                    onChange={(event) =>
+                      updateItem(index, {
+                        weight_actual_kg: sanitizeNumber(event.target.value),
+                      })
+                    }
+                  />
+                </div>
+
+                <div className={styles.itemField}>
+                  <span className={styles.itemFieldLabel}>L × W × H (cm)</span>
+                  <div className={styles.dimRow}>
+                    <CellInput
+                      label={`Length (cm), item ${index + 1}`}
+                      className={styles.dimInput}
+                      type="number"
+                      min={0}
+                      placeholder="L"
+                      inputMode="decimal"
+                      value={item.length_cm ?? ''}
+                      onKeyDown={blockInvalidNumberKeys}
+                      onChange={(event) =>
+                        updateItem(index, {
+                          length_cm: sanitizeNumber(event.target.value),
+                        })
+                      }
+                    />
+                    <span className={styles.dimSep}>×</span>
+                    <CellInput
+                      label={`Width (cm), item ${index + 1}`}
+                      className={styles.dimInput}
+                      type="number"
+                      min={0}
+                      placeholder="W"
+                      inputMode="decimal"
+                      value={item.width_cm ?? ''}
+                      onKeyDown={blockInvalidNumberKeys}
+                      onChange={(event) =>
+                        updateItem(index, {
+                          width_cm: sanitizeNumber(event.target.value),
+                        })
+                      }
+                    />
+                    <span className={styles.dimSep}>×</span>
+                    <CellInput
+                      label={`Height (cm), item ${index + 1}`}
+                      className={styles.dimInput}
+                      type="number"
+                      min={0}
+                      placeholder="H"
+                      inputMode="decimal"
+                      value={item.height_cm ?? ''}
+                      onKeyDown={blockInvalidNumberKeys}
+                      onChange={(event) =>
+                        updateItem(index, {
+                          height_cm: sanitizeNumber(event.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.itemField}>
+                  <div className={styles.qtyHeaderRow}>
+                    <span className={styles.itemFieldLabel}>Qty</span>
+                    <label
+                      className={[
+                        styles.qtyConfirm,
+                        item.identical_confirmed ? styles.qtyConfirmOn : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      title={
+                        'Tick only when every package on this line has the same dimensions ' +
+                        'and weight. One wrong measurement is repeated across all of them, ' +
+                        'and CBM drives billing.'
+                      }
+                    >
+                      <CellCheckbox
+                        checked={item.identical_confirmed ?? false}
+                        label={`Item ${index + 1}: all packages identical`}
                         onChange={(event) =>
                           updateItem(index, {
-                            weight_dispatch_kg: sanitizeNumber(event.target.value),
+                            identical_confirmed: event.target.checked,
+                            ...(event.target.checked ? {} : { quantity: 1 }),
                           })
                         }
                       />
-                    </td>
-                    <td className={styles.right}>
-                      <CellInput
-                        label={`Actual weight (kg), item ${index + 1}`}
-                        className={styles.cellInputNumber}
-                        type="number"
-                        min={0}
-                        inputMode="decimal"
-                        value={item.weight_actual_kg ?? ''}
-                        onKeyDown={blockInvalidNumberKeys}
-                        onChange={(event) =>
-                          updateItem(index, {
-                            weight_actual_kg: sanitizeNumber(event.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <div className={styles.dimRow}>
-                        <CellInput
-                        label={`Length (cm), item ${index + 1}`}
-                          className={styles.dimInput}
-                          type="number"
-                          min={0}
-                          inputMode="decimal"
-                          value={item.length_cm ?? ''}
-                          onKeyDown={blockInvalidNumberKeys}
-                          onChange={(event) =>
-                            updateItem(index, {
-                              length_cm: sanitizeNumber(event.target.value),
-                            })
-                          }
-                        />
-                        <span>×</span>
-                        <CellInput
-                        label={`Width (cm), item ${index + 1}`}
-                          className={styles.dimInput}
-                          type="number"
-                          min={0}
-                          inputMode="decimal"
-                          value={item.width_cm ?? ''}
-                          onKeyDown={blockInvalidNumberKeys}
-                          onChange={(event) =>
-                            updateItem(index, {
-                              width_cm: sanitizeNumber(event.target.value),
-                            })
-                          }
-                        />
-                        <span>×</span>
-                        <CellInput
-                        label={`Height (cm), item ${index + 1}`}
-                          className={styles.dimInput}
-                          type="number"
-                          min={0}
-                          inputMode="decimal"
-                          value={item.height_cm ?? ''}
-                          onKeyDown={blockInvalidNumberKeys}
-                          onChange={(event) =>
-                            updateItem(index, {
-                              height_cm: sanitizeNumber(event.target.value),
-                            })
-                          }
-                        />
-                      </div>
-                    </td>
-                    <td className={styles.right}>
-                      <div className={styles.cbmCell}>
-                        <span className={styles.cbmChip}>
-                          {hasData ? formatCbm(effectiveCbm) : '—'}
-                        </span>
-                        {hasData && floored && (
-                          <span
-                            className={styles.minTag}
-                            title={`Floored to the ${minCbm} CBM minimum`}
-                          >
-                            min
-                          </span>
-                        )}
-                        {isBale && hasData && (
-                          <Badge variant={effectiveCbm >= 0.3 ? 'info' : 'neutral'} size="sm">
-                            {baleSizeAbbr(effectiveCbm)}
-                          </Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className={styles.center}>
-                      {/* The affirmation sits directly above the input it
-                        unlocks, so the relationship reads without
-                        explanation. Kept there rather than moved beside
-                        the row or into the preview: the hazard is not a
-                        typo — a typo looks wrong — it is an oversight,
-                        100 cartons recorded at one carton's weight
-                        because they were nearly identical. Putting the
-                        assertion in the path to the number is the whole
-                        point, and anywhere else loosens that. The server
-                        enforces the same rule, so this is a prompt, not
-                        the protection. */}
-                      <div className={styles.qtyCell}>
-                        <label
-                          className={[
-                            styles.qtyConfirm,
-                            item.identical_confirmed ? styles.qtyConfirmOn : '',
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                          title={
-                            'Tick only when every package on this line has the same dimensions ' +
-                            'and weight. One wrong measurement is repeated across all of them, ' +
-                            'and CBM drives billing.'
-                          }
-                        >
-                          <CellCheckbox
-                            checked={item.identical_confirmed ?? false}
-                            label={`Item ${index + 1}: all packages identical`}
-                            onChange={(event) =>
-                              updateItem(index, {
-                                identical_confirmed: event.target.checked,
-                                // Unticking returns the line to a single
-                                // package, so a stale 100 cannot be saved
-                                // by clearing the box and missing the
-                                // input.
-                                ...(event.target.checked ? {} : { quantity: 1 }),
-                              })
-                            }
-                          />
-                          <span>identical</span>
-                        </label>
-                        <CellInput
-                          className={styles.qtyInput}
-                          type="number"
-                          min={1}
-                          max={MAX_ITEM_QUANTITY}
-                          step={1}
-                          inputMode="numeric"
-                          label={`Item ${index + 1}: quantity`}
-                          disabled={!(item.identical_confirmed ?? false)}
-                          title={
-                            item.identical_confirmed
-                              ? `How many identical packages under one tag (up to ${MAX_ITEM_QUANTITY})`
-                              : 'Tick "identical" first — all packages share one tag'
-                          }
-                          value={item.quantity ?? ''}
-                          onKeyDown={blockInvalidNumberKeys}
-                          onChange={(event) =>
-                            updateItem(index, {
-                              quantity: clampQuantity(event.target.value),
-                            })
-                          }
-                        />
-                      </div>
-                    </td>
-                    <td className={styles.right}>
-                      <CellInput
-                        label={`Declared value per unit (USD), item ${index + 1}`}
-                        className={styles.cellInputNumber}
-                        type="number"
-                        min={0}
-                        inputMode="decimal"
-                        value={item.declared_value_usd ?? ''}
-                        onKeyDown={blockInvalidNumberKeys}
-                        onChange={(event) =>
-                          updateItem(index, {
-                            declared_value_usd: sanitizeNumber(event.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
-                        <IconButton
-                          icon="copy"
-                          variant="ghost"
-                          size="sm"
-                          label={`Duplicate item ${index + 1}`}
-                          title="Duplicate this row"
-                          onClick={() => {
-                            focusRowIndexRef.current = index + 1
-                            duplicateItem(index)
-                          }}
-                        />
-                        <IconButton
-                          icon="x"
-                          variant="danger-ghost"
-                          size="sm"
-                          label={
-                            batchSize(item.batch_ref) > 1
-                              ? `Remove all ${batchSize(item.batch_ref)} packages in this batch`
-                              : `Remove item ${index + 1}`
-                          }
-                          title={
-                            batchSize(item.batch_ref) > 1
-                              ? `Removes all ${batchSize(item.batch_ref)} identical packages entered together`
-                              : undefined
-                          }
-                          disabled={items.length === 1}
-                          onClick={() =>
-                            batchSize(item.batch_ref) > 1 && item.batch_ref
-                              ? removeBatch(item.batch_ref)
-                              : removeItem(index)
-                          }
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                  {qtyOf(item) > 1 && (
-                    /* Spell out what this line will become. The count is
-                     what was typed; the CBM and weight are what it costs.
-                     A wrong quantity is far easier to notice as "60.00
-                     CBM" than as a digit in a small box. */
-                    <tr className={styles.qtyPreviewRow}>
-                      <td />
-                      <td colSpan={9}>
-                        <span className={styles.qtyPreview}>
-                          <Icon name="plus" size={12} />
-                          {[
-                            `${qtyOf(item)} ${item.package_unit ?? 'carton'}${
-                              qtyOf(item) === 1 ? '' : 's'
-                            }`,
-                            hasData ? `${formatCbm(effectiveCbm * qtyOf(item))} CBM` : null,
-                            item.weight_actual_kg != null
-                              ? `${formatKg(item.weight_actual_kg * qtyOf(item))} kg`
-                              : null,
-                            item.declared_value_usd != null
-                              ? `$${(item.declared_value_usd * qtyOf(item)).toFixed(0)} declared ($${item.declared_value_usd}/unit)`
-                              : null,
-                            'one tag for all packages',
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </span>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              )
-            })}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={3} className={styles.totalsLabel}>
-                Totals — {formatPackageMix(buildPackageMix(items))}
-              </td>
-              <td className={styles.right}>
-                <Mono>{formatKg(totals.weightDispatch)} kg</Mono>
-              </td>
-              <td className={styles.right}>
-                <Mono>{formatKg(totals.weight)} kg</Mono>
-              </td>
-              <td />
-              <td className={styles.right}>
-                <Mono color="var(--color-success)">{formatCbm(totals.cbm)}</Mono>
-              </td>
-              {/* Qty has no meaningful total of its own — the package
-                  count is already stated as "N items" on the left — but
-                  the cell must exist, or every figure after CBM shifts a
-                  column left and the declared total lands under Qty. */}
-              <td />
-              <td className={styles.right}>
-                <Mono>${totals.declaredUsd.toFixed(0)}</Mono>
-              </td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
+                      <span>identical</span>
+                    </label>
+                  </div>
+                  <CellInput
+                    className={styles.qtyInput}
+                    type="number"
+                    min={1}
+                    max={MAX_ITEM_QUANTITY}
+                    step={1}
+                    inputMode="numeric"
+                    label={`Item ${index + 1}: quantity`}
+                    disabled={!(item.identical_confirmed ?? false)}
+                    title={
+                      item.identical_confirmed
+                        ? `How many identical packages under one tag (up to ${MAX_ITEM_QUANTITY})`
+                        : 'Tick "identical" first — all packages share one tag'
+                    }
+                    value={item.quantity ?? ''}
+                    onKeyDown={blockInvalidNumberKeys}
+                    onChange={(event) =>
+                      updateItem(index, {
+                        quantity: clampQuantity(event.target.value),
+                      })
+                    }
+                  />
+                </div>
+
+                <div className={styles.itemField}>
+                  <span className={styles.itemFieldLabel}>Decl. / unit (USD)</span>
+                  <CellInput
+                    label={`Declared value per unit (USD), item ${index + 1}`}
+                    className={styles.cellInputNumber}
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    inputMode="decimal"
+                    value={item.declared_value_usd ?? ''}
+                    onKeyDown={blockInvalidNumberKeys}
+                    onChange={(event) =>
+                      updateItem(index, {
+                        declared_value_usd: sanitizeNumber(event.target.value),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+
+              {qty > 1 && (
+                <div className={styles.qtyPreviewWrap}>
+                  <span className={styles.qtyPreview}>
+                    <Icon name="plus" size={12} />
+                    {[
+                      `${qty} ${item.package_unit ?? 'carton'}${qty === 1 ? '' : 's'}`,
+                      hasData ? `${formatCbm(lineCbm)} CBM` : null,
+                      item.weight_actual_kg != null
+                        ? `${formatKg(item.weight_actual_kg * qty)} kg`
+                        : null,
+                      item.declared_value_usd != null
+                        ? `$${(item.declared_value_usd * qty).toFixed(0)} declared ($${item.declared_value_usd}/unit)`
+                        : null,
+                      'one tag for all packages',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
+
+      {/* Totals footer bar — always visible with zero horizontal scrolling */}
+      <div className={styles.itemTotalsBar}>
+        <span className={styles.totalsLabel}>
+          Totals — {formatPackageMix(buildPackageMix(items))}
+        </span>
+        <div className={styles.itemTotalsMetrics}>
+          <span>
+            <span className={styles.itemTotalKey}>Disp.</span>{' '}
+            <Mono>{formatKg(totals.weightDispatch)} kg</Mono>
+          </span>
+          <span>
+            <span className={styles.itemTotalKey}>Actual</span>{' '}
+            <Mono>{formatKg(totals.weight)} kg</Mono>
+          </span>
+          <span>
+            <span className={styles.itemTotalKey}>Volume</span>{' '}
+            <Mono color="var(--color-primary-text)">{formatCbm(totals.cbm)} CBM</Mono>
+          </span>
+          <span>
+            <span className={styles.itemTotalKey}>Declared</span>{' '}
+            <Mono>${totals.declaredUsd.toFixed(0)}</Mono>
+          </span>
+        </div>
+      </div>
+
       <div className={styles.addAnotherRow}>
-        <Button
-          variant="ghost"
-          icon="plus"
-          onClick={handleAddRow}
-        >
+        <Button variant="ghost" icon="plus" onClick={handleAddRow}>
           Add another item
         </Button>
       </div>
