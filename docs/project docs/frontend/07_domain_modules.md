@@ -2107,3 +2107,22 @@ All 15 record pages (container, packing list, CBM dispute, invoice, damage claim
 
 - **Every payment row** on the invoice page, staff and customer alike (`billingDetail/Breakdown.tsx::PaymentsTable`), has a **Receipt** button (named "Download receipt for ₦5,000 paid 21 Nov 2026" for screen readers) that opens `GET /v1/payments/{id}/receipt/pdf` through `billingApi.receiptPdf` with the FD-44 feedback. The endpoint existed and worked; no screen called it.
 - **The payment-success page** offers **Download receipt** for the payment it just confirmed, found on the invoice by its Paystack reference once the payment is verified (its own query, enabled on success; no button if the payment is not on the invoice yet).
+
+## Landing page dark-mode contrast fixes (2026-11-25, PR #173)
+
+Fixed 17 dark-mode contrast and surface defects across `pages/marketing/LandingPage.module.css` and `LandingPage.tsx` (using `--landing-accent-on-dark` CSS custom property in the stylesheet instead of raw hex in JSX to satisfy the token-guard CI check).
+
+## Packing list line-item card redesign, capacity guard & warehouse partial pickups (2026-11-25, PR #174)
+
+- **Line-item cards (`packingLists/ItemsTable.tsx`, `CreatePackingList.module.css`):** replaced the cramped 10-column horizontal-scroll table with zero-scroll two-row item cards; fixed `<CellSelect>` width clipping on `Type`; removed the 500 quantity cap (`quantity >= 1` unbounded above); labeled declared value as `Decl. / unit (USD)` and displayed `$X/unit ($total)` in `PackingListDetail.tsx` when `quantity > 1`.
+- **Container CBM capacity feedback (`useCreatePackingListForm.ts`, `Step2.tsx`, `Step2Parts.tsx`):** live container capacity badge in `ContextBar`, inline over-capacity badge in Totals, and an explicit error banner directly above `Save draft` / `Next: Review` whenever `total_cbm_packed + draftCbm > capacity_cbm` instead of silently disabling the submit action.
+- **Warehouse partial pickups (`WarehouseDashboard.tsx`, `ReleaseNoteDetail.tsx`):** release-note cards and detail views display `cartons_picked_up` / `cartons_remaining` and support multi-trip partial pickup entry on single-tag multi-quantity notes.
+
+## Company settings: live OKLCH workspace palette preview (2026-11-25, PR #175)
+
+`CompanySettings.tsx` now renders a live **Generated workspace palette** preview strip (primary, sidebar, accent, soft/tint swatches) computed from `deriveTenantPalette` as the admin edits `primary_color`, plus a **Reset to default** button. `CustomerLayout.tsx` is wrapped in `ThemeProvider` so customer portal pages inherit the full tenant palette.
+
+## Tenant logo replacement & "Powered by ShipX" attribution (2026-11-25, PR #176)
+
+- **Staff shell (`Sidebar.tsx`, `AppSidebar.tsx`):** tenant-scoped roles see `<TenantBrand>` (uploaded logo on a white-backed tile, or brand monogram + tenant company name) in the sidebar header in place of the ShipX logo, and `<PoweredByShipx surface="dark" />` in the sidebar footer. Platform Admin keeps the canonical ShipX branding.
+- **Customer portal (`CustomerTopNav.tsx`, `CustShell.tsx`, `CustomerLayout.tsx`):** shows `<TenantBrand>` in the branded topbar and mobile drawer, and `<PoweredByShipx surface="light" />` in the mobile drawer and page footer.

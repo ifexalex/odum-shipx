@@ -7,6 +7,12 @@ import styles from './CustomerTopNav.module.css'
 
 export interface CustomerTopNavProps {
   links: NavLinkDef[]
+  /** Tenant brand mark rendered in the topbar in place of the canonical ShipX wordmark. */
+  brand?: ReactNode
+  /** Optional light-surface brand mark rendered inside the mobile drawer (defaults to `brand`). */
+  drawerBrand?: ReactNode
+  /** Optional attribution footer pinned at the bottom of the mobile drawer. */
+  drawerFooter?: ReactNode
   notifications?: number
   /**
    * Rendered inside the bell's own positioning wrapper (`position: relative`)
@@ -52,6 +58,9 @@ function CustNavLink({ icon, label, path, count, onNavigate }: NavLinkDef & { on
 // closing itself on navigation, overlay click, or Escape.
 export function CustomerTopNav({
   links,
+  brand,
+  drawerBrand,
+  drawerFooter,
   notifications = 0,
   notificationsPanel,
   onNotificationsClick,
@@ -68,8 +77,12 @@ export function CustomerTopNav({
         </button>
       )}
       <div className={styles.brand}>
-        <KolaMark size={28} color="#fff" />
-        <ShipxWordmark size={20} color="#fff" />
+        {brand ?? (
+          <>
+            <KolaMark size={28} color="#fff" />
+            <ShipxWordmark size={20} color="#fff" />
+          </>
+        )}
       </div>
       <nav className={styles.links}>
         {links.map((link) => (
@@ -96,12 +109,17 @@ export function CustomerTopNav({
         <div className={styles.drawerOverlay} onClick={drawer.close}>
           <nav className={styles.drawerPanel} onClick={(e) => e.stopPropagation()}>
             <div className={styles.drawerBrand}>
-              <KolaMark size={26} />
-              <ShipxWordmark size={18} />
+              {drawerBrand ?? brand ?? (
+                <>
+                  <KolaMark size={26} />
+                  <ShipxWordmark size={18} />
+                </>
+              )}
             </div>
             {links.map((link) => (
               <CustNavLink key={link.path} {...link} onNavigate={drawer.close} />
             ))}
+            {drawerFooter && <div className={styles.drawerFooter}>{drawerFooter}</div>}
           </nav>
         </div>
       )}

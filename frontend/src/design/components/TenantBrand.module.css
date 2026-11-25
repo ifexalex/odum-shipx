@@ -2,28 +2,41 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-width: 0;
 }
 
 .mark {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md);
-  background: var(--color-accent-soft);
-  color: var(--color-accent-on-soft);
+  background: var(--color-primary);
+  color: var(--color-on-brand);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-family: var(--font-display);
   flex-shrink: 0;
   overflow: hidden;
 }
 
-.logoImg {
+/* Crisp white tile behind uploaded logos so dark transparent PNGs stay legible on dark sidebars. */
+.markWithLogo {
+  background: var(--color-on-brand);
+  padding: var(--space-0-5);
+}
+
+.logoInner {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-on-brand);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
 }
 
 .text {
@@ -41,6 +54,10 @@
   text-overflow: ellipsis;
 }
 
+.nameOnLight {
+  color: var(--color-ink);
+}
+
 .tag {
   color: var(--color-on-dark-subtle);
   font-size: var(--text-xs);
@@ -48,4 +65,8 @@
   text-transform: uppercase;
   font-weight: 600;
   margin-top: var(--space-0-5);
+}
+
+.tagOnLight {
+  color: var(--color-ink-4);
 }

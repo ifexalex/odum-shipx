@@ -1,0 +1,33 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs-line);
+  font-weight: 500;
+  user-select: none;
+}
+
+.compact {
+  justify-content: center;
+  width: 100%;
+}
+
+.onDark {
+  color: var(--color-on-dark-subtle);
+}
+
+.onLight {
+  color: var(--color-ink-4);
+}
+
+.prefix {
+  white-space: nowrap;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}

@@ -5,6 +5,7 @@ import styles from './CustShell.module.css'
 
 export interface CustShellProps {
   topnav: ReactNode
+  footer?: ReactNode
   children: ReactNode
 }
 
@@ -27,7 +28,7 @@ function ScrollReset({ targetRef }: { targetRef: RefObject<HTMLElement | null> }
 // drawer's overlay/panel markup — this component only provides the shared
 // ShellDrawer context so CustomerTopNav's hamburger has something to
 // toggle, the same way PageShell provides it for TopBar).
-export function CustShell({ topnav, children }: CustShellProps): JSX.Element {
+export function CustShell({ topnav, footer, children }: CustShellProps): JSX.Element {
   const drawer = useDrawerState()
   const mainRef = useRef<HTMLElement>(null)
   const inRouter = useInRouterContext()
@@ -39,6 +40,7 @@ export function CustShell({ topnav, children }: CustShellProps): JSX.Element {
         {topnav}
         <main ref={mainRef} className={styles.main} onClickCapture={drawer.open ? drawer.close : undefined}>
           <div className={styles.inner}>{children}</div>
+          {footer && <footer className={styles.footer}>{footer}</footer>}
         </main>
       </div>
     </ShellDrawerProvider>

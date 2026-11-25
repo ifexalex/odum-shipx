@@ -104,3 +104,11 @@ Create Terraform modules for file storage (S3), message queues (SQS), event bus 
 - [ ] `terraform plan` succeeds — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.
 
 **Scheduled rule added 2026-11-17 (audit BE-10):** `offboarding-export = rate(1 hour)` → the `offboarding-export` Lambda (`04e`). Azure: Container App Job `offboarding_export`, cron `30 * * * *`.
+
+## Browser direct-to-storage upload CSP & CORS (2026-11-25, PR #173)
+
+Direct browser uploads (tenant logos, payment-claim evidence, Excel imports) were blocked in deployed environments by CSP and missing Blob Storage CORS:
+
+- **Azure Front Door CSP** (`infrastructure/azure/locals.tf`): added `https://${module.storage.storage_account_name}.blob.core.windows.net` to `img-src` and `connect-src`.
+- **Azure Blob Storage CORS** (`infrastructure/azure/modules/storage/main.tf`, `variables.tf`, `infrastructure/azure/main.tf`): added `cors_rule` allowing `GET`, `HEAD`, `OPTIONS`, `PUT` scoped to the SPA origin.
+- **AWS CloudFront CSP** (`infrastructure/aws/modules/cloudfront/main.tf`): added `https://*.amazonaws.com` to `connect-src` for presigned S3 PUTs.
