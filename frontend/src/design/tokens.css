@@ -143,7 +143,7 @@
   --shadow-hover: 0 10px 22px 0 rgba(11, 47, 13, 0.1), 0 4px 8px 0 rgba(11, 47, 13, 0.06);
   --shadow-popover: 0 12px 32px 0 rgba(11, 47, 13, 0.14), 0 4px 12px 0 rgba(11, 47, 13, 0.08); /* menus, dropdowns */
   --shadow-modal: 0 20px 44px 0 rgba(11, 47, 13, 0.2), 0 6px 16px 0 rgba(11, 47, 13, 0.1);
-  --shadow-focus-ring: 0 0 0 3px rgba(45, 196, 56, 0.32);
+  --shadow-focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-primary-bright) 32%, transparent);
   /* A chosen option or the current step: a soft brand halo. A live-status dot: a glow. */
   --shadow-selected: 0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, transparent);
   --shadow-glow: 0 0 8px var(--color-primary-bright);

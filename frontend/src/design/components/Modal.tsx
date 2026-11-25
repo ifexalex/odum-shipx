@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { useThemePortalTarget } from '../themePortal'
 import styles from './Modal.module.css'
 import { Icon } from './Icon'
 
@@ -226,6 +227,7 @@ export interface ModalOverlayProps {
 export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Element {
   const overlayRef = useRef<HTMLDivElement>(null)
   const guard = useDialogBehavior(overlayRef, onClose)
+  const portalTarget = useThemePortalTarget()
 
   return createPortal(
     <div
@@ -239,7 +241,7 @@ export function ModalOverlay({ onClose, children }: ModalOverlayProps): JSX.Elem
       {children}
       {guard.confirming && <DiscardPrompt guard={guard} />}
     </div>,
-    document.body,
+    portalTarget ?? document.body,
   )
 }
 

@@ -1,6 +1,7 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useColorScheme } from './colorScheme'
-import { deriveBrandShades, isValidHexColor } from './deriveBrandShades'
+import { deriveTenantPalette, isValidHexColor } from './deriveBrandShades'
+import { ThemePortalContext } from './themePortal'
 
 export interface ThemeProviderProps {
   /** Maps from `tenant.branding_config.primary_color` — pass `null`/`undefined` for the canonical palette. */
@@ -10,45 +11,63 @@ export interface ThemeProviderProps {
   children: ReactNode
 }
 
-const PRIMARY_VARS = [
+const TENANT_VARS = [
   '--color-primary',
   '--color-primary-deep',
   '--color-primary-strong',
+  '--color-primary-bright',
   '--color-primary-soft',
   '--color-primary-tint',
+  '--color-primary-text',
+  '--color-primary-on-soft',
+  '--color-forest-dark',
+  '--color-accent',
+  '--color-accent-deep',
+  '--color-accent-hover',
+  '--color-accent-soft',
+  '--color-accent-on-soft',
+  '--color-accent-text',
 ] as const
 
 // Applies a tenant's primary_color as a scoped CSS custom property override.
 // Scoped to this element (not :root) so the login screen, Platform Admin
 // shell, and any concurrently-rendered canonical-brand surface are
-// unaffected. The component only accepts primaryColor — status colors
-// (success/warning/error/info) are not a parameter here, so there is no code
-// path that can override them.
+// unaffected. Status colors (success/warning/error/info) are never set here.
 export function ThemeProvider({ primaryColor, style, children }: ThemeProviderProps): JSX.Element {
-  const ref = useRef<HTMLDivElement>(null)
-  // Re-derive when the light/dark scheme flips — the soft/tint (row bg) shades
-  // differ by scheme, so a derived light tint must not leak into dark mode.
+  const [scopeEl, setScopeEl] = useState<HTMLDivElement | null>(null)
+  // Re-derive when the light/dark scheme flips — soft/tint/text/on-soft shades
+  // differ by scheme so contrast holds in both light and dark modes.
   const { resolved } = useColorScheme()
 
   useEffect(() => {
-    const el = ref.current
+    const el = scopeEl
     if (!el) return
 
     if (primaryColor && isValidHexColor(primaryColor)) {
-      const shades = deriveBrandShades(primaryColor, resolved)
-      el.style.setProperty('--color-primary', shades.base)
-      el.style.setProperty('--color-primary-deep', shades.deep)
-      el.style.setProperty('--color-primary-strong', shades.strong)
-      el.style.setProperty('--color-primary-soft', shades.soft)
-      el.style.setProperty('--color-primary-tint', shades.tint)
+      const p = deriveTenantPalette(primaryColor, resolved)
+      el.style.setProperty('--color-primary', p.base)
+      el.style.setProperty('--color-primary-deep', p.deep)
+      el.style.setProperty('--color-primary-strong', p.strong)
+      el.style.setProperty('--color-primary-bright', p.bright)
+      el.style.setProperty('--color-primary-soft', p.soft)
+      el.style.setProperty('--color-primary-tint', p.tint)
+      el.style.setProperty('--color-primary-text', p.text)
+      el.style.setProperty('--color-primary-on-soft', p.onSoft)
+      el.style.setProperty('--color-forest-dark', p.sidebar)
+      el.style.setProperty('--color-accent', p.accent)
+      el.style.setProperty('--color-accent-deep', p.accentDeep)
+      el.style.setProperty('--color-accent-hover', p.accentHover)
+      el.style.setProperty('--color-accent-soft', p.accentSoft)
+      el.style.setProperty('--color-accent-on-soft', p.accentOnSoft)
+      el.style.setProperty('--color-accent-text', p.accentText)
     } else {
-      for (const cssVar of PRIMARY_VARS) el.style.removeProperty(cssVar)
+      for (const cssVar of TENANT_VARS) el.style.removeProperty(cssVar)
     }
-  }, [primaryColor, resolved])
+  }, [scopeEl, primaryColor, resolved])
 
   return (
-    <div ref={ref} data-tenant-theme style={style}>
-      {children}
+    <div ref={setScopeEl} data-tenant-theme style={style}>
+      <ThemePortalContext.Provider value={scopeEl}>{children}</ThemePortalContext.Provider>
     </div>
   )
 }
