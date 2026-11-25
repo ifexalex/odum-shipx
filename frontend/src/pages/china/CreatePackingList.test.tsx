@@ -519,7 +519,7 @@ describe('CreatePackingList — bulk quantity', () => {
 
     // The count alone is weak evidence; the CBM is what the staffer is really
     // being asked to sanity-check, because it drives billing.
-    expect(await screen.findByText(/Creates 10 cartons/i)).toBeInTheDocument()
+    expect(await screen.findByText(/10 cartons.*one tag for all packages/i)).toBeInTheDocument()
   })
 
   it('clamps a quantity above the cap rather than letting the API refuse it', async () => {

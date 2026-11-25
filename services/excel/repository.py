@@ -374,7 +374,13 @@ def get_release_note_for_pdf(tenant_id: str, note_id: str) -> dict[str, Any] | N
                w.state              AS warehouse_state,
                w.phone              AS warehouse_phone,
                pr.receipt_number    AS receipt_number,
-               tu.full_name         AS issued_by_name
+               tu.full_name         AS issued_by_name,
+               COALESCE((
+                   SELECT SUM(pu.cartons_count)
+                   FROM pickup_record pu
+                   WHERE pu.tenant_id       = rn.tenant_id
+                     AND pu.release_note_id = rn.id
+               ), 0)::int           AS cartons_picked_up
         FROM release_note rn
         LEFT JOIN customer  cu   ON cu.id   = rn.customer_id  AND cu.tenant_id  = rn.tenant_id
         LEFT JOIN container cont ON cont.id  = rn.container_id AND cont.tenant_id = rn.tenant_id

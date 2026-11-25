@@ -61,6 +61,11 @@ def build_meta_pairs(note: dict[str, Any]) -> list[tuple[str, str]]:
         pairs.append(("Packing list invoices", invoice_numbers))
     if note.get("packages_balance"):
         pairs.append(("Cartons still to collect", t.count(note["packages_balance"])))
+    picked_up = int(note.get("cartons_picked_up") or 0)
+    total_auth = int(note.get("carton_count") or note.get("total_cartons") or 0)
+    if picked_up > 0:
+        pairs.append(("Collected so far", f"{t.count(picked_up)} of {t.count(total_auth)}"))
+        pairs.append(("Remaining on note", t.count(max(0, total_auth - picked_up))))
 
     if note.get("is_on_credit"):
         pairs.append(("Payment status", f"On credit, granted by {note.get('credit_granted_by_name') or 'staff'}"))
@@ -80,8 +85,27 @@ def build_meta_pairs(note: dict[str, Any]) -> list[tuple[str, str]]:
     return pairs
 
 
-def _tags_table(tags: Sequence[str], brand_color: str) -> Table:
+def _tags_table(
+    tags: Sequence[str],
+    brand_color: str,
+    tag_quantities: dict[str, int] | None = None,
+) -> Table:
     """Every authorised carton tag, with an empty box the attendant ticks as it leaves."""
+    has_qty = tag_quantities is not None and any(int(tag_quantities.get(tag, 1)) > 1 for tag in tags)
+    if has_qty and tag_quantities is not None:
+        table = t.DataTable(
+            [
+                t.Column("#", 0.6, "right"),
+                t.Column("Carton tag", 5.0),
+                t.Column("Qty", 1.0, "right"),
+                t.Column("Collected", 1.4),
+            ],
+            [[str(i), tag, t.count(tag_quantities.get(tag, 1)), ""] for i, tag in enumerate(tags, start=1)],
+            brand=brand_color,
+            zebra=False,
+        ).build()
+        table.setStyle(t.TableStyle([("BOX", (3, i), (3, i), 0.6, t.INK_3) for i in range(1, len(tags) + 1)]))
+        return table
     table = t.DataTable(
         [t.Column("#", 0.6, "right"), t.Column("Carton tag", 6.0), t.Column("Collected", 1.4)],
         [[str(i), tag, ""] for i, tag in enumerate(tags, start=1)],
@@ -102,6 +126,8 @@ def generate_release_note_pdf(brand: t.Brand, note: dict[str, Any]) -> BytesIO:
     """
     reference = qr_payload(note)
     tags = [str(tag) for tag in (note.get("carton_tags") or [])]
+    tag_quantities = note.get("tag_quantities") if isinstance(note.get("tag_quantities"), dict) else None
+    total_cartons = int(note.get("carton_count") or note.get("total_cartons") or len(tags))
     scan = Table(
         [[t.qr_code(reference), [t.para("Scan at the warehouse counter", "small"), t.para(reference, "value")]]],
         colWidths=[3.0 * cm, t.CONTENT_WIDTH - 3.0 * cm],
@@ -109,8 +135,10 @@ def generate_release_note_pdf(brand: t.Brand, note: dict[str, Any]) -> BytesIO:
     scan.setStyle(t.TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
     body = [
         t.facts_grid(build_meta_pairs(note), columns=2),
-        *t.section(f"Cartons ({t.count(len(tags))})" if tags else "Cartons"),
-        _tags_table(tags, brand.color) if tags else t.para("No carton tags recorded on this note.", "small"),
+        *t.section(f"Cartons ({t.count(total_cartons)})" if tags else "Cartons"),
+        _tags_table(tags, brand.color, tag_quantities=tag_quantities)
+        if tags
+        else t.para("No carton tags recorded on this note.", "small"),
         Spacer(1, 0.4 * cm),
         scan,
         *t.section("Signatures"),

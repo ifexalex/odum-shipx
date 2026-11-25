@@ -47,8 +47,13 @@ const ID_TYPES: { value: DelegateIdType; label: string }[] = [
 ]
 
 function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps): JSX.Element {
+  const pickedUp = note.cartons_picked_up ?? 0
   const maxCartons =
-    note.packages_balance != null && note.packages_balance > 0 ? note.packages_balance : note.carton_count
+    note.cartons_remaining != null
+      ? note.cartons_remaining
+      : note.packages_balance != null && note.packages_balance > 0
+        ? note.packages_balance
+        : note.carton_count
   const [cartons, setCartons] = useState(String(maxCartons))
   const [isDelegate, setIsDelegate] = useState(false)
   // Required by the backend when the customer collects in person (not via a
@@ -145,7 +150,11 @@ function RecordPickupModal({ note, onCancel, onSuccess }: RecordPickupModalProps
           min="1"
           max={String(maxCartons)}
           error={cartonsError}
-          helper={`Up to ${plural(maxCartons, 'carton')} available for pickup on this note.`}
+          helper={
+            pickedUp > 0
+              ? `${pickedUp} of ${note.carton_count} already picked up · ${plural(maxCartons, 'unit')} remaining on this note.`
+              : `Up to ${plural(maxCartons, 'carton')} available for pickup on this note.`
+          }
           value={cartons}
           onChange={(e) => setCartons(e.target.value)}
         />

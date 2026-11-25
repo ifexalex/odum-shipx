@@ -165,15 +165,24 @@ export function PackingListDetail(): JSX.Element {
   function startEditing(): void {
     if (!pl) return
     setActionError(null)
-    setEditItems(pl.items.map((item) => ({
-      id: item.id,
-      description: item.description,
-      weight_actual_kg:    item.weight_actual_kg    != null ? Number(item.weight_actual_kg)    : undefined,
-      length_cm:           item.length_cm           != null ? Number(item.length_cm)           : undefined,
-      width_cm:            item.width_cm            != null ? Number(item.width_cm)            : undefined,
-      height_cm:           item.height_cm           != null ? Number(item.height_cm)           : undefined,
-      declared_value_usd:  item.declared_value_usd  != null ? Number(item.declared_value_usd)  : undefined,
-    })))
+    setEditItems(
+      pl.items.map((item) => {
+        const qty = Math.max(1, Number(item.quantity ?? 1))
+        return {
+          id: item.id,
+          description: item.description,
+          weight_actual_kg:
+            item.weight_actual_kg != null ? Number(item.weight_actual_kg) / qty : undefined,
+          length_cm: item.length_cm != null ? Number(item.length_cm) : undefined,
+          width_cm: item.width_cm != null ? Number(item.width_cm) : undefined,
+          height_cm: item.height_cm != null ? Number(item.height_cm) : undefined,
+          declared_value_usd:
+            item.declared_value_usd != null ? Number(item.declared_value_usd) : undefined,
+          quantity: qty,
+          identical_confirmed: qty > 1,
+        }
+      }),
+    )
     setEditing(true)
   }
 
@@ -543,7 +552,11 @@ export function PackingListDetail(): JSX.Element {
                       {formatCbm(item.cbm)}
                     </Mono>,
                     <Mono key="usd">
-                      {item.declared_value_usd != null ? `$${item.declared_value_usd}` : '—'}
+                      {item.declared_value_usd != null
+                        ? Number(item.quantity ?? 1) > 1
+                          ? `$${item.declared_value_usd}/unit ($${(Number(item.declared_value_usd) * Number(item.quantity ?? 1)).toFixed(0)})`
+                          : `$${item.declared_value_usd}`
+                        : '—'}
                     </Mono>,
                     ...(showFlagColumn
                       ? [

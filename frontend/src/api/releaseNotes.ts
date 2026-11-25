@@ -38,6 +38,10 @@ export interface ReleaseNote {
   customer_name: string | null
   container_number: string | null
   carton_count: number
+  /** Units already picked up against this release note across prior partial pickups. */
+  cartons_picked_up?: number
+  /** Units still remaining to be picked up on this release note (`carton_count - cartons_picked_up`). */
+  cartons_remaining?: number
   total_cartons_for_customer: number
   is_partial_release: boolean
   carton_tags: string[]

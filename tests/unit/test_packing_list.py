@@ -910,34 +910,33 @@ class TestBulkQuantityExpansion:
         base.update(kwargs)
         return PackingListItemInput(**base)
 
-    def test_quantity_expands_into_that_many_rows(self):
+    def test_quantity_stays_single_row_with_one_carton_tag(self):
         rows = self._rows([self._item(quantity=100, identical_confirmed=True)])
 
-        assert len(rows) == 100
+        assert len(rows) == 1
+        assert rows[0]["quantity"] == 100
+        assert rows[0]["carton_tag"] == "ACM-CONT001-001"
 
-    def test_every_expanded_row_gets_its_own_carton_tag(self):
-        """A shared tag would break release notes, which key off carton_tag."""
+    def test_single_tag_for_multi_quantity_line(self):
+        """A line item with quantity=25 gets one carton_tag, not 25 separate tags."""
         rows = self._rows([self._item(quantity=25, identical_confirmed=True)])
 
-        tags = [r["carton_tag"] for r in rows]
-        assert len(set(tags)) == 25
-        assert tags[0] == "ACM-CONT001-001"
-        assert tags[-1] == "ACM-CONT001-025"
+        assert len(rows) == 1
+        assert rows[0]["carton_tag"] == "ACM-CONT001-001"
+        assert rows[0]["quantity"] == 25
 
-    def test_cbm_is_per_package_so_the_sum_bills_every_package(self):
-        """The whole reason for expanding rather than storing quantity = N."""
-        rows = self._rows([self._item(quantity=10, identical_confirmed=True)])
+    def test_cbm_and_weight_scale_by_quantity_while_declared_value_is_per_unit(self):
+        """CBM and weight store line totals so SUM(pli.cbm) bills all units; declared_value_usd stays per unit."""
+        rows = self._rows([self._item(quantity=10, identical_confirmed=True, declared_value_usd=Decimal("50"))])
 
         per_package = Decimal("60") * Decimal("40") * Decimal("40") / Decimal("1000000")
-        assert all(Decimal(str(r["cbm"])) == per_package for r in rows)
-        assert sum(Decimal(str(r["cbm"])) for r in rows) == per_package * 10
+        assert len(rows) == 1
+        assert Decimal(str(rows[0]["cbm"])) == per_package * 10
+        assert Decimal(str(rows[0]["weight_actual_kg"])) == Decimal("120")
+        assert Decimal(str(rows[0]["declared_value_usd"])) == Decimal("50")
 
-    def test_minimum_cbm_floor_applies_per_package_not_per_line(self):
-        """Hand entry floors each package; expansion must match it exactly.
-
-        A single bulk row would have floored the line once, producing a
-        different — and smaller — billable figure.
-        """
+    def test_minimum_cbm_floor_applies_per_package_before_multiplying_by_quantity(self):
+        """Each unit is floored at min_cbm (0.1), then multiplied by quantity (10 → 1.0 CBM)."""
         tiny = self._item(
             quantity=10,
             identical_confirmed=True,
@@ -947,56 +946,28 @@ class TestBulkQuantityExpansion:
         )
         rows = self._rows([tiny], min_cbm=Decimal("0.1"))
 
-        assert all(Decimal(str(r["cbm"])) == Decimal("0.1") for r in rows)
-        assert sum(Decimal(str(r["cbm"])) for r in rows) == Decimal("1.0")
+        assert len(rows) == 1
+        assert Decimal(str(rows[0]["cbm"])) == Decimal("1.0")
+        assert rows[0]["quantity"] == 10
 
-    def test_quantity_column_is_left_alone_so_package_counts_stay_right(self):
-        """Manifest counts do SUM(COALESCE(quantity, 1)); 100 rows must read 100.
-
-        Setting quantity = 100 on each of 100 expanded rows would report 10,000
-        packages.
-        """
-        rows = self._rows([self._item(quantity=100, identical_confirmed=True)])
-
-        assert all(r.get("quantity") in (None, 1) for r in rows)
-
-    def test_expanded_rows_share_one_batch_ref(self):
+    def test_batch_ref_is_none_since_line_items_are_not_expanded(self):
         rows = self._rows([self._item(quantity=5, identical_confirmed=True)])
 
-        refs = {r["batch_ref"] for r in rows}
-        assert len(refs) == 1
-        assert refs.pop() is not None
+        assert len(rows) == 1
+        assert rows[0]["batch_ref"] is None
 
     def test_a_single_package_is_not_a_batch(self):
         rows = self._rows([self._item()])
 
         assert len(rows) == 1
+        assert rows[0]["quantity"] == 1
         assert rows[0]["batch_ref"] is None
 
-    def test_an_existing_batch_ref_survives_an_edit(self):
-        """Editing a list re-sends its items; the grouping must not be reissued."""
-        rows = self._rows([self._item(batch_ref="11111111-1111-1111-1111-111111111111")])
-
-        assert rows[0]["batch_ref"] == "11111111-1111-1111-1111-111111111111"
-
-    def test_separate_quantity_lines_get_separate_batches(self):
+    def test_tag_sequence_increments_once_per_line_item(self):
+        """Each line item (whether qty 1 or qty 10) consumes one tag in sequence."""
         rows = self._rows(
             [
-                self._item(quantity=2, identical_confirmed=True),
-                self._item(quantity=3, identical_confirmed=True, description="Bags"),
-            ]
-        )
-
-        first = {r["batch_ref"] for r in rows if r["description"] == "Shoes"}
-        second = {r["batch_ref"] for r in rows if r["description"] == "Bags"}
-        assert len(first) == 1 and len(second) == 1
-        assert first != second
-
-    def test_tag_sequence_is_unbroken_across_bulk_and_single_lines(self):
-        """A mixed list must look exactly like one keyed entirely by hand."""
-        rows = self._rows(
-            [
-                self._item(quantity=3, identical_confirmed=True),
+                self._item(quantity=10, identical_confirmed=True),
                 self._item(description="One bag", package_unit="bag"),
             ]
         )
@@ -1004,9 +975,63 @@ class TestBulkQuantityExpansion:
         assert [r["carton_tag"] for r in rows] == [
             "ACM-CONT001-001",
             "ACM-CONT001-002",
-            "ACM-CONT001-003",
-            "ACM-CONT001-004",
         ]
+        assert [r["quantity"] for r in rows] == [10, 1]
+
+
+class TestContainerCapacityValidation:
+    """Packing list items cannot exceed the chosen container's CBM capacity."""
+
+    def test_create_rejects_when_items_exceed_container_capacity(self):
+        from unittest.mock import patch
+
+        from services.packing_list import service as pl_service
+        from services.packing_list.models import CreatePackingListRequest, PackingListItemInput
+        from shared.exceptions import BusinessRuleViolationError
+
+        req = CreatePackingListRequest(
+            container_id="c1",
+            customer_id="cust1",
+            items=[
+                PackingListItemInput(
+                    description="Heavy Machinery",
+                    length_cm=Decimal("200"),
+                    width_cm=Decimal("200"),
+                    height_cm=Decimal("200"),
+                    quantity=5,
+                    identical_confirmed=True,
+                )
+            ],
+        )  # 8 CBM × 5 = 40 CBM
+
+        with (
+            patch.object(
+                pl_service.repo,
+                "get_container_by_id",
+                return_value={
+                    "id": "c1",
+                    "container_number": "CONT-20FT",
+                    "status": "loading",
+                    "capacity_cbm": Decimal("33"),
+                    "container_type": "20ft",
+                },
+            ),
+            patch.object(pl_service.repo, "get_customer_by_id", return_value={"id": "cust1", "name": "Alice"}),
+            patch.object(pl_service, "_resolve_arrival_warehouse", return_value=None),
+            patch.object(pl_service.repo, "get_tenant_short", return_value="ACM"),
+            patch.object(pl_service, "tenant_transaction"),
+            patch.object(pl_service.repo, "get_next_carton_sequence", return_value=1),
+            patch.object(pl_service.repo, "get_next_pl_reference", return_value="PL-20261125-001"),
+            patch.object(pl_service.repo, "create_packing_list", return_value={"id": "pl1", "status": "draft"}),
+            patch.object(pl_service.repo, "get_existing_tracking_code", return_value=None),
+            patch.object(pl_service.repo, "get_next_tracking_sequence", return_value=1),
+            patch.object(pl_service, "get_min_cbm_per_item", return_value=Decimal("0.1")),
+            patch.object(pl_service.repo, "get_container_used_cbm", return_value=Decimal("10")),
+            pytest.raises(BusinessRuleViolationError) as exc_info,
+        ):
+            pl_service.create_packing_list("t1", req, actor_id="u1")
+
+        assert exc_info.value.rule_id == "CONTAINER_CAPACITY_EXCEEDED"
 
 
 class TestBulkQuantitySafeguard:

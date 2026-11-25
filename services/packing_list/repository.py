@@ -13,6 +13,7 @@ Notes:
 
 import logging
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant, execute_write_with_tenant_many
@@ -30,10 +31,51 @@ logger = logging.getLogger(__name__)
 def get_container_by_id(tenant_id: str, container_id: str) -> dict[str, Any] | None:
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT id, container_number, status FROM container WHERE tenant_id = %s AND id = %s LIMIT 1",
+        """
+        SELECT id, container_number, status, capacity_cbm, container_type
+        FROM container
+        WHERE tenant_id = %s AND id = %s
+        LIMIT 1
+        """,
         (tenant_id, container_id),
     )
     return rows[0] if rows else None
+
+
+def get_container_used_cbm(
+    tenant_id: str,
+    container_id: str,
+    exclude_pl_id: str | None = None,
+) -> Decimal:
+    """Sum CBM across all non-rejected packing lists on a container (optionally excluding one packing list)."""
+    if exclude_pl_id:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT COALESCE(SUM(pli.cbm), 0) AS total_cbm
+            FROM packing_list_item pli
+            JOIN packing_list pl ON pl.id = pli.packing_list_id
+            WHERE pl.tenant_id = %s
+              AND pl.container_id = %s
+              AND pl.status <> 'rejected'
+              AND pl.id <> %s
+            """,
+            (tenant_id, container_id, exclude_pl_id),
+        )
+    else:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT COALESCE(SUM(pli.cbm), 0) AS total_cbm
+            FROM packing_list_item pli
+            JOIN packing_list pl ON pl.id = pli.packing_list_id
+            WHERE pl.tenant_id = %s
+              AND pl.container_id = %s
+              AND pl.status <> 'rejected'
+            """,
+            (tenant_id, container_id),
+        )
+    return Decimal(str(rows[0]["total_cbm"] or 0)) if rows else Decimal("0")
 
 
 def get_customer_by_id(tenant_id: str, customer_id: str) -> dict[str, Any] | None:
@@ -265,6 +307,7 @@ _ITEM_INSERT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("height_cm", "numeric"),
     ("received_date", "date"),
     ("declared_value_usd", "numeric"),
+    ("quantity", "integer"),
     ("package_unit", "varchar"),
     ("bale_type", "varchar"),
     ("batch_ref", "uuid"),
@@ -462,7 +505,7 @@ def list_packing_lists(
                    -- number), but SUM() over numeric comes back as Decimal and
                    -- serialises as a *string* — the frontend then concatenated
                    -- counts instead of adding them ("0" + "1" + "13" ...).
-                   SUM(row_count)::int                 AS carton_count,
+                   SUM(qty)::int                       AS carton_count,
                    SUM(cbm_sum)                        AS total_cbm,
                    SUM(weight_sum)                     AS total_weight_kg,
                    -- Packages keyed by unit, e.g. 2 bale + 16 bag. A row is no

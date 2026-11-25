@@ -9,6 +9,7 @@ import {
   type PackingListItemInput,
 } from '../../../api/packingList'
 import { type Container } from '../../../api/tracking'
+import { containerCapacityCbm } from '../../../api/containerRules'
 import { type Customer } from '../../../api/tenantManagement'
 import { useIdempotencyKey } from '../../../api/useIdempotencyKey'
 import { useContainerLookup } from '../../../hooks/useContainers'
@@ -151,30 +152,33 @@ export function useCreatePackingListForm() {
         // see when they reopen the draft.
         collapseBatches(
           pl.items.length > 0
-            ? pl.items.map((it) => ({
-                description: it.description,
-                weight_dispatch_kg:
-                  it.weight_dispatch_kg != null ? Number(it.weight_dispatch_kg) : undefined,
-                weight_actual_kg:
-                  it.weight_actual_kg != null ? Number(it.weight_actual_kg) : undefined,
-                length_cm: it.length_cm != null ? Number(it.length_cm) : undefined,
-                width_cm: it.width_cm != null ? Number(it.width_cm) : undefined,
-                height_cm: it.height_cm != null ? Number(it.height_cm) : undefined,
-                declared_value_usd:
-                  it.declared_value_usd != null ? Number(it.declared_value_usd) : undefined,
-                package_unit: (it.package_unit as PackageUnit) ?? 'carton',
-                // Carried through because the server falls back to
-                // `received_date or date.today()`. Dropping it meant editing a
-                // draft silently re-dated every item to today — and the
-                // tracking code is derived from customer + received date, so
-                // the grouping moved with it. Worst on an imported list, where
-                // that date is real rather than the day of entry.
-                received_date: it.received_date ?? undefined,
-                // Carried through so an edit round trip keeps the grouping. The
-                // rows arrive already expanded — one per package — so quantity
-                // stays 1 here; re-expanding them would duplicate the cargo.
-                batch_ref: it.batch_ref ?? null,
-              }))
+            ? pl.items.map((it) => {
+                const qty = Math.max(1, Number(it.quantity ?? 1))
+                return {
+                  description: it.description,
+                  weight_dispatch_kg:
+                    it.weight_dispatch_kg != null ? Number(it.weight_dispatch_kg) / qty : undefined,
+                  weight_actual_kg:
+                    it.weight_actual_kg != null ? Number(it.weight_actual_kg) / qty : undefined,
+                  length_cm: it.length_cm != null ? Number(it.length_cm) : undefined,
+                  width_cm: it.width_cm != null ? Number(it.width_cm) : undefined,
+                  height_cm: it.height_cm != null ? Number(it.height_cm) : undefined,
+                  // Stored per unit on the server — keep per unit in the form.
+                  declared_value_usd:
+                    it.declared_value_usd != null ? Number(it.declared_value_usd) : undefined,
+                  package_unit: (it.package_unit as PackageUnit) ?? 'carton',
+                  // Carried through because the server falls back to
+                  // `received_date or date.today()`. Dropping it meant editing a
+                  // draft silently re-dated every item to today — and the
+                  // tracking code is derived from customer + received date, so
+                  // the grouping moved with it. Worst on an imported list, where
+                  // that date is real rather than the day of entry.
+                  received_date: it.received_date ?? undefined,
+                  quantity: qty,
+                  identical_confirmed: qty > 1,
+                  batch_ref: it.batch_ref ?? null,
+                }
+              })
             : [emptyItem()],
         ),
       )
@@ -266,6 +270,19 @@ export function useCreatePackingListForm() {
 
   const selectedCustomer = customers.find((c) => c.id === customerId)
   const selectedContainer = containers.find((c) => c.id === containerId)
+
+  const containerCapacity = selectedContainer
+    ? selectedContainer.capacity_cbm != null && Number(selectedContainer.capacity_cbm) > 0
+      ? Number(selectedContainer.capacity_cbm)
+      : containerCapacityCbm(selectedContainer.container_type)
+    : null
+  const containerUsedCbm = selectedContainer ? Number(selectedContainer.total_cbm_packed ?? 0) : 0
+  const draftOwnCbm = draft && draft.container_id === containerId ? Number(draft.total_cbm ?? 0) : 0
+  const otherUsedCbm = Math.max(0, containerUsedCbm - draftOwnCbm)
+  const remainingCapacityCbm =
+    containerCapacity != null ? Math.max(0, containerCapacity - otherUsedCbm) : null
+  const exceedsCapacity =
+    remainingCapacityCbm != null && totals.cbm > remainingCapacityCbm + 1e-6
 
   function updateItem(index: number, patch: Partial<PackingListItemInput>): void {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
@@ -397,7 +414,8 @@ export function useCreatePackingListForm() {
   // A restored draft can name a container that has since been sealed; it is no longer offered, so it cannot be used.
   const canProceedFrom1 =
     Boolean(customerId && selectedContainer) && !deliveryDateError && !loadingDateError
-  const canProceedFrom2 = items.length > 0 && items.every((item) => item.description.trim() !== '')
+  const canProceedFrom2 =
+    items.length > 0 && items.every((item) => item.description.trim() !== '') && !exceedsCapacity
 
   return {
     navigate,
@@ -452,6 +470,10 @@ export function useCreatePackingListForm() {
     error,
     selectedCustomer,
     selectedContainer,
+    containerCapacity,
+    otherUsedCbm,
+    remainingCapacityCbm,
+    exceedsCapacity,
     totals,
     bulkLines,
     cbmCharge,

@@ -76,7 +76,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
               <th className={styles.center}>L × W × H (cm)</th>
               <th className={[styles.right, styles.cbmHead].join(' ')}>CBM</th>
               <th className={styles.center}>Qty</th>
-              <th className={styles.right}>Decl. (USD)</th>
+              <th className={styles.right}>Decl. / unit (USD)</th>
               <th />
             </tr>
           </thead>
@@ -278,8 +278,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                           disabled={!(item.identical_confirmed ?? false)}
                           title={
                             item.identical_confirmed
-                              ? `How many identical packages (up to ${MAX_ITEM_QUANTITY})`
-                              : 'Tick "identical" first — each package is created separately'
+                              ? `How many identical packages under one tag (up to ${MAX_ITEM_QUANTITY})`
+                              : 'Tick "identical" first — all packages share one tag'
                           }
                           value={item.quantity ?? ''}
                           onKeyDown={blockInvalidNumberKeys}
@@ -293,7 +293,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                     </td>
                     <td className={styles.right}>
                       <CellInput
-                        label={`Declared value (USD), item ${index + 1}`}
+                        label={`Declared value per unit (USD), item ${index + 1}`}
                         className={styles.cellInputNumber}
                         type="number"
                         min={0}
@@ -355,14 +355,17 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                         <span className={styles.qtyPreview}>
                           <Icon name="plus" size={12} />
                           {[
-                            `Creates ${qtyOf(item)} ${item.package_unit ?? 'carton'}${
+                            `${qtyOf(item)} ${item.package_unit ?? 'carton'}${
                               qtyOf(item) === 1 ? '' : 's'
                             }`,
                             hasData ? `${formatCbm(effectiveCbm * qtyOf(item))} CBM` : null,
                             item.weight_actual_kg != null
                               ? `${formatKg(item.weight_actual_kg * qtyOf(item))} kg`
                               : null,
-                            'separate tags, one per package',
+                            item.declared_value_usd != null
+                              ? `$${(item.declared_value_usd * qtyOf(item)).toFixed(0)} declared ($${item.declared_value_usd}/unit)`
+                              : null,
+                            'one tag for all packages',
                           ]
                             .filter(Boolean)
                             .join(' · ')}

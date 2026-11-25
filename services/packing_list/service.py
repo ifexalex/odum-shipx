@@ -6,7 +6,6 @@ event publishing, and audit logging.
 
 import json
 import logging
-import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -135,6 +134,49 @@ def _assert_container_loading(tenant_id: str, pl: dict[str, Any]) -> None:
         )
 
 
+def _container_capacity_cbm(container: dict[str, Any]) -> Decimal | None:
+    """Resolve a container's maximum CBM capacity (explicit capacity_cbm, else standard type fallback)."""
+    raw_cap = container.get("capacity_cbm")
+    if raw_cap is not None:
+        cap = Decimal(str(raw_cap))
+        if cap > Decimal("0"):
+            return cap
+    ctype = str(container.get("container_type") or "").lower()
+    if not ctype:
+        return None
+    if "45" in ctype:
+        return Decimal("86")
+    if "hc" in ctype or "high cube" in ctype:
+        return Decimal("76")
+    if "40" in ctype:
+        return Decimal("67")
+    if "20" in ctype:
+        return Decimal("33")
+    return None
+
+
+def _assert_container_capacity(
+    tenant_id: str,
+    container: dict[str, Any],
+    added_cbm: Decimal,
+    *,
+    exclude_pl_id: str | None = None,
+) -> None:
+    """Refuse packing list items that would push the container over its CBM capacity."""
+    capacity = _container_capacity_cbm(container)
+    if capacity is None:
+        return
+    used_cbm = repo.get_container_used_cbm(tenant_id, str(container["id"]), exclude_pl_id=exclude_pl_id)
+    if used_cbm + added_cbm > capacity:
+        remaining = max(Decimal("0"), capacity - used_cbm)
+        cnum = container.get("container_number") or str(container["id"])
+        raise BusinessRuleViolationError(
+            f"Items total {added_cbm:.3f} CBM, which exceeds container {cnum} remaining capacity "
+            f"of {remaining:.3f} CBM ({used_cbm:.3f} / {capacity:.3f} CBM used).",
+            rule_id="CONTAINER_CAPACITY_EXCEEDED",
+        )
+
+
 def _assemble_response(pl: dict[str, Any], items: list[dict[str, Any]]) -> dict[str, Any]:
     """Attach items and computed totals to a packing list row."""
     total_cbm = sum((i.get("cbm") or Decimal("0")) for i in items)
@@ -193,54 +235,45 @@ def _build_item_rows(
                 tracking_code = f"{date_prefix}-{trk_seq:03d}"
             tracking_cache[cache_key] = tracking_code
 
-        # Floor the line-item CBM at the tenant's minimum (default 0.1).
+        # Floor the per-package CBM at the tenant's minimum (default 0.1).
         # Preserve an explicit item.cbm if dimensions are omitted (e.g. manifest-imported rows).
         computed_cbm = _compute_cbm(item.length_cm, item.width_cm, item.height_cm)
         explicit_cbm = getattr(item, "cbm", None)
         raw_cbm = computed_cbm if computed_cbm > Decimal("0") else (explicit_cbm if explicit_cbm is not None else computed_cbm)
-        cbm = apply_min_cbm(raw_cbm, min_cbm)
+        unit_cbm = apply_min_cbm(raw_cbm, min_cbm)
         package_unit = getattr(item, "package_unit", None)
 
-        # One input line can stand for several identical packages. Expand it
-        # into that many rows rather than storing `quantity = N` on one row:
-        # every consumer of CBM (billing, manifest totals, tracking,
-        # payment_release) does a plain SUM(pli.cbm) with no quantity factor, so
-        # a single row holding a per-package CBM would bill N packages as one.
-        # Expanded rows are indistinguishable from hand-keyed ones, which is
-        # precisely why nothing downstream needs to know about this feature.
+        # Store one row with one carton_tag for the entire line item regardless of
+        # quantity (quantity = N). Line-level CBM and weights are multiplied by
+        # quantity so every downstream SUM(pli.cbm) / SUM(weight) stays exact,
+        # while declared_value_usd stays per unit.
         quantity = max(1, int(getattr(item, "quantity", 1) or 1))
+        line_cbm = unit_cbm * quantity
 
-        # Shared by the whole group so it can be shown together and removed in
-        # one action. Preserved when editing a list that already has a batch;
-        # generated when a new one is expanded. A single package gets whatever
-        # it already had (normally None) — it is not a batch.
-        batch_ref = getattr(item, "batch_ref", None)
-        if quantity > 1 and not batch_ref:
-            batch_ref = str(uuid.uuid4())
-
-        for _ in range(quantity):
-            rows.append(
-                {
-                    "packing_list_id": pl_id,
-                    "description": item.description,
-                    "weight_dispatch_kg": (float(item.weight_dispatch_kg) if item.weight_dispatch_kg is not None else None),
-                    "weight_actual_kg": float(item.weight_actual_kg) if item.weight_actual_kg is not None else None,
-                    # Each package gets its own tag; `seq` keeps running, so the
-                    # tags are the same unbroken sequence as hand entry.
-                    "carton_tag": f"{tenant_short}-{container_number}-{seq:03d}",
-                    "tracking_code": tracking_code,
-                    "cbm": float(cbm),
-                    "length_cm": float(item.length_cm) if item.length_cm is not None else None,
-                    "width_cm": float(item.width_cm) if item.width_cm is not None else None,
-                    "height_cm": float(item.height_cm) if item.height_cm is not None else None,
-                    "received_date": item_date,
-                    "declared_value_usd": (float(item.declared_value_usd) if item.declared_value_usd is not None else None),
-                    "package_unit": (package_unit or "carton"),
-                    "bale_type": _bale_type_for(package_unit, cbm),
-                    "batch_ref": batch_ref,
-                }
-            )
-            seq += 1
+        rows.append(
+            {
+                "packing_list_id": pl_id,
+                "description": item.description,
+                "weight_dispatch_kg": (
+                    float(item.weight_dispatch_kg * quantity) if item.weight_dispatch_kg is not None else None
+                ),
+                "weight_actual_kg": (float(item.weight_actual_kg * quantity) if item.weight_actual_kg is not None else None),
+                "carton_tag": f"{tenant_short}-{container_number}-{seq:03d}",
+                "tracking_code": tracking_code,
+                "cbm": float(line_cbm),
+                "length_cm": float(item.length_cm) if item.length_cm is not None else None,
+                "width_cm": float(item.width_cm) if item.width_cm is not None else None,
+                "height_cm": float(item.height_cm) if item.height_cm is not None else None,
+                "received_date": item_date,
+                # Stored per unit (multiply by quantity for line total value).
+                "declared_value_usd": (float(item.declared_value_usd) if item.declared_value_usd is not None else None),
+                "quantity": quantity,
+                "package_unit": (package_unit or "carton"),
+                "bale_type": _bale_type_for(package_unit, unit_cbm),
+                "batch_ref": None,
+            }
+        )
+        seq += 1
 
     return rows
 
@@ -304,7 +337,7 @@ def create_packing_list(
             raise RuntimeError("create_packing_list returned None unexpectedly")
         pl_id = str(pl["id"])
 
-        # 6. Build item rows with generated tags/codes
+        # 6. Build item rows with generated tags/codes and validate container capacity
         item_rows = _build_item_rows(
             tenant_id=tenant_id,
             pl_id=pl_id,
@@ -315,6 +348,8 @@ def create_packing_list(
             container_number=container_number,
             carton_seq_start=carton_seq,
         )
+        added_cbm = sum((Decimal(str(r["cbm"])) for r in item_rows), Decimal("0"))
+        _assert_container_capacity(tenant_id, container, added_cbm)
 
         # 7. Insert items
         inserted_items = [r for r in repo.insert_packing_list_items(tenant_id, item_rows) if r is not None]
@@ -442,6 +477,8 @@ def update_packing_list(
             container_number=container_number,
             carton_seq_start=carton_seq,
         )
+        updated_cbm = sum((Decimal(str(r["cbm"])) for r in item_rows), Decimal("0"))
+        _assert_container_capacity(tenant_id, container, updated_cbm, exclude_pl_id=pl_id)
         inserted_items = [r for r in repo.insert_packing_list_items(tenant_id, item_rows) if r is not None]
 
         repo.set_packing_list_dates(tenant_id, pl_id, loading_date, delivery_date)

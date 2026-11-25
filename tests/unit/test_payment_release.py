@@ -2562,3 +2562,72 @@ class TestCustomerReadsOnlyTheirOwnReleaseNote:
         ):
             with pytest.raises(ResourceNotFoundError):
                 service.get_release_note(TENANT_ID, "note-001", _ctx(UserRole.CUSTOMER))
+
+
+class TestSingleTagMultiQuantityPartialPickup:
+    """Single-tag line items (e.g. 1 tag for quantity=10) support partial pickup deduction."""
+
+    def test_partial_pickup_deducts_quantity_and_keeps_note_active_until_exhausted(self):
+        from datetime import date
+
+        from services.payment_release import service
+        from services.payment_release.models import RecordPickupRequest
+
+        note = _release_note(
+            carton_tags=["ACM-CONT001-001"],
+            total_cartons=10,
+            billing_total_cartons=10,
+            pickup_code_hash=None,
+        )
+        req1 = RecordPickupRequest(
+            cartons_released=5,
+            carton_tags_picked=["ACM-CONT001-001"],
+            collected_by_name="Chinedu Okafor",
+        )
+        with (
+            patch.object(service.repo, "get_release_note_by_id", return_value=note),
+            patch.object(service, "tenant_transaction"),
+            patch.object(service.repo, "lock_release_note", return_value=note),
+            patch.object(
+                service.repo,
+                "create_pickup_record",
+                return_value={"id": "pu-1", "pickup_date": date.today(), "created_at": None},
+            ),
+            patch.object(service.repo, "sum_cartons_picked_for_release_note", return_value=5),
+            patch.object(service.repo, "sum_cartons_released_for_customer", return_value=5),
+            patch.object(service.repo, "all_container_customers_fully_released", return_value=False),
+            patch.object(service.repo, "get_tenant_user_name", return_value="Warehouse Attendant"),
+            patch.object(service, "publish_event"),
+            patch.object(service, "log_audit"),
+            patch.object(service.repo, "get_customer_contact", return_value=None),
+        ):
+            res1 = service.record_pickup(TENANT_ID, "note-001", req1, actor_id="u1", ctx=_ctx(UserRole.WAREHOUSE_ATTENDANT))
+
+        assert res1["release_note_status"] == "active"
+        assert res1["remaining_cartons"] == 5
+
+        # Second pickup of remaining 5 on the same tag completes the release note
+        with (
+            patch.object(service.repo, "get_release_note_by_id", return_value=note),
+            patch.object(service, "tenant_transaction"),
+            patch.object(service.repo, "lock_release_note", return_value=note),
+            patch.object(
+                service.repo,
+                "create_pickup_record",
+                return_value={"id": "pu-2", "pickup_date": date.today(), "created_at": None},
+            ),
+            patch.object(service.repo, "sum_cartons_picked_for_release_note", return_value=10),
+            patch.object(service.repo, "update_release_note_status") as mock_status,
+            patch.object(service.repo, "sum_cartons_released_for_customer", return_value=10),
+            patch.object(service.repo, "update_shipment_tracking_for_customer"),
+            patch.object(service.repo, "all_container_customers_fully_released", return_value=False),
+            patch.object(service.repo, "get_tenant_user_name", return_value="Warehouse Attendant"),
+            patch.object(service, "publish_event"),
+            patch.object(service, "log_audit"),
+            patch.object(service.repo, "get_customer_contact", return_value=None),
+        ):
+            res2 = service.record_pickup(TENANT_ID, "note-001", req1, actor_id="u1", ctx=_ctx(UserRole.WAREHOUSE_ATTENDANT))
+
+        assert res2["release_note_status"] == "picked_up"
+        assert res2["remaining_cartons"] == 0
+        mock_status.assert_called_once_with(TENANT_ID, "note-001", "picked_up")

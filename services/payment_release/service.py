@@ -792,6 +792,7 @@ def generate_release_note(
         already_total_cartons = repo.get_active_release_note_total_cartons(tenant_id, req.billing_id)
         already_released_tags: set[str] = set()
         already_released_count = 0
+        selected_tag_count = len(carton_tags)
 
         if is_count_based:
             already_released_count = max(
@@ -814,11 +815,18 @@ def generate_release_note(
                     f"These carton tags are already on an active or picked-up release note: {', '.join(sorted(duplicate_tags))}",
                     rule_id="BR-RN-DUPLICATE-001",
                 )
+            tag_quantities = repo.get_carton_tag_quantities(
+                tenant_id,
+                str(billing["customer_id"]),
+                str(billing["container_id"]),
+                carton_tags,
+            )
+            selected_tag_count = sum(tag_quantities.get(tag, 1) for tag in carton_tags)
             already_released_count = max(len(already_released_tags), already_total_cartons)
-            if total_cartons_for_customer > 0 and already_released_count + len(carton_tags) > total_cartons_for_customer:
+            if total_cartons_for_customer > 0 and already_released_count + selected_tag_count > total_cartons_for_customer:
                 remaining = max(0, total_cartons_for_customer - already_released_count)
                 raise BusinessRuleViolationError(
-                    f"Requested {len(carton_tags)} cartons exceeds the {remaining} "
+                    f"Requested {selected_tag_count} cartons exceeds the {remaining} "
                     f"remaining unreleased (of {total_cartons_for_customer} total).",
                     rule_id="BR-RN-OVERRELEASE-001",
                 )
@@ -869,7 +877,7 @@ def generate_release_note(
             packages_balance = max(0, total_cartons_for_customer - (already_released_count + total_cartons))
             is_partial = total_cartons < total_cartons_for_customer
         else:
-            total_cartons = len(carton_tags)
+            total_cartons = selected_tag_count
             packages_balance = max(0, total_cartons_for_customer - (already_released_count + total_cartons))
             is_partial = total_cartons < total_cartons_for_customer
 
@@ -1813,7 +1821,13 @@ def record_pickup(
 
     raw_tags_picked = list(getattr(req, "carton_tags_picked", None) or [])
     carton_tags_picked = list(dict.fromkeys(raw_tags_picked))
-    if carton_tags_picked and len(carton_tags_picked) != req.cartons_released:
+    note_tags_initial = list(note.get("carton_tags") or [])
+    note_total_initial = int(note.get("total_cartons") or 0)
+    # A line item with quantity > 1 carries a single carton_tag (e.g. 1 tag for 10 units),
+    # so total_cartons > len(carton_tags). Only require 1:1 tag-to-count matching when
+    # every tag on the note represents a single unit.
+    has_multi_unit_tags = bool(note_tags_initial) and note_total_initial > len(note_tags_initial)
+    if carton_tags_picked and not has_multi_unit_tags and len(carton_tags_picked) != req.cartons_released:
         raise BusinessRuleViolationError(
             f"Number of carton_tags_picked ({len(carton_tags_picked)}) must match cartons_released ({req.cartons_released}).",
             rule_id="CARTON_TAG_COUNT_MISMATCH",
@@ -1851,13 +1865,17 @@ def record_pickup(
                     f"Picked carton tags not on this release note: {', '.join(sorted(invalid_tags))}",
                     rule_id="INVALID_CARTON_TAGS",
                 )
-            already_picked_tags = set(repo.get_picked_carton_tags(tenant_id, note_id))
-            dup_picked = set(carton_tags_picked) & already_picked_tags
-            if dup_picked:
-                raise BusinessRuleViolationError(
-                    f"Carton tags already picked up: {', '.join(sorted(dup_picked))}",
-                    rule_id="TAGS_ALREADY_PICKED",
-                )
+            # For single-unit tags (1 tag = 1 carton), forbid picking the same tag twice.
+            # For multi-unit tags (e.g. 1 tag representing qty 10), partial pickups reuse
+            # the same tag and are bounded below by sum_cartons_picked <= note_total.
+            if not has_multi_unit_tags:
+                already_picked_tags = set(repo.get_picked_carton_tags(tenant_id, note_id))
+                dup_picked = set(carton_tags_picked) & already_picked_tags
+                if dup_picked:
+                    raise BusinessRuleViolationError(
+                        f"Carton tags already picked up: {', '.join(sorted(dup_picked))}",
+                        rule_id="TAGS_ALREADY_PICKED",
+                    )
 
         pickup = repo.create_pickup_record(
             tenant_id,
@@ -1995,12 +2013,19 @@ def _fmt_release_note(note: dict[str, Any], billing: dict[str, Any], total_carto
     amount_paid_ngn = _first_present((note, "billing_amount_paid_ngn"), (billing, "amount_paid_ngn"))
     balance_ngn = _first_present((note, "billing_balance_ngn"), (billing, "balance_ngn"))
     total_ngn = _first_present((note, "billing_total_ngn"), (billing, "total_ngn"))
+    total_cartons = int(note.get("total_cartons") or 0)
+    cartons_picked_up = int(note.get("cartons_picked_up") or 0)
+    if status == "picked_up" and cartons_picked_up == 0:
+        cartons_picked_up = total_cartons
+    cartons_remaining = max(0, total_cartons - cartons_picked_up)
     return {
         "id": str(note["id"]),
         "reference_number": note["reference_number"],
         "customer_name": note.get("customer_name"),
         "container_number": note.get("container_number"),
-        "carton_count": int(note.get("total_cartons") or 0),
+        "carton_count": total_cartons,
+        "cartons_picked_up": cartons_picked_up,
+        "cartons_remaining": cartons_remaining,
         "total_cartons_for_customer": total_cartons_for_customer,
         "is_partial_release": bool(note.get("is_partial", False)),
         "carton_tags": list(tags),
