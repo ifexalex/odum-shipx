@@ -71,15 +71,19 @@ export function RequestOnboardingScreen(): JSX.Element {
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Request received.</h2>
+          <h1 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Demo request received.</h1>
           <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             Thanks, <strong>{companyName}</strong>. Our team will review your details and reach out to{' '}
-            <strong>{contactEmail}</strong> to set up your workspace. No account has been created yet —
-            we&apos;ll provision it with you.
+            <strong>{contactEmail}</strong> to schedule your walkthrough and set up your workspace. No account has
+            been created yet — we&apos;ll provision it with you.
           </p>
-          <Button variant="primary" size="lg" full onClick={() => navigate('/login')}>
-            Back to sign in
+          <Button variant="primary" size="lg" full onClick={() => navigate('/')}>
+            Back to home
           </Button>
+          <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
+            Already have an account?{' '}
+            <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
+          </p>
         </div>
       </AuthShell>
     )
@@ -88,14 +92,15 @@ export function RequestOnboardingScreen(): JSX.Element {
   return (
     <AuthShell>
       <FormHead
-        title="Partner with ShipX"
-        sub="For shipping &amp; logistics companies — request onboarding to run your China→Nigeria operations on ShipX. This is a request; our team will follow up to set you up."
+        title="Book a demo"
+        sub="For shipping & logistics companies — tell us about your operation and we'll walk you through ShipX and set up your branded workspace."
       />
 
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <Banner variant="info" title="Are you a customer?">
           If you&apos;re a customer trying to track a shipment or access your account, this isn&apos;t the
-          page — use the link your shipping company gave you, or{' '}
+          page —{' '}
+          <Link to="/track" className={styles.link}>track a shipment</Link> or{' '}
           <Link to="/login" className={styles.link}>sign in</Link>.
         </Banner>
       </div>
@@ -176,8 +181,8 @@ export function RequestOnboardingScreen(): JSX.Element {
           optional
         />
 
-        <Button type="submit" variant="accent" size="lg" full loading={submitting}>
-          Request onboarding
+        <Button type="submit" variant="primary" size="lg" full loading={submitting}>
+          Book a demo
         </Button>
       </form>
 

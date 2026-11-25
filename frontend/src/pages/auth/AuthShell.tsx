@@ -1,32 +1,22 @@
 /**
  * AuthShell — shared split-panel layout for all pre-auth screens
- * (login, register, forgot/reset password), per Section 1 of the prototype:
- * brand panel (forest dark, hidden <920px) + centered form panel.
- *
- * Reuses LoginScreen.module.css so the brand panel renders identically on
- * every auth screen.
+ * (login, register, book-a-demo, forgot/reset password, activate, invite, callback):
+ * pinned forest-dark brand panel (hidden ≤860px) + scrollable centered form card
+ * with a top bar providing a direct link back to the landing page and theme toggle.
  */
 import type { JSX, ReactNode } from 'react'
-import { KolaMark, ShipxWordmark } from '../../design/components'
+import { Link } from 'react-router-dom'
+import { Icon, KolaMark, ShipxWordmark, ThemeToggle } from '../../design/components'
 import { colors } from '../../design/theme'
 import styles from './LoginScreen.module.css'
 
 function BrandIllustration(): JSX.Element {
   return (
     <div className={styles.illustration}>
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: 0.18,
-        }}
-      >
+      <div className={styles.illustrationWatermark}>
         <KolaMark size={280} color={colors.primaryBright} />
       </div>
-      <svg viewBox="0 0 400 400" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+      <svg viewBox="0 0 400 400" className={styles.illustrationSvg} aria-hidden="true">
         <defs>
           <linearGradient id="routeGradShell" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stopColor={colors.primaryBright} stopOpacity="0.2" />
@@ -45,10 +35,20 @@ function BrandIllustration(): JSX.Element {
           <rect x="-18" y="-2" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
           <rect x="-18" y="5" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
         </g>
-        <text x="80" y="105" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.primaryBright, letterSpacing: 'var(--tracking-label)' }}>
+        <text
+          x="80"
+          y="105"
+          textAnchor="middle"
+          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.primaryBright, letterSpacing: 'var(--tracking-label)' }}
+        >
           CN · GZG
         </text>
-        <text x="320" y="312" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.accentHover, letterSpacing: 'var(--tracking-label)' }}>
+        <text
+          x="320"
+          y="312"
+          textAnchor="middle"
+          style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.accentHover, letterSpacing: 'var(--tracking-label)' }}
+        >
           NG · LOS
         </text>
       </svg>
@@ -63,12 +63,12 @@ export interface AuthShellProps {
 export function AuthShell({ children }: AuthShellProps): JSX.Element {
   return (
     <div className={styles.shell}>
-      <div className={styles.brandPanel}>
+      <aside className={styles.brandPanel} aria-label="ShipX">
         <div className={styles.glow} />
-        <div className={styles.brandTop}>
-          <KolaMark size={26} color="#fff" />
+        <Link to="/" className={styles.brandTop} aria-label="ShipX home">
+          <KolaMark size={26} color="var(--color-on-brand)" />
           <ShipxWordmark size={22} showBy />
-        </div>
+        </Link>
         <div className={styles.tagline}>
           <BrandIllustration />
           {/* The brand line, not the page's heading: the form's title is the h1 (FD-49). */}
@@ -78,28 +78,39 @@ export function AuthShell({ children }: AuthShellProps): JSX.Element {
             <span className={styles.heroAccent}>engineered to move.</span>
           </p>
           <p className={styles.heroSub}>
-            Guangzhou to Lagos. End-to-end. Unstoppable. Built for the operators, customers, and developers
-            who lead every shipment.
+            Guangzhou to Lagos. End-to-end. Built for the freight forwarders, warehouse teams, and customers behind
+            every shipment.
           </p>
         </div>
         <div className={styles.brandFooter}>
-          <div className={styles.footerCopy}>© 2026 ShipX Platform</div>
-          <div className={styles.statusRow}>
-            <span className={styles.statusDot} />
-            <span className={styles.statusText}>All systems operational</span>
-          </div>
+          <div className={styles.footerCopy}>© 2026 ShipX · by ODUM</div>
+          <Link to="/track" className={styles.brandFooterLink}>
+            Track a shipment <Icon name="arrowright" size={12} />
+          </Link>
         </div>
-      </div>
+      </aside>
 
-      <div className={styles.formPanel}>
-        <div className={styles.formWrap}>
-          <div className={styles.mobileBrand}>
-            <KolaMark size={24} color="var(--color-primary)" />
-            <ShipxWordmark size={18} />
+      <main className={styles.formPanel}>
+        <div className={styles.formCenter}>
+          <div className={styles.formTopBar}>
+            <Link to="/" className={styles.backHomeLink}>
+              <Icon name="arrowleft" size={14} />
+              Back to home
+            </Link>
+            <ThemeToggle />
           </div>
-          {children}
+
+          <div className={styles.formWrap}>
+            <div className={styles.mobileBrand}>
+              <Link to="/" className={styles.mobileBrandLink} aria-label="ShipX home">
+                <KolaMark size={24} color="var(--color-primary)" />
+                <ShipxWordmark size={18} />
+              </Link>
+            </div>
+            {children}
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
@@ -114,6 +125,39 @@ export function FormHead({ title, sub }: FormHeadProps): JSX.Element {
     <div className={styles.formHead}>
       <h1 className={styles.formTitle}>{title}</h1>
       {sub && <p className={styles.formSub}>{sub}</p>}
+    </div>
+  )
+}
+
+export interface PasswordRequirement {
+  label: string
+  ok: (pw: string) => boolean
+}
+
+export const PASSWORD_REQUIREMENTS: PasswordRequirement[] = [
+  { label: 'At least 12 characters', ok: (pw) => pw.length >= 12 },
+  { label: 'Mix of upper & lowercase', ok: (pw) => /[a-z]/.test(pw) && /[A-Z]/.test(pw) },
+  { label: 'At least one number', ok: (pw) => /\d/.test(pw) },
+  { label: 'At least one special character', ok: (pw) => /[^A-Za-z0-9]/.test(pw) },
+]
+
+export function meetsPasswordRequirements(password: string): boolean {
+  return PASSWORD_REQUIREMENTS.every((r) => r.ok(password))
+}
+
+export function PasswordRequirements({ password }: { password: string }): JSX.Element {
+  return (
+    <div className={styles.reqBox}>
+      <div className={styles.reqHeading}>Password requirements</div>
+      {PASSWORD_REQUIREMENTS.map((r) => {
+        const met = r.ok(password)
+        return (
+          <div key={r.label} className={met ? styles.reqMet : styles.reqUnmet}>
+            <Icon name={met ? 'check' : 'minus'} size={12} stroke={3} />
+            {r.label}
+          </div>
+        )
+      })}
     </div>
   )
 }

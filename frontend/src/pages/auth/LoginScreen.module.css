@@ -1,7 +1,6 @@
 .shell {
   display: flex;
-  height: 100%;
-  min-height: 720px;
+  min-height: 100vh;
   background: var(--color-surface);
   font-family: var(--font-body);
   color: var(--color-ink);
@@ -10,13 +9,16 @@
 .brandPanel {
   width: 40%;
   min-width: 360px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
   background: radial-gradient(circle at 20% 100%, var(--color-primary-deep) 0%, var(--color-forest-dark) 60%);
   color: var(--color-on-brand);
   padding: var(--space-12) var(--space-12);
   display: flex;
   flex-direction: column;
-  position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .glow {
@@ -31,9 +33,19 @@
 }
 
 .brandTop {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-3);
+  text-decoration: none;
+  color: inherit;
+  width: fit-content;
+  position: relative;
+  z-index: 1;
+  border-radius: var(--radius-md);
+}
+.brandTop:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .brandByLine {
@@ -58,9 +70,25 @@
 .illustration {
   position: relative;
   width: 100%;
-  max-width: 360px;
+  max-width: 340px;
   aspect-ratio: 1 / 1;
   margin: 0 auto;
+}
+
+.illustrationWatermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.18;
+}
+
+.illustrationSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .heroHeading {
@@ -69,7 +97,7 @@
   font-size: var(--text-3xl);
   line-height: var(--text-3xl-line);
   letter-spacing: var(--tracking-tight);
-  margin: var(--space-8) 0 var(--space-4);
+  margin: var(--space-6) 0 var(--space-4);
   color: var(--color-on-brand);
 }
 
@@ -90,6 +118,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-on-dark-line);
   position: relative;
@@ -104,40 +133,77 @@
   font-weight: 600;
 }
 
-.statusRow {
-  display: flex;
+.brandFooterLink {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-}
-
-.statusDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-primary-bright);
-  box-shadow: var(--shadow-glow);
-}
-
-.statusText {
+  gap: var(--space-1);
   font-size: var(--text-xs);
-  color: var(--color-on-dark-subtle);
-  letter-spacing: var(--tracking-label);
   font-weight: 600;
+  color: var(--color-on-dark-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brandFooterLink:hover {
+  color: var(--color-on-brand);
+  text-decoration: underline;
+}
+.brandFooterLink:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
+  border-radius: var(--radius-sm);
 }
 
 .formPanel {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: var(--space-12) var(--space-8);
+  padding: var(--space-8);
   background: var(--color-page);
-  overflow: auto;
+  overflow-y: auto;
+}
+
+/* margin: auto 0 centers short forms vertically without clipping the top of tall forms on short viewports. */
+.formCenter {
+  width: 100%;
+  max-width: 440px;
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.formTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.backHomeLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ink-2);
+  text-decoration: none;
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  border-radius: var(--radius-md);
+  transition: color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
+}
+.backHomeLink:hover {
+  color: var(--color-ink);
+  background: var(--color-surface-muted);
+}
+.backHomeLink:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .formWrap {
   width: 100%;
-  max-width: 440px;
   background: var(--color-surface);
   border: 1px solid var(--color-line-soft);
   border-radius: var(--radius-xl);
@@ -148,10 +214,22 @@
 .mobileBrand {
   display: none;
   align-items: center;
-  gap: var(--space-2);
   margin-bottom: var(--space-5);
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--color-line-soft);
+}
+
+.mobileBrandLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--radius-md);
+}
+.mobileBrandLink:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus-ring);
 }
 
 .formHead {
@@ -261,9 +339,39 @@
   text-decoration: underline;
 }
 
-/* Prototype (auth-screens.jsx @container sxauth): brand panel hides at 920px,
-   two-column form grids collapse at 560px. The auth frame is full-viewport, so
-   media queries are equivalent to the prototype's container queries here. */
+.reqBox {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-line-soft);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-2) 0 var(--space-6);
+  font-size: var(--text-xs);
+  line-height: var(--leading-body);
+}
+
+.reqHeading {
+  font-weight: 600;
+  color: var(--color-ink-2);
+  margin-bottom: var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.reqMet {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-success);
+}
+
+.reqUnmet {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-ink-3);
+}
+
+/* Brand panel hides at 860px (tablet/phone). */
 @media (max-width: 860px) {
   .brandPanel {
     display: none;

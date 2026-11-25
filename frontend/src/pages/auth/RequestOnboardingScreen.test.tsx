@@ -18,6 +18,7 @@ function renderScreen() {
   return render(
     <MemoryRouter initialEntries={['/get-started']}>
       <Routes>
+        <Route path="/" element={<div>Landing page</div>} />
         <Route path="/get-started" element={<RequestOnboardingScreen />} />
         <Route path="/login" element={<div>Login page</div>} />
       </Routes>
@@ -28,23 +29,24 @@ function renderScreen() {
 describe('RequestOnboardingScreen', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('collects no password and frames this as a request, not an account', () => {
+  it('collects no password and frames this as a demo request, not an account', () => {
     renderScreen()
-    expect(screen.getByText('Partner with ShipX')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Book a demo' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/password/i)).toBeNull()
     expect(screen.getByText('Are you a customer?')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /back to home/i })).toHaveAttribute('href', '/')
   })
 
-  it('submits the lead and shows the no-account-created confirmation', async () => {
+  it('submits the lead, shows the no-account-created confirmation, and links back to home', async () => {
     vi.mocked(companyOnboardingApi.requestOnboarding).mockResolvedValue({ id: 'req-1', status: 'new' })
     renderScreen()
 
     await userEvent.type(screen.getByLabelText('Company name', { exact: false, selector: 'input' }), 'Acme Freight Ltd')
     await userEvent.type(screen.getByLabelText('Your name', { exact: false, selector: 'input' }), 'Ada Obi')
     await userEvent.type(screen.getByLabelText('Work email', { exact: false, selector: 'input' }), 'ada@acme.com')
-    await userEvent.click(screen.getByRole('button', { name: /request onboarding/i }))
+    await userEvent.click(screen.getByRole('button', { name: /book a demo/i }))
 
-    expect(await screen.findByText('Request received.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Demo request received.' })).toBeInTheDocument()
     expect(screen.getByText(/No account has been created yet/i)).toBeInTheDocument()
     expect(companyOnboardingApi.requestOnboarding).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -55,5 +57,8 @@ describe('RequestOnboardingScreen', () => {
         destination_country: 'Nigeria',
       }),
     )
+
+    await userEvent.click(screen.getByRole('button', { name: /back to home/i }))
+    expect(await screen.findByText('Landing page')).toBeInTheDocument()
   })
 })

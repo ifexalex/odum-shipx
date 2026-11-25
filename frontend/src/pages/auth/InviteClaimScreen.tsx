@@ -11,24 +11,12 @@
  * either way; it lives only in the URL.
  */
 import { useEffect, useState, type FormEvent, type JSX } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { inviteApi, type InviteDetail } from '../../api/customer'
 import { Banner, Button, Field, Icon, IconButton, LinesSkeleton } from '../../design/components'
-import { AuthShell, FormHead, PasswordStrength } from './AuthShell'
+import { AuthShell, FormHead, meetsPasswordRequirements, PasswordRequirements, PasswordStrength } from './AuthShell'
 import styles from './LoginScreen.module.css'
-
-interface Requirement {
-  label: string
-  ok: (pw: string) => boolean
-}
-
-const REQUIREMENTS: Requirement[] = [
-  { label: 'At least 12 characters', ok: (pw) => pw.length >= 12 },
-  { label: 'Mix of upper & lowercase', ok: (pw) => /[a-z]/.test(pw) && /[A-Z]/.test(pw) },
-  { label: 'At least one number', ok: (pw) => /\d/.test(pw) },
-  { label: 'At least one special character', ok: (pw) => /[^A-Za-z0-9]/.test(pw) },
-]
 
 type LoadState = 'loading' | 'ready' | 'invalid'
 
@@ -67,7 +55,7 @@ export function InviteClaimScreen(): JSX.Element {
     }
   }, [token])
 
-  const requirementsMet = REQUIREMENTS.every((r) => r.ok(password))
+  const requirementsMet = meetsPasswordRequirements(password)
   const canSubmit = requirementsMet && password === confirm && email.trim().length > 0
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -149,7 +137,7 @@ export function InviteClaimScreen(): JSX.Element {
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Account created.</h2>
+          <h1 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Account created.</h1>
           <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             Sign in with <strong>{email}</strong> and the password you just chose to track your shipments.
           </p>
@@ -228,35 +216,17 @@ export function InviteClaimScreen(): JSX.Element {
           />
         </div>
 
-        <div
-          style={{
-            background: 'var(--color-surface-muted)',
-            border: '1px solid var(--color-line-soft)',
-            borderRadius: 'var(--radius-md)',
-            padding: 'var(--space-3) var(--space-4)',
-            margin: 'var(--space-2) 0 var(--space-6)',
-            fontSize: 'var(--text-xs)',
-            lineHeight: 'var(--leading-body)',
-          }}
-        >
-          <div style={{ fontWeight: 600, color: 'var(--color-ink-2)', marginBottom: 'var(--space-2)', textTransform: 'uppercase', letterSpacing: 'var(--tracking-label)' }}>
-            Password requirements
-          </div>
-          {REQUIREMENTS.map((r) => {
-            const met = r.ok(password)
-            return (
-              <div key={r.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: met ? 'var(--color-success)' : 'var(--color-ink-3)' }}>
-                <Icon name={met ? 'check' : 'minus'} size={12} stroke={3} />
-                {r.label}
-              </div>
-            )
-          })}
-        </div>
+        <PasswordRequirements password={password} />
 
-        <Button type="submit" variant="accent" size="lg" full loading={submitting} disabled={!canSubmit}>
+        <Button type="submit" variant="primary" size="lg" full loading={submitting} disabled={!canSubmit}>
           Create account
         </Button>
       </form>
+
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
+        Already have an account?{' '}
+        <Link to="/login" className={styles.footerLinkStrong}>Sign in <Icon name="arrowright" size={12} /></Link>
+      </p>
     </AuthShell>
   )
 }
