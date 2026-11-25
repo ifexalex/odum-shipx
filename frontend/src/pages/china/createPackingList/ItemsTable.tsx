@@ -5,7 +5,7 @@ import {
   buildPackageMix,
   formatPackageMix,
 } from '../../../api/packingListRules'
-import { MAX_ITEM_QUANTITY, PACKAGE_UNITS, type PackageUnit } from '../../../api/packingList'
+import { PACKAGE_UNITS, type PackageUnit } from '../../../api/packingList'
 import {
   Badge,
   Button,
@@ -307,14 +307,13 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                     className={styles.qtyInput}
                     type="number"
                     min={1}
-                    max={MAX_ITEM_QUANTITY}
                     step={1}
                     inputMode="numeric"
                     label={`Item ${index + 1}: quantity`}
                     disabled={!(item.identical_confirmed ?? false)}
                     title={
                       item.identical_confirmed
-                        ? `How many identical packages under one tag (up to ${MAX_ITEM_QUANTITY})`
+                        ? 'How many identical packages under one tag (bounded by container CBM capacity)'
                         : 'Tick "identical" first — all packages share one tag'
                     }
                     value={item.quantity ?? ''}

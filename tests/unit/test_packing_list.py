@@ -1065,16 +1065,9 @@ class TestBulkQuantitySafeguard:
             with pytest.raises(ValueError):
                 self._make(quantity=bad, identical_confirmed=True)
 
-    def test_quantity_above_the_cap_is_rejected(self):
-        from services.packing_list.models import MAX_ITEM_QUANTITY
-
-        with pytest.raises(ValueError):
-            self._make(quantity=MAX_ITEM_QUANTITY + 1, identical_confirmed=True)
-
-    def test_the_cap_itself_is_accepted(self):
-        from services.packing_list.models import MAX_ITEM_QUANTITY
-
-        assert self._make(quantity=MAX_ITEM_QUANTITY, identical_confirmed=True).quantity == MAX_ITEM_QUANTITY
+    def test_large_quantities_have_no_arbitrary_upper_cap(self):
+        """Container CBM capacity enforces the real limit rather than an arbitrary count cap."""
+        assert self._make(quantity=1500, identical_confirmed=True).quantity == 1500
 
     def test_confirmation_alone_changes_nothing(self):
         """Ticking the box without a quantity must not alter the single item."""

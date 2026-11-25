@@ -103,8 +103,6 @@ export const PACKAGE_UNITS: { value: PackageUnit; label: string }[] = [
   { value: 'sack', label: 'Sack' },
 ]
 
-/** Upper bound on one bulk line — mirrors MAX_ITEM_QUANTITY in the service. */
-export const MAX_ITEM_QUANTITY = 500
 
 /** Above this, saving asks for an explicit confirmation of the total. */
 export const BULK_CONFIRM_THRESHOLD = 25

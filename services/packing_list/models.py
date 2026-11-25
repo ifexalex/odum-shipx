@@ -23,14 +23,6 @@ class PackingListStatus(StrEnum):
 # ---------------------------------------------------------------------------
 
 
-# Upper bound on one bulk line. Chosen to be comfortably above a real
-# consignment (the case that prompted this was ~100 cartons) while still being
-# a number a person could not reach by leaning on a key. It is a guard against
-# a slip, not a business rule — raise it if a tenant genuinely ships more in one
-# identical batch.
-MAX_ITEM_QUANTITY = 500
-
-
 class PackingListItemInput(BaseModel):
     description: str = Field(min_length=1)
     weight_dispatch_kg: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
@@ -56,7 +48,8 @@ class PackingListItemInput(BaseModel):
     # because its CBM is read off the forwarder's "Meas." column as a line
     # total. Here CBM is computed from the dimensions keyed in, so it is per
     # package — one row carrying quantity=100 would bill as a single carton.
-    quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
+    # Bounded by container CBM capacity on the service rather than an arbitrary count cap.
+    quantity: int = Field(default=1, ge=1)
 
     # The safeguard, enforced here rather than only in the UI: a client calling
     # the API directly must assert it too. Quantity is a shortcut for packages
@@ -104,7 +97,8 @@ class UpdatePackingListItemInput(BaseModel):
     cbm: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
     declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
     package_unit: str | None = Field(default=None, max_length=20)
-    quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
+    # Bounded by container CBM capacity on the service rather than an arbitrary count cap.
+    quantity: int = Field(default=1, ge=1)
     identical_confirmed: bool = False
     batch_ref: str | None = None
 
