@@ -1,5 +1,5 @@
 import { type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { MAX_ITEM_QUANTITY, type PackingListItemInput } from '../../../api/packingList'
+import type { PackingListItemInput } from '../../../api/packingList'
 
 /** Turn an expanded batch back into the one line that produced it.
  *
@@ -52,13 +52,7 @@ export function collapseBatches(items: PackingListItemInput[]): PackingListItemI
   return out
 }
 
-/** Keep a typed quantity inside 1..MAX, tolerating an emptied field.
- *
- *  Clamping rather than rejecting: someone mid-edit who has cleared the box
- *  should not see a validation error, and someone who holds a key down should
- *  land on the cap rather than on a number the API will refuse. The cap is
- *  re-checked server-side regardless.
- */
+/** Keep a typed quantity at or above 1, tolerating an emptied field (no upper cap — container CBM capacity guards the total). */
 export function clampQuantity(raw: string): number | undefined {
   // An emptied field stays empty rather than snapping to 1. Coercing it meant
   // clearing the box left a "1" behind, so typing "40" produced 140 — caught
@@ -67,7 +61,7 @@ export function clampQuantity(raw: string): number | undefined {
   if (raw.trim() === '') return undefined
   const n = Number.parseInt(raw, 10)
   if (!Number.isFinite(n)) return undefined
-  return Math.min(Math.max(n, 1), MAX_ITEM_QUANTITY)
+  return Math.max(n, 1)
 }
 
 export function emptyItem(): PackingListItemInput {

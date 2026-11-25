@@ -753,7 +753,13 @@ def list_release_notes(
                w.address            AS warehouse_address,
                w.phone              AS warehouse_phone,
                pr.receipt_number    AS receipt_number,
-               col.due_date         AS debt_due_date
+               col.due_date         AS debt_due_date,
+               COALESCE((
+                   SELECT SUM(pu.cartons_count)
+                   FROM pickup_record pu
+                   WHERE pu.tenant_id       = rn.tenant_id
+                     AND pu.release_note_id = rn.id
+               ), 0)::int           AS cartons_picked_up
         FROM release_note rn
         LEFT JOIN customer  cu   ON cu.id   = rn.customer_id   AND cu.tenant_id   = rn.tenant_id
         LEFT JOIN container cont ON cont.id = rn.container_id  AND cont.tenant_id = rn.tenant_id
@@ -870,7 +876,13 @@ def get_release_note_by_id(tenant_id: str, note_id: str) -> dict[str, Any] | Non
                    WHERE sfl.tenant_id  = b.tenant_id
                      AND sfl.billing_id = b.id
                      AND sfl.waived_at IS NULL
-               ), 0)                AS storage_fees_ngn
+               ), 0)                AS storage_fees_ngn,
+               COALESCE((
+                   SELECT SUM(pu.cartons_count)
+                   FROM pickup_record pu
+                   WHERE pu.tenant_id       = rn.tenant_id
+                     AND pu.release_note_id = rn.id
+               ), 0)::int           AS cartons_picked_up
         FROM release_note rn
         LEFT JOIN customer  cu   ON cu.id   = rn.customer_id
         LEFT JOIN container cont ON cont.id = rn.container_id
@@ -1322,6 +1334,34 @@ def get_cbm_for_carton_tags(
         (tenant_id, customer_id, container_id, tags),
     )
     return Decimal(str(rows[0]["selected_cbm"])) if rows else Decimal("0")
+
+
+def get_carton_tag_quantities(
+    tenant_id: str,
+    customer_id: str,
+    container_id: str,
+    tags: list[str],
+) -> dict[str, int]:
+    """Return {carton_tag: total_quantity} for approved packing list items matching tags."""
+    if not tags:
+        return {}
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT pli.carton_tag,
+               COALESCE(SUM(COALESCE(pli.quantity, 1)), 0)::int AS qty
+        FROM packing_list_item pli
+        JOIN packing_list pl ON pl.id = pli.packing_list_id
+        WHERE pl.tenant_id    = %s
+          AND pl.customer_id  = %s
+          AND pl.container_id = %s
+          AND pl.status       = 'approved'
+          AND pli.carton_tag  = ANY(%s)
+        GROUP BY pli.carton_tag
+        """,
+        (tenant_id, customer_id, container_id, tags),
+    )
+    return {str(r["carton_tag"]): int(r["qty"] or 1) for r in rows if r.get("carton_tag")}
 
 
 # ---------------------------------------------------------------------------

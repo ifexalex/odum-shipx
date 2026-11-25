@@ -171,6 +171,13 @@
   font-size: var(--text-sm);
   color: var(--color-ink);
 }
+:global([data-theme='dark']) .cell {
+  background: var(--color-page);
+}
+.cell option {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
 .cell:focus {
   outline: none;
   border-color: var(--color-primary);

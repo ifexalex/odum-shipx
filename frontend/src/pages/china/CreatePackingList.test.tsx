@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { MAX_ITEM_QUANTITY, packingListApi, type PackingList } from '../../api/packingList'
+import { packingListApi, type PackingList } from '../../api/packingList'
 import { containersApi, type Container } from '../../api/tracking'
 import { configApi, customersApi, type Customer } from '../../api/tenantManagement'
 import { warehousesApi } from '../../api/warehouses'
@@ -519,17 +519,17 @@ describe('CreatePackingList — bulk quantity', () => {
 
     // The count alone is weak evidence; the CBM is what the staffer is really
     // being asked to sanity-check, because it drives billing.
-    expect(await screen.findByText(/Creates 10 cartons/i)).toBeInTheDocument()
+    expect(await screen.findByText(/10 cartons.*one tag for all packages/i)).toBeInTheDocument()
   })
 
-  it('clamps a quantity above the cap rather than letting the API refuse it', async () => {
+  it('accepts quantities above 500 without clamping (bounded by container CBM capacity)', async () => {
     await reachItemsStep()
     await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
     const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
     await userEvent.clear(qty)
-    await userEvent.type(qty, '9999')
+    await userEvent.type(qty, '1200')
 
-    expect(qty).toHaveValue(MAX_ITEM_QUANTITY)
+    expect(qty).toHaveValue(1200)
   })
 
   it('asks for confirmation before saving a large quantity, and can be cancelled', async () => {

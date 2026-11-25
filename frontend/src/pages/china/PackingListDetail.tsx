@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { formatCbm } from '../../api/decimal'
-import { packingListApi, type PackingList, type PackingListItem, type UpdatePackingListItemInput } from '../../api/packingList'
+import { packingListApi, type PackageUnit, type PackingList, type PackingListItem, type UpdatePackingListItemInput } from '../../api/packingList'
 import { packingListKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { applyMinCbm, canApproveOrReject, canEditPackingList, computeCbm, formatPackageMix, formatPackageUnit, isSelfApproval } from '../../api/packingListRules'
@@ -165,15 +165,25 @@ export function PackingListDetail(): JSX.Element {
   function startEditing(): void {
     if (!pl) return
     setActionError(null)
-    setEditItems(pl.items.map((item) => ({
-      id: item.id,
-      description: item.description,
-      weight_actual_kg:    item.weight_actual_kg    != null ? Number(item.weight_actual_kg)    : undefined,
-      length_cm:           item.length_cm           != null ? Number(item.length_cm)           : undefined,
-      width_cm:            item.width_cm            != null ? Number(item.width_cm)            : undefined,
-      height_cm:           item.height_cm           != null ? Number(item.height_cm)           : undefined,
-      declared_value_usd:  item.declared_value_usd  != null ? Number(item.declared_value_usd)  : undefined,
-    })))
+    setEditItems(
+      pl.items.map((item) => {
+        const qty = Math.max(1, Number(item.quantity ?? 1))
+        return {
+          id: item.id,
+          description: item.description,
+          weight_actual_kg:
+            item.weight_actual_kg != null ? Number(item.weight_actual_kg) / qty : undefined,
+          length_cm: item.length_cm != null ? Number(item.length_cm) : undefined,
+          width_cm: item.width_cm != null ? Number(item.width_cm) : undefined,
+          height_cm: item.height_cm != null ? Number(item.height_cm) : undefined,
+          declared_value_usd:
+            item.declared_value_usd != null ? Number(item.declared_value_usd) : undefined,
+          package_unit: (item.package_unit as PackageUnit | null) ?? 'carton',
+          quantity: qty,
+          identical_confirmed: qty > 1,
+        }
+      }),
+    )
     setEditing(true)
   }
 
@@ -428,7 +438,7 @@ export function PackingListDetail(): JSX.Element {
             { title: 'Weight (kg)', type: 'number' as const },
             { title: 'L × W × H (cm)', align: 'center' },
             { title: 'Volume (CBM)', type: 'number' as const },
-            { title: 'Declared ($)', type: 'money' as const },
+            { title: 'Decl. / unit ($)', type: 'money' as const },
             ...(showFlagColumn ? [{ title: 'Flag' }] : []),
             ...(editing ? [{ title: '', type: 'action' as const, width: '40px' }] : []),
           ]}
@@ -543,7 +553,11 @@ export function PackingListDetail(): JSX.Element {
                       {formatCbm(item.cbm)}
                     </Mono>,
                     <Mono key="usd">
-                      {item.declared_value_usd != null ? `$${item.declared_value_usd}` : '—'}
+                      {item.declared_value_usd != null
+                        ? Number(item.quantity ?? 1) > 1
+                          ? `$${item.declared_value_usd}/unit ($${(Number(item.declared_value_usd) * Number(item.quantity ?? 1)).toFixed(0)})`
+                          : `$${item.declared_value_usd}`
+                        : '—'}
                     </Mono>,
                     ...(showFlagColumn
                       ? [

@@ -71,9 +71,13 @@ const ID_TYPES: { value: DelegateIdType; label: string }[] = [
 ]
 
 function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Element {
-  const maxCartons = note.packages_balance != null && note.packages_balance > 0
-    ? note.packages_balance
-    : note.carton_count
+  const pickedUp = note.cartons_picked_up ?? 0
+  const maxCartons =
+    note.cartons_remaining != null
+      ? note.cartons_remaining
+      : note.packages_balance != null && note.packages_balance > 0
+        ? note.packages_balance
+        : note.carton_count
   const [cartons, setCartons] = useState(String(maxCartons))
   const [isDelegate, setIsDelegate] = useState(false)
   // The backend requires a collector's name when it is not a delegate; this sheet never sent one, so every
@@ -174,7 +178,13 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
 
         {note.carton_tags.length > 0 && (
           <div className={styles.modalTagsBox}>
-            <div className={styles.modalTagsLabel}>Carton tags to verify ({note.carton_tags.length})</div>
+            <div className={styles.modalTagsLabel}>
+              Carton tags to verify ({note.carton_tags.length}
+              {note.carton_count > note.carton_tags.length
+                ? ` · ${note.carton_count} total units`
+                : ''}
+              )
+            </div>
             <div className={styles.cardTags}>
               {note.carton_tags.slice(0, 12).map((tag) => (
                 <span key={tag} className={styles.tag}>{tag}</span>
@@ -226,7 +236,13 @@ function PickupSheet({ note, onCancel, onSuccess }: PickupSheetProps): JSX.Eleme
             value={cartons}
             onChange={(e) => setCartons(e.target.value)}
             error={cartonsError}
-            helper={maxCartons > 1 ? `Up to ${plural(maxCartons, 'carton')} remaining on this note.` : undefined}
+            helper={
+              pickedUp > 0
+                ? `${pickedUp} of ${note.carton_count} already picked up · ${plural(maxCartons, 'unit')} remaining on this note.`
+                : maxCartons > 1
+                  ? `Up to ${plural(maxCartons, 'carton')} remaining on this note.`
+                  : undefined
+            }
           />
           {maxCartons > 1 && (
             <div className={styles.quickSetRow}>
