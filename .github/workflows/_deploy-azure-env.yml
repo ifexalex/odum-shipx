@@ -87,7 +87,7 @@ jobs:
       # Build + push with Docker Buildx + GitHub Actions layer cache so unchanged
       # uv/Python dependency layers build in ~15-20s instead of ~2-3 minutes.
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to ACR
         env:
