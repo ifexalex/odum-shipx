@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import { LocalRoleContext } from '../../auth/LocalRoleContext'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { LoginScreen } from './LoginScreen'
@@ -71,6 +72,25 @@ describe('LoginScreen', () => {
       makeContextValue({ status: 'authenticated', session: fakeSession('nigeria_office_staff') }),
     )
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
+  })
+
+  it('keeps /login reachable under LocalRoleContext so local dev & E2E can sign in with real credentials', () => {
+    render(
+      <LocalRoleContext.Provider value={{ identity: 'tenant_admin', setIdentity: vi.fn() }}>
+        <SessionContext.Provider
+          value={makeContextValue({ status: 'authenticated', session: fakeSession('tenant_admin') })}
+        >
+          <MemoryRouter initialEntries={['/login']}>
+            <Routes>
+              <Route path="/login" element={<LoginScreen />} />
+              <Route path="/dashboard" element={<div>Dashboard</div>} />
+            </Routes>
+          </MemoryRouter>
+        </SessionContext.Provider>
+      </LocalRoleContext.Provider>,
+    )
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.queryByText('Dashboard')).toBeNull()
   })
 
   it('calls login with the entered credentials and redirects tenant staff to /dashboard', async () => {

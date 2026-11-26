@@ -1,6 +1,7 @@
-import { useState, type FormEvent, type JSX } from 'react'
+import { useContext, useState, type FormEvent, type JSX } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { authProvider, isInteractiveLogin } from '../../auth/authClient'
+import { LocalRoleContext } from '../../auth/LocalRoleContext'
 import { safeNextPath } from '../../auth/returnPath'
 import { homePathForRole } from '../../auth/roleHome'
 import { useSession } from '../../auth/useSession'
@@ -36,6 +37,7 @@ function loginErrorMessage(err: unknown): string {
 
 export function LoginScreen(): JSX.Element {
   const { session, login, beginLogin, status } = useSession()
+  const isLocalDevShim = useContext(LocalRoleContext) !== null
   const navigate = useNavigate()
   // Where the visitor was heading before sign-in; refused unless it is a plain in-app path (auth/returnPath.ts).
   const next = safeNextPath(useSearchParams()[0].get('next'))
@@ -45,8 +47,10 @@ export function LoginScreen(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const loading = status === 'loading'
 
-  // Already signed in — send straight to the requested path or the role's home.
-  if (status === 'authenticated' && session) {
+  // Already signed in (in real auth) — send straight to the requested path or the role's home.
+  // Keep /login reachable under LocalAuthProvider so developers and local-stack E2E tests can
+  // switch from the default dev shim into a real Cognito session without logging out first.
+  if (status === 'authenticated' && session && !isLocalDevShim) {
     return <Navigate to={next ?? homePathForRole(session.role)} replace />
   }
 
