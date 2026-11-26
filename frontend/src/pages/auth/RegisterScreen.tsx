@@ -23,7 +23,8 @@ import { useState, type FormEvent, type JSX } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { registerApi } from '../../api/customer'
-import { Banner, Button, Check, Field, Icon, Modal, PhoneField, Pressable, CheckboxField } from '../../design/components'
+import { Banner, Button, Check, Field, Icon, PhoneField, Pressable, CheckboxField } from '../../design/components'
+import { LegalModal, type LegalDocKind } from '../shared/LegalModal'
 import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'
 
@@ -46,7 +47,7 @@ export function RegisterScreen(): JSX.Element {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
-  const [legalModal, setLegalModal] = useState<'terms' | 'privacy' | null>(null)
+  const [legalModal, setLegalModal] = useState<LegalDocKind | null>(null)
 
   function toggleChannel(key: string): void {
     setChannels((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]))
@@ -97,7 +98,7 @@ export function RegisterScreen(): JSX.Element {
           >
             <Icon name="check" size={42} color="var(--color-success)" stroke={2.5} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email.</h2>
+          <h1 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email.</h1>
           <p className={styles.formSub} style={{ marginBottom: 'var(--space-6)' }}>
             We&apos;ve sent a message to <strong>{email}</strong>. If this is your first time, it has a{' '}
             <strong>temporary password</strong>: sign in with it and you&apos;ll be asked to choose your own.
@@ -140,7 +141,7 @@ export function RegisterScreen(): JSX.Element {
         </div>
         <p className={styles.footerLine} style={{ marginTop: 'var(--space-5)' }}>
           Running a shipping company?{' '}
-          <Link to="/get-started" className={styles.link}>Request access</Link>
+          <Link to="/get-started" className={styles.link}>Book a demo</Link>
         </p>
       </AuthShell>
     )
@@ -220,7 +221,7 @@ export function RegisterScreen(): JSX.Element {
           </span>
         </div>
 
-        <Button type="submit" variant="accent" size="lg" full loading={submitting} disabled={!agreed}>
+        <Button type="submit" variant="primary" size="lg" full loading={submitting} disabled={!agreed}>
           Create account
         </Button>
       </form>
@@ -231,45 +232,10 @@ export function RegisterScreen(): JSX.Element {
       </p>
       <p className={styles.footerLine}>
         Running a shipping company?{' '}
-        <Link to="/get-started" className={styles.link}>Request access</Link>
+        <Link to="/get-started" className={styles.link}>Book a demo</Link>
       </p>
 
-      <Modal
-        open={legalModal !== null}
-        onClose={() => setLegalModal(null)}
-        title={legalModal === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
-        size="sm"
-        footer={
-          <Button variant="primary" onClick={() => setLegalModal(null)}>
-            Close
-          </Button>
-        }
-      >
-        {legalModal === 'terms' ? (
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', lineHeight: 'var(--leading-body)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <p style={{ margin: 0 }}>
-              Your ShipX customer account gives you access to shipment tracking, invoices, release notes, and
-              claims managed by your shipping company.
-            </p>
-            <p style={{ margin: 0 }}>
-              Keep your sign-in credentials and warehouse pickup codes confidential. Freight rates, customs clearance,
-              storage fees, and delivery terms are set directly by your shipping company.
-            </p>
-          </div>
-        ) : (
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-2)', lineHeight: 'var(--leading-body)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <p style={{ margin: 0 }}>
-              We collect your name, email address, phone number, and optional WhatsApp number solely to manage
-              your shipments, billing, release notes, and account security with your shipping company.
-            </p>
-            <p style={{ margin: 0 }}>
-              Transactional shipment and invoice notifications are sent automatically. Optional announcements and
-              offers are only sent via channels you explicitly opt into, and you may update your preferences or
-              request data export/erasure (NDPR / GDPR) at any time.
-            </p>
-          </div>
-        )}
-      </Modal>
+      <LegalModal kind={legalModal} onClose={() => setLegalModal(null)} />
     </AuthShell>
   )
 }

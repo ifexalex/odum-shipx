@@ -1,13 +1,14 @@
-import { useState, type FormEvent, type JSX } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useContext, useState, type FormEvent, type JSX } from 'react'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { authProvider, isInteractiveLogin } from '../../auth/authClient'
+import { LocalRoleContext } from '../../auth/LocalRoleContext'
 import { safeNextPath } from '../../auth/returnPath'
 import { homePathForRole } from '../../auth/roleHome'
-import { rememberNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
-import { Banner, Button, Field, Icon, KolaMark, ShipxWordmark, IconButton } from '../../design/components'
-import { colors } from '../../design/theme'
+import { Banner, Button, Field, Icon, IconButton } from '../../design/components'
+import { AuthShell, FormHead } from './AuthShell'
 import styles from './LoginScreen.module.css'
+import { rememberNext } from './returnPath'
 
 // Cognito-side errors only — tenant suspension is a backend/RLS concern
 // surfaced on the first real API call after login, not at the Cognito IdP
@@ -34,53 +35,9 @@ function loginErrorMessage(err: unknown): string {
   return 'Something went wrong signing you in. Please try again.'
 }
 
-function BrandIllustration(): JSX.Element {
-  return (
-    <div className={styles.illustration}>
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: 0.18,
-        }}
-      >
-        <KolaMark size={280} color={colors.primaryBright} />
-      </div>
-      <svg viewBox="0 0 400 400" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-        <defs>
-          <linearGradient id="routeGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor={colors.primaryBright} stopOpacity="0.2" />
-            <stop offset="0.5" stopColor={colors.primaryBright} stopOpacity="1" />
-            <stop offset="1" stopColor={colors.accentHover} stopOpacity="0.9" />
-          </linearGradient>
-        </defs>
-        <circle cx="80" cy="130" r="10" fill={colors.primaryBright} />
-        <circle cx="80" cy="130" r="22" fill={colors.primaryBright} fillOpacity="0.18" />
-        <circle cx="320" cy="280" r="10" fill={colors.accentHover} />
-        <circle cx="320" cy="280" r="22" fill={colors.accentHover} fillOpacity="0.22" />
-        <path d="M80 130 Q200 60 320 280" fill="none" stroke="url(#routeGrad)" strokeWidth="3" strokeDasharray="6 6" />
-        <g transform="translate(195 145) rotate(28)">
-          <rect x="-22" y="-13" width="44" height="26" rx="6" fill={colors.primaryBright} />
-          <rect x="-18" y="-9" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
-          <rect x="-18" y="-2" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
-          <rect x="-18" y="5" width="36" height="2" fill={colors.forestDark} opacity="0.35" />
-        </g>
-        <text x="80" y="105" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.primaryBright, letterSpacing: 'var(--tracking-label)' }}>
-          CN · GZG
-        </text>
-        <text x="320" y="312" textAnchor="middle" style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', fill: colors.accentHover, letterSpacing: 'var(--tracking-label)' }}>
-          NG · LOS
-        </text>
-      </svg>
-    </div>
-  )
-}
-
 export function LoginScreen(): JSX.Element {
-  const { login, beginLogin, status } = useSession()
+  const { session, login, beginLogin, status } = useSession()
+  const isLocalDevShim = useContext(LocalRoleContext) !== null
   const navigate = useNavigate()
   // Where the visitor was heading before sign-in; refused unless it is a plain in-app path (auth/returnPath.ts).
   const next = safeNextPath(useSearchParams()[0].get('next'))
@@ -90,12 +47,19 @@ export function LoginScreen(): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const loading = status === 'loading'
 
+  // Already signed in (in real auth) — send straight to the requested path or the role's home.
+  // Keep /login reachable under LocalAuthProvider so developers and local-stack E2E tests can
+  // switch from the default dev shim into a real Cognito session without logging out first.
+  if (status === 'authenticated' && session && !isLocalDevShim) {
+    return <Navigate to={next ?? homePathForRole(session.role)} replace />
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     setError(null)
     try {
-      const session = await login(email, password)
-      navigate(next ?? homePathForRole(session.role), { replace: true })
+      const nextSession = await login(email, password)
+      navigate(next ?? homePathForRole(nextSession.role), { replace: true })
     } catch (err) {
       // Temporary password (registration / staff invite): Cognito demands a
       // permanent one before issuing tokens — hand off to the reset screen.
@@ -125,122 +89,99 @@ export function LoginScreen(): JSX.Element {
   }
 
   return (
-    <div className={styles.shell}>
-      <div className={styles.brandPanel}>
-        <div className={styles.glow} />
-        <div className={styles.brandTop}>
-          <KolaMark size={26} color="#fff" />
-          <ShipxWordmark size={22} showBy />
-        </div>
-        <div className={styles.tagline}>
-          <BrandIllustration />
-          {/* The brand line, not the page's heading: the form's title is the h1 (FD-49). */}
-          <p className={styles.heroHeading}>
-            Cargo logistics,
-            <br />
-            <span className={styles.heroAccent}>engineered to move.</span>
-          </p>
-          <p className={styles.heroSub}>
-            Guangzhou to Lagos. End-to-end. Unstoppable. Built for the operators, customers, and developers
-            who lead every shipment.
-          </p>
-        </div>
-        <div className={styles.brandFooter}>
-          <div className={styles.footerCopy}>© 2026 ShipX Platform</div>
-          <div className={styles.statusRow}>
-            <span className={styles.statusDot} />
-            <span className={styles.statusText}>All systems operational</span>
-          </div>
-        </div>
-      </div>
+    <AuthShell>
+      <FormHead
+        title="Sign in to ShipX"
+        sub={
+          isInteractiveLogin
+            ? "You'll be redirected to our secure sign-in screen to access your portal."
+            : 'Enter your credentials to access your portal.'
+        }
+      />
 
-      <div className={styles.formPanel}>
-        <div className={styles.formWrap}>
-          <div className={styles.mobileBrand}>
-            <KolaMark size={24} color="var(--color-primary)" />
-            <ShipxWordmark size={18} />
-          </div>
-          <div className={styles.formHead}>
-            <h1 className={styles.formTitle}>Sign in to ShipX</h1>
-            <p className={styles.formSub}>
-              {isInteractiveLogin
-                ? 'Sign in to access your portal.'
-                : 'Enter your credentials to access your portal.'}
-            </p>
-          </div>
+      {error && (
+        <div style={{ marginBottom: 'var(--space-5)' }}>
+          <Banner variant="error" title="Couldn't sign in">
+            {error}
+          </Banner>
+        </div>
+      )}
 
-          {error && (
-            <div style={{ marginBottom: 'var(--space-5)' }}>
-              <Banner variant="error" title="Couldn't sign in">
-                {error}
-              </Banner>
-            </div>
-          )}
-
-          {isInteractiveLogin ? (
-            <Button variant="accent" size="lg" full loading={loading} onClick={() => void handleEntraLogin()}>
-              Sign in
-            </Button>
-          ) : (
-            <form onSubmit={handleSubmit}>
-              <Field
-                label="Email address"
-                type="email"
-                icon="mail"
-                placeholder="you@company.com"
-                name="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                autoComplete="username"
-                required
+      {isInteractiveLogin ? (
+        <Button
+          variant="primary"
+          size="lg"
+          full
+          trailingIcon="arrowright"
+          loading={loading}
+          onClick={() => void handleEntraLogin()}
+        >
+          Sign in
+        </Button>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <Field
+            label="Email address"
+            type="email"
+            icon="mail"
+            placeholder="you@company.com"
+            name="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="username"
+            required
+          />
+          <Field
+            label="Password"
+            type={showPassword ? 'text' : 'password'}
+            icon="lock"
+            placeholder="••••••••"
+            name="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="current-password"
+            required
+            trailing={
+              <IconButton
+                className={styles.trailingButton}
+                size="sm"
+                icon={showPassword ? 'eyeoff' : 'eye'}
+                label={showPassword ? 'Hide password' : 'Show password'}
+                onClick={() => setShowPassword((value) => !value)}
               />
-              <Field
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                icon="lock"
-                placeholder="••••••••"
-                name="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-                required
-                trailing={
-                  <IconButton
-              className={styles.trailingButton}
-              size="sm"
-              icon={showPassword ? 'eyeoff' : 'eye'}
-              label={showPassword ? 'Hide password' : 'Show password'}
-              onClick={() => setShowPassword((value) => !value)}
-            />
-                }
-              />
-              <div className={styles.rowBetween} style={{ justifyContent: 'flex-end' }}>
-                <Link to="/forgot-password" className={styles.link}>Forgot password?</Link>
-              </div>
-              <Button type="submit" variant="accent" size="lg" full loading={loading}>
-                Sign In
-              </Button>
-            </form>
-          )}
-
-          <div className={styles.divider}>
-            <span className={styles.dividerLine} />
-            <span className={styles.dividerText}>or</span>
-            <span className={styles.dividerLine} />
+            }
+          />
+          <div className={styles.rowBetween} style={{ justifyContent: 'flex-end' }}>
+            <Link to="/forgot-password" className={styles.link}>
+              Forgot password?
+            </Link>
           </div>
-          <p className={styles.footerLine}>
-            Have a tracking code?{' '}
-            <Link to="/track" className={styles.footerLinkStrong}>Track a shipment <Icon name="arrowright" size={12} /></Link>
-          </p>
-          <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)' }}>
-            Are you a shipping company?{' '}
-            <Link to="/get-started" className={styles.footerLinkStrong}>Onboard with ShipX <Icon name="arrowright" size={12} /></Link>
-          </p>
-          <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
-            New customer? Use the sign-up or invite link sent by your shipping company.
-          </p>
-        </div>
+          <Button type="submit" variant="primary" size="lg" full loading={loading}>
+            Sign in
+          </Button>
+        </form>
+      )}
+
+      <div className={styles.divider}>
+        <span className={styles.dividerLine} />
+        <span className={styles.dividerText}>or</span>
+        <span className={styles.dividerLine} />
       </div>
-    </div>
+      <p className={styles.footerLine}>
+        Have a tracking code?{' '}
+        <Link to="/track" className={styles.footerLinkStrong}>
+          Track a shipment <Icon name="arrowright" size={12} />
+        </Link>
+      </p>
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)' }}>
+        Are you a shipping company?{' '}
+        <Link to="/get-started" className={styles.footerLinkStrong}>
+          Book a demo <Icon name="arrowright" size={12} />
+        </Link>
+      </p>
+      <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
+        New customer? Use the sign-up or invite link sent by your shipping company.
+      </p>
+    </AuthShell>
   )
 }

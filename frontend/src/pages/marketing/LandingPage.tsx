@@ -1,6 +1,7 @@
-import { useEffect, useRef, type JSX, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Icon, KolaMark, ShipxWordmark } from '../../design/components'
+import { Icon, KolaMark, ShipxWordmark, ThemeToggle } from '../../design/components'
+import { LegalModal, type LegalDocKind } from '../shared/LegalModal'
 import styles from './LandingPage.module.css'
 
 // Scroll-reveal, ported from the v2 prototype's inline script: elements
@@ -189,7 +190,7 @@ const ROLES: RoleCard[] = [
     label: 'Multi-tenant',
     tone: 'platform',
     title: 'Your own isolated space',
-    body: 'Your data, users, customers and branding stay completely separate from every other company on Shipx.',
+    body: 'Your data, users, customers and branding stay completely separate from every other company on ShipX.',
     dark: true,
   },
 ]
@@ -197,8 +198,8 @@ const ROLES: RoleCard[] = [
 const STEPS = [
   {
     n: 1,
-    title: 'Request access',
-    body: 'Tell us about your operation. Once we have set up your workspace, upload your logo and set your USD→NGN and CBM rates.',
+    title: 'Book a demo',
+    body: 'Tell us about your operation. Once we walk you through and set up your workspace, upload your logo and set your USD→NGN and CBM rates.',
   },
   {
     n: 2,
@@ -226,13 +227,14 @@ function NavLogo(): JSX.Element {
   return (
     <Link to="/" className={styles.logo}>
       <KolaMark size={30} color="var(--color-primary-bright)" />
-      <ShipxWordmark size={22} color="#fff" xColor="var(--landing-accent-on-dark)" />
+      <ShipxWordmark size={22} color="var(--color-on-brand)" xColor="var(--landing-accent-on-dark)" />
     </Link>
   )
 }
 
 export function LandingPage(): JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
+  const [legalModal, setLegalModal] = useState<LegalDocKind | null>(null)
   useScrollReveal(rootRef)
 
   const pricing: PricingTier[] = [
@@ -244,7 +246,7 @@ export function LandingPage(): JSX.Element {
       perks: ['Up to 10 staff users', '20 containers / month', '5 GB document storage', 'SMS + WhatsApp + email alerts'],
       cta: (
         <CtaLink to="/get-started" variant="secondary" full>
-          Request access
+          Book a demo
         </CtaLink>
       ),
     },
@@ -263,7 +265,7 @@ export function LandingPage(): JSX.Element {
       featured: true,
       cta: (
         <CtaLink to="/get-started" variant="primary" full>
-          Request access
+          Book a demo
         </CtaLink>
       ),
     },
@@ -291,13 +293,15 @@ export function LandingPage(): JSX.Element {
             <a href="#features">Features</a>
             <a href="#roles">For your team</a>
             <a href="#pricing">Pricing</a>
+            <Link to="/track">Track shipment</Link>
           </nav>
           <div className={styles.navCta}>
+            <ThemeToggle className={styles.navThemeToggle} />
             <Link to="/login" className={styles.signIn}>
               Sign in
             </Link>
             <CtaLink to="/get-started" variant="accent" small>
-              Request access
+              Book a demo
             </CtaLink>
           </div>
         </div>
@@ -313,13 +317,13 @@ export function LandingPage(): JSX.Element {
             Run your entire cargo operation on <em>one platform.</em>
           </h1>
           <p className={styles.heroSub}>
-            Shipx gives shipping companies everything to move cargo from Guangzhou to Lagos — containers, packing
+            ShipX gives shipping companies everything to move cargo from Guangzhou to Lagos — containers, packing
             lists, billing, customs, claims and customer tracking. One login for your whole team.
           </p>
           <div className={styles.heroCta}>
-            {/* A request our team reviews, not a self-serve trial (FD-30): the copy promises what /get-started does. */}
+            {/* A demo & onboarding request our team reviews, not a self-serve trial (FD-30). */}
             <CtaLink to="/get-started" variant="accent">
-              Request access
+              Book a demo
             </CtaLink>
             <CtaAnchor href="#how" variant="ghost">
               See how it works
@@ -363,7 +367,7 @@ export function LandingPage(): JSX.Element {
             </div>
             <div>
               <div className={styles.routeCity}>In transit</div>
-              <div className={styles.routeCode}>live tracking · 6 stages</div>
+              <div className={styles.routeCode}>live tracking · 8 stages</div>
             </div>
           </div>
           <div className={styles.routeLine} aria-hidden="true" />
@@ -382,10 +386,10 @@ export function LandingPage(): JSX.Element {
       <section className={styles.block}>
         <div className={styles.wrap}>
           <div className={styles.secHead} data-reveal="">
-            <div className={styles.secTag}>Why Shipx</div>
+            <div className={styles.secTag}>Why ShipX</div>
             <h2>Stop running your business on WhatsApp and spreadsheets.</h2>
             <p>
-              Most China–Nigeria forwarders juggle a dozen disconnected tools. Shipx replaces all of it with one
+              Most China–Nigeria forwarders juggle a dozen disconnected tools. ShipX replaces all of it with one
               system your whole team — and your customers — actually log into.
             </p>
           </div>
@@ -416,7 +420,7 @@ export function LandingPage(): JSX.Element {
               </ul>
             </div>
             <div className={`${styles.panel} ${styles.panelSolution}`} data-reveal="">
-              <h3>The Shipx way</h3>
+              <h3>The ShipX way</h3>
               <ul>
                 <li>
                   <span className={`${styles.panelIcon} ${styles.panelIconGood}`}>✓</span>
@@ -492,7 +496,7 @@ export function LandingPage(): JSX.Element {
           <div className={styles.secHead} data-reveal="">
             <div className={styles.secTag}>How it works</div>
             <h2>Live in a day, not a quarter.</h2>
-            <p>No lengthy implementation. Request access, set your rates, invite your team, and start moving cargo.</p>
+            <p>No lengthy implementation. Book a demo, set your rates, invite your team, and start moving cargo.</p>
           </div>
           <div className={styles.features}>
             {STEPS.map((s) => (
@@ -547,16 +551,16 @@ export function LandingPage(): JSX.Element {
           <div className={styles.ctaBand} data-reveal="">
             <h2>Lead every shipment. Guangzhou to Lagos.</h2>
             <p>
-              Join the forwarders running their entire China–Nigeria operation on Shipx. Tell us about your operation
+              Join the forwarders running their entire China–Nigeria operation on ShipX. Tell us about your operation
               and we will set up your branded portal with you.
             </p>
             <div className={`${styles.heroCta} ${styles.ctaCenter}`}>
               <CtaLink to="/get-started" variant="accent">
-                Request access
-              </CtaLink>
-              <CtaAnchor href="mailto:sales@shipx.co" variant="ghost">
                 Book a demo
-              </CtaAnchor>
+              </CtaLink>
+              <CtaLink to="/track" variant="ghost">
+                Track a shipment
+              </CtaLink>
             </div>
           </div>
         </div>
@@ -577,6 +581,7 @@ export function LandingPage(): JSX.Element {
               <a href="#features">Features</a>
               <a href="#roles">For your team</a>
               <a href="#pricing">Pricing</a>
+              <Link to="/track">Track a shipment</Link>
               <Link to="/login">Sign in</Link>
             </div>
             <div className={styles.footCol}>
@@ -587,19 +592,27 @@ export function LandingPage(): JSX.Element {
             </div>
             <div className={styles.footCol}>
               <h5>Legal</h5>
-              <a href="#">Terms of service</a>
-              <a href="#">Privacy (NDPR)</a>
-              <a href="#">Data processing</a>
+              <button type="button" className={styles.footLinkBtn} onClick={() => setLegalModal('terms')}>
+                Terms of service
+              </button>
+              <button type="button" className={styles.footLinkBtn} onClick={() => setLegalModal('privacy')}>
+                Privacy (NDPR)
+              </button>
+              <button type="button" className={styles.footLinkBtn} onClick={() => setLegalModal('dpa')}>
+                Data processing
+              </button>
             </div>
           </div>
           <div className={styles.footBottom}>
-            <span>© 2026 Shipx · All rights reserved.</span>
+            <span>© 2026 ShipX · All rights reserved.</span>
             <span className={styles.footBy}>
               A product by <em>ODUM</em>
             </span>
           </div>
         </div>
       </footer>
+
+      <LegalModal kind={legalModal} onClose={() => setLegalModal(null)} />
     </div>
   )
 }

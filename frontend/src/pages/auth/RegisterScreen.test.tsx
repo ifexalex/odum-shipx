@@ -35,9 +35,9 @@ describe('RegisterScreen', () => {
     expect(screen.queryByText('Which are you?')).toBeNull()
   })
 
-  it('points a shipping company to the access request from its footer', async () => {
+  it('points a shipping company to Book a demo from its footer', async () => {
     renderAt('/register/acme')
-    await userEvent.click(screen.getByRole('link', { name: 'Request access' }))
+    await userEvent.click(screen.getByRole('link', { name: 'Book a demo' }))
     expect(await screen.findByText('Get started page')).toBeInTheDocument()
   })
 

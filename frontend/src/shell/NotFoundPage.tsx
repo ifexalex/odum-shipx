@@ -41,7 +41,7 @@ export function NotFoundPage({ inLayout = false }: { inLayout?: boolean }): JSX.
     )
   }
 
-  return <BarePage signedIn={signedIn} target={signedIn && session ? homePathForRole(session.role) : '/login'} />
+  return <BarePage signedIn={signedIn} target={signedIn && session ? homePathForRole(session.role) : '/'} />
 }
 
 function BarePage({ signedIn, target }: { signedIn: boolean; target: string }): JSX.Element {
@@ -52,9 +52,16 @@ function BarePage({ signedIn, target }: { signedIn: boolean; target: string }): 
       <div className={styles.code}>404</div>
       <h1 className={styles.title}>Page not found</h1>
       <p className={styles.subtitle}>The page you're looking for doesn't exist or may have moved.</p>
-      <Button variant="primary" onClick={() => navigate(target, { replace: true })}>
-        {signedIn ? 'Go back home' : 'Sign in'}
-      </Button>
+      <div className={styles.actions}>
+        <Button variant="primary" onClick={() => navigate(target, { replace: true })}>
+          {signedIn ? 'Go back home' : 'Go to home page'}
+        </Button>
+        {!signedIn && (
+          <Button variant="secondary" onClick={() => navigate('/login', { replace: true })}>
+            Sign in
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

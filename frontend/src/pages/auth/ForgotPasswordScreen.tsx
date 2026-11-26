@@ -83,7 +83,7 @@ export function ForgotPasswordScreen(): JSX.Element {
           >
             <Icon name="mail" size={38} color="var(--color-primary)" stroke={2} />
           </div>
-          <h2 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email</h2>
+          <h1 className={styles.formTitle} style={{ marginBottom: 'var(--space-2)' }}>Check your email</h1>
           <p className={styles.formSub}>We sent a verification code to</p>
           <p style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--color-ink)', margin: '0 0 var(--space-6)' }}>{email}</p>
           {error && (
@@ -101,7 +101,7 @@ export function ForgotPasswordScreen(): JSX.Element {
           </Banner>
           <div style={{ marginTop: 'var(--space-6)' }}>
             <Button
-              variant="accent"
+              variant="primary"
               size="lg"
               full
               onClick={() => navigate(`/reset-password?email=${encodeURIComponent(email)}`)}
@@ -163,7 +163,7 @@ export function ForgotPasswordScreen(): JSX.Element {
           autoComplete="email"
           required
         />
-        <Button type="submit" variant="accent" size="lg" full loading={submitting}>
+        <Button type="submit" variant="primary" size="lg" full loading={submitting}>
           Send reset code
         </Button>
       </form>

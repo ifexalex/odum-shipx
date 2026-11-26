@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import { LocalRoleContext } from '../../auth/LocalRoleContext'
 import { SessionContext, type SessionContextValue } from '../../auth/SessionContext'
 import type { Session } from '../../auth/types'
 import { LoginScreen } from './LoginScreen'
@@ -56,7 +57,40 @@ describe('LoginScreen', () => {
     renderLoginScreen(makeContextValue({}))
     expect(screen.getByLabelText('Email address', { exact: false, selector: 'input' })).toBeInTheDocument()
     expect(screen.getByLabelText('Password', { exact: false, selector: 'input' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+  })
+
+  it('links back to the landing page and points shipping companies to Book a demo', () => {
+    renderLoginScreen(makeContextValue({}))
+    expect(screen.getByRole('link', { name: /back to home/i })).toHaveAttribute('href', '/')
+    expect(screen.getAllByRole('link', { name: 'ShipX home' }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('link', { name: /book a demo/i })).toHaveAttribute('href', '/get-started')
+  })
+
+  it('redirects an already-authenticated user away from /login to their role home', () => {
+    renderLoginScreen(
+      makeContextValue({ status: 'authenticated', session: fakeSession('nigeria_office_staff') }),
+    )
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+  })
+
+  it('keeps /login reachable under LocalRoleContext so local dev & E2E can sign in with real credentials', () => {
+    render(
+      <LocalRoleContext.Provider value={{ identity: 'tenant_admin', setIdentity: vi.fn() }}>
+        <SessionContext.Provider
+          value={makeContextValue({ status: 'authenticated', session: fakeSession('tenant_admin') })}
+        >
+          <MemoryRouter initialEntries={['/login']}>
+            <Routes>
+              <Route path="/login" element={<LoginScreen />} />
+              <Route path="/dashboard" element={<div>Dashboard</div>} />
+            </Routes>
+          </MemoryRouter>
+        </SessionContext.Provider>
+      </LocalRoleContext.Provider>,
+    )
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument()
+    expect(screen.queryByText('Dashboard')).toBeNull()
   })
 
   it('calls login with the entered credentials and redirects tenant staff to /dashboard', async () => {
@@ -65,7 +99,7 @@ describe('LoginScreen', () => {
 
     await userEvent.type(screen.getByLabelText('Email address', { exact: false, selector: 'input' }), 'amara@acmelogistics.com')
     await userEvent.type(screen.getByLabelText('Password', { exact: false, selector: 'input' }), 'correct-password')
-    await userEvent.click(screen.getByRole('button', { name: 'Sign In' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(login).toHaveBeenCalledWith('amara@acmelogistics.com', 'correct-password')
     expect(await screen.findByText('Dashboard')).toBeInTheDocument()
@@ -76,7 +110,7 @@ describe('LoginScreen', () => {
     renderLoginScreen(makeContextValue({ login }))
     await userEvent.type(screen.getByLabelText('Email address', { exact: false, selector: 'input' }), 'admin@shipx.co')
     await userEvent.type(screen.getByLabelText('Password', { exact: false, selector: 'input' }), 'pw')
-    await userEvent.click(screen.getByRole('button', { name: 'Sign In' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByText('Platform dashboard')).toBeInTheDocument()
   })
 
@@ -85,7 +119,7 @@ describe('LoginScreen', () => {
     renderLoginScreen(makeContextValue({ login }))
     await userEvent.type(screen.getByLabelText('Email address', { exact: false, selector: 'input' }), 'ngozi@example.com')
     await userEvent.type(screen.getByLabelText('Password', { exact: false, selector: 'input' }), 'pw')
-    await userEvent.click(screen.getByRole('button', { name: 'Sign In' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByText('My shipments')).toBeInTheDocument()
   })
 
@@ -97,7 +131,7 @@ describe('LoginScreen', () => {
 
     await userEvent.type(screen.getByLabelText('Email address', { exact: false, selector: 'input' }), 'amara@acmelogistics.com')
     await userEvent.type(screen.getByLabelText('Password', { exact: false, selector: 'input' }), 'wrong-password')
-    await userEvent.click(screen.getByRole('button', { name: 'Sign In' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
     expect(await screen.findByText("Couldn't sign in")).toBeInTheDocument()
     expect(screen.getByLabelText('Email address', { exact: false, selector: 'input' })).toBeInTheDocument()
@@ -117,7 +151,7 @@ describe('LoginScreen', () => {
 
   it('disables the submit button while status is loading', () => {
     renderLoginScreen(makeContextValue({ status: 'loading' }))
-    expect(screen.getByRole('button', { name: 'Sign In' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeDisabled()
   })
 })
 

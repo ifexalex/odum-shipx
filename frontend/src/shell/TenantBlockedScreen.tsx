@@ -39,16 +39,15 @@ export function TenantBlockedScreen({ kind }: { kind: TenantBlockedKind }): JSX.
           <KolaMark size={40} color="var(--color-primary-bright)" />
         </div>
         <div className={styles.iconCircle}>
-          <Icon name="suspend" size={28} color="#fca5a5" />
+          <Icon name="suspend" size={28} color="var(--color-error-strong)" />
         </div>
         <h1 className={styles.title}>{copy.title}</h1>
         <p className={styles.body}>{copy.body}</p>
         <p className={styles.hint}>{copy.hint}</p>
         <div className={styles.actions}>
-          <a href="mailto:support@shipx.co" className={styles.mailLink}>
-            <Button variant="primary" size="lg" icon="mail" mutates={false}>
-              Contact support
-            </Button>
+          <a href="mailto:support@shipx.co" className={styles.supportLink}>
+            <Icon name="mail" size={16} />
+            Contact support
           </a>
           <Button variant="ghost" size="lg" icon="logout" onClick={logout} className={styles.signOut}>
             Sign out

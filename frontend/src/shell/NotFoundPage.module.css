@@ -34,3 +34,11 @@
   max-width: 360px;
   margin: 0;
 }
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
