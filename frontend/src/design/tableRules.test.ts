@@ -44,7 +44,7 @@ describe('table rules (FD-13)', () => {
   it('every money column names its currency in the title', () => {
     const offenders = files.flatMap(([path, text]) =>
       [...text.matchAll(/title: ['`]([^'`]*)['`], type: 'money'/g)]
-        .filter((m) => !/\((₦|\$|\$\{)/.test(m[1]!))
+        .filter((m) => !/\((₦|\$|¥|\$\{)/.test(m[1]!))
         .map((m) => `${path}: ${m[1]}`),
     )
     expect(offenders).toEqual([])

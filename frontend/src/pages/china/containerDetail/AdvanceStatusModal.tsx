@@ -11,17 +11,10 @@ import {
 } from '../../../api/tracking'
 import { Banner, Button, Field, Modal, Mono, DateField } from '../../../design/components'
 import { useTenantConfig } from '../../../hooks/useConfig'
-import { formatDate } from '../../../lib/format'
+import { addDaysIso, formatDate } from '../../../lib/format'
 import styles from '../ContainerDetail.module.css'
 import { statusLabel } from '../../../design/status'
 import { toast } from '../../../design/toast'
-
-function addDaysIso(isoDate: string, days: number): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null
-  const [y = 0, m = 1, d = 1] = isoDate.split('-').map(Number)
-  const dt = new Date(Date.UTC(y, m - 1, d + days))
-  return dt.toISOString().slice(0, 10)
-}
 
 export interface AdvanceModalProps {
   container: Container

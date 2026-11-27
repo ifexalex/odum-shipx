@@ -10,6 +10,7 @@ import {
   Badge,
   Button,
   Card,
+  DateField,
   Icon,
   Mono,
   IconButton,
@@ -361,11 +362,10 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                 <div className={styles.itemDatesRow}>
                   {deliveryDateMode === 'multiple_days' && (
                     <div className={styles.itemField}>
-                      <span className={styles.itemFieldLabel}>Delivery date</span>
-                      <CellInput
-                        label={`Delivery date, item ${index + 1}`}
-                        className={styles.itemDateInput}
-                        type="date"
+                      <DateField
+                        label="Delivery date"
+                        name={`item-delivery-date-${index}`}
+                        aria-label={`Delivery date, item ${index + 1}`}
                         max={today}
                         value={item.received_date ?? ''}
                         onChange={(event) =>
@@ -377,13 +377,11 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                     </div>
                   )}
                   <div className={styles.itemField}>
-                    <span className={styles.itemFieldLabel}>
-                      Loading date override (optional)
-                    </span>
-                    <CellInput
-                      label={`Loading date override, item ${index + 1}`}
-                      className={styles.itemDateInput}
-                      type="date"
+                    <DateField
+                      label="Loading date override"
+                      name={`item-loading-date-${index}`}
+                      aria-label={`Loading date override, item ${index + 1}`}
+                      optional
                       min={
                         (deliveryDateMode === 'same_day' ? deliveryDate : item.received_date) ||
                         undefined

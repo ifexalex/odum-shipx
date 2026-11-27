@@ -231,3 +231,10 @@ export function isoDateOffset(days: number, now: Date = new Date()): string {
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
 }
 
+/** Add `days` to a calendar `YYYY-MM-DD` string and return the resulting `YYYY-MM-DD`, or null if invalid. */
+export function addDaysIso(isoDate: string, days: number): string | null {
+  if (!DATE_ONLY.test(isoDate)) return null
+  const [year, month, day] = isoDate.split('-').map(Number) as [number, number, number]
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
+}
+

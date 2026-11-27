@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { type JSX } from 'react'
-import { Banner, Button, Card, Combobox, DateField, Field } from '../../../design/components'
+import { Banner, Button, Card, CellRadio, Combobox, DateField, Field } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import { useCanOpen } from '../../../shell/useCanOpen'
 import styles from '../CreatePackingList.module.css'
@@ -196,8 +196,8 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
             .filter(Boolean)
             .join(' ')}
         >
-          <input
-            type="radio"
+          <CellRadio
+            label="Same-day delivery items"
             name="deliveryDateMode"
             value="same_day"
             checked={deliveryDateMode === 'same_day'}
@@ -215,8 +215,8 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
             .filter(Boolean)
             .join(' ')}
         >
-          <input
-            type="radio"
+          <CellRadio
+            label="Multiple-day delivery items"
             name="deliveryDateMode"
             value="multiple_days"
             checked={deliveryDateMode === 'multiple_days'}

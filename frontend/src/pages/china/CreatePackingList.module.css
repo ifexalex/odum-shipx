@@ -424,7 +424,7 @@
   gap: var(--space-3);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 600px) {
   .modeToggle {
     grid-template-columns: 1fr;
   }
@@ -489,7 +489,7 @@
   border-top: 1px dashed var(--color-line);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 600px) {
   .itemDatesRow {
     grid-template-columns: 1fr;
   }

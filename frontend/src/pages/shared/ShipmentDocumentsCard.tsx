@@ -7,7 +7,7 @@ import {
   type DocumentLang,
   type PackingList,
 } from '../../api/packingList'
-import { Badge, Banner, Button, Card, Mono } from '../../design/components'
+import { Badge, Banner, Button, Card, CellRadio, Mono } from '../../design/components'
 import { toast } from '../../design/toast'
 import { runDocument } from '../../lib/documents'
 import { formatDate } from '../../lib/format'
@@ -46,8 +46,8 @@ function LangToggle({
             .filter(Boolean)
             .join(' ')}
         >
-          <input
-            type="radio"
+          <CellRadio
+            label={opt.label}
             name={name}
             value={opt.value}
             checked={value === opt.value}
