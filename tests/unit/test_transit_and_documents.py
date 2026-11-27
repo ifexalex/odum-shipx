@@ -336,6 +336,73 @@ class TestEng4LoadingReceiptApprovalAndBilingualPdfs:
         assert address == "Block C, Trade Fair Complex"
         assert pdf_theme.initials("示例国际货运代理有限公司 · Acme Global Shipping") == "AG"
 
+    def test_loading_receipt_executive_banner_layout_contains_key_sections_bilingually(self) -> None:
+        from io import BytesIO
+
+        from pypdf import PdfReader
+
+        brand = _brand()
+        pl = _sample_pl(
+            destination="Nigeria",
+            arrival_warehouse_country="Nigeria",
+            arrival_warehouse_state="Lagos",
+            arrival_warehouse_city="Lagos",
+            arrival_warehouse_name="Trade Fair Warehouse",
+            arrival_warehouse_address="Block C, Trade Fair Complex, Lagos",
+            arrival_warehouse_phone="+234 800 111 2222",
+            delivery_date_mode="multiple_days",
+        )
+        items = _sample_items(2)
+
+        for lang, expected_snippets in (
+            (
+                "zh",
+                (
+                    "入仓装柜收据",
+                    "NO. LR-20261127-001",
+                    "Nigeria · Lagos — Trade Fair Warehouse",
+                    "Block C, Trade Fair Complex, Lagos",
+                    "PL-20261127-001",
+                    "MSKU1234567 / PARCEL-101",
+                    "合计 Total",
+                    "Compress bales tightly",
+                ),
+            ),
+            (
+                "en",
+                (
+                    "LOADING RECEIPT",
+                    "NO. LR-20261127-001",
+                    "DESTINATION WAREHOUSE",
+                    "Nigeria · Lagos — Trade Fair Warehouse",
+                    "Block C, Trade Fair Complex, Lagos",
+                    "PL-20261127-001",
+                    "MSKU1234567 / PARCEL-101",
+                    "Total",
+                    "Compress bales tightly",
+                ),
+            ),
+        ):
+            rendered = generate_loading_receipt_pdf_with_meta(brand, pl, items, lang=lang)  # type: ignore[arg-type]
+            assert rendered.page_count == 1
+            reader = PdfReader(BytesIO(rendered.buf.getvalue()))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+            for snippet in expected_snippets:
+                assert snippet in text, f"{snippet!r} missing from {lang} loading receipt"
+            # Verify embedded Noto fonts only (no Helvetica / Times)
+            fonts = {
+                str(font.get_object().get("/BaseFont"))
+                for page in reader.pages
+                for font in ((page.get("/Resources") or {}).get("/Font") or {}).values()
+            }
+            assert fonts and all("Noto" in name for name in fonts)
+
+        # Also verify clean rendering without optional remarks or Chinese brand name
+        plain_brand = pdf_theme.Brand(name="Acme Global Shipping", color="#1c7922")
+        no_remarks_pl = _sample_pl(remarks=None)
+        rendered_plain = generate_loading_receipt_pdf_with_meta(plain_brand, no_remarks_pl, items, lang="en")
+        assert rendered_plain.page_count == 1
+
 
 class TestEng5DualFormatGuardrailAndWhatsApp:
     def test_single_page_pdf_rasterizes_to_valid_png(self) -> None:
