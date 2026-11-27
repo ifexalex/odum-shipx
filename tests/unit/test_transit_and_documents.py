@@ -172,10 +172,11 @@ class TestEng3DeliveryDateModesAndTracking:
         )
         assert req.items[1].loading_date == date(2026, 11, 6)
 
-    def test_shared_tracking_code_across_multiple_delivery_dates(self) -> None:
+    def test_shared_tracking_code_across_multiple_delivery_dates_on_same_loading_date(self) -> None:
         items = [
-            PackingListItemInput(description="Fabrics", received_date=date(2026, 11, 2)),
-            PackingListItemInput(description="Shoes", received_date=date(2026, 11, 5), loading_date=date(2026, 11, 6)),
+            PackingListItemInput(description="Item A", received_date=date(2026, 11, 21)),
+            PackingListItemInput(description="Item B", received_date=date(2026, 11, 22)),
+            PackingListItemInput(description="Item C", received_date=date(2026, 11, 23)),
         ]
         with (
             patch.object(pl_service.repo, "get_existing_tracking_code", return_value=None),
@@ -193,13 +194,42 @@ class TestEng3DeliveryDateModesAndTracking:
                 min_cbm=Decimal("0.1"),
                 delivery_date_mode="multiple_days",
                 header_delivery_date=None,
+                header_loading_date=date(2026, 11, 24),
             )
 
-        assert len(rows) == 2
-        assert rows[0]["tracking_code"] == rows[1]["tracking_code"] == "XPE-TRK-20261102-001"
-        assert rows[0]["received_date"] == date(2026, 11, 2)
-        assert rows[1]["received_date"] == date(2026, 11, 5)
-        assert rows[1]["loading_date"] == date(2026, 11, 6)
+        assert len(rows) == 3
+        # All three share ONE tracking code centered on the 24th loading date, with distinct tags
+        assert {r["tracking_code"] for r in rows} == {"XPE-TRK-20261124-001"}
+        assert [r["carton_tag"] for r in rows] == ["XPE-MSKU123-001", "XPE-MSKU123-002", "XPE-MSKU123-003"]
+        assert [r["received_date"] for r in rows] == [date(2026, 11, 21), date(2026, 11, 22), date(2026, 11, 23)]
+
+    def test_per_item_different_loading_date_gets_own_loading_date_tracking_code(self) -> None:
+        items = [
+            PackingListItemInput(description="Fabrics", received_date=date(2026, 11, 2)),
+            PackingListItemInput(description="Shoes", received_date=date(2026, 11, 5), loading_date=date(2026, 11, 8)),
+        ]
+        with (
+            patch.object(pl_service.repo, "get_existing_tracking_code", return_value=None),
+            patch.object(pl_service.repo, "get_next_tracking_sequence", return_value=1),
+        ):
+            rows = pl_service._build_item_rows(
+                tenant_id="tenant-1",
+                pl_id="pl-1",
+                items=items,
+                container_id="cont-1",
+                customer_id="cust-1",
+                tenant_short="XPE",
+                container_number="MSKU123",
+                carton_seq_start=1,
+                min_cbm=Decimal("0.1"),
+                delivery_date_mode="multiple_days",
+                header_delivery_date=None,
+                header_loading_date=date(2026, 11, 6),
+            )
+
+        assert rows[0]["tracking_code"] == "XPE-TRK-20261106-001"
+        assert rows[1]["tracking_code"] == "XPE-TRK-20261108-001"
+        assert rows[1]["loading_date"] == date(2026, 11, 8)
 
     def test_same_day_mode_propagates_header_delivery_date_to_all_items(self) -> None:
         items = [PackingListItemInput(description="Item A"), PackingListItemInput(description="Item B")]

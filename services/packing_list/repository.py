@@ -180,10 +180,10 @@ def get_next_pl_reference(tenant_id: str) -> str:
 def get_existing_tracking_code(
     tenant_id: str,
     customer_id: str,
-    received_date: date,
+    loading_date: date,
     container_id: str | None = None,
 ) -> str | None:
-    """Return an existing non-rejected tracking code for (container, customer, date) if one exists."""
+    """Return an existing non-rejected tracking code for (container, customer, effective loading date)."""
     if container_id:
         rows = execute_with_tenant(
             tenant_id,
@@ -194,11 +194,11 @@ def get_existing_tracking_code(
             WHERE pl.tenant_id = %s
               AND pl.container_id = %s
               AND pl.customer_id = %s
-              AND pli.received_date = %s
+              AND COALESCE(pli.loading_date, pl.loading_date, pli.received_date) = %s
               AND pl.status <> 'rejected'
             LIMIT 1
             """,
-            (tenant_id, container_id, customer_id, received_date),
+            (tenant_id, container_id, customer_id, loading_date),
         )
     else:
         rows = execute_with_tenant(
@@ -209,11 +209,11 @@ def get_existing_tracking_code(
             JOIN packing_list pl ON pl.id = pli.packing_list_id
             WHERE pl.tenant_id = %s
               AND pl.customer_id = %s
-              AND pli.received_date = %s
+              AND COALESCE(pli.loading_date, pl.loading_date, pli.received_date) = %s
               AND pl.status <> 'rejected'
             LIMIT 1
             """,
-            (tenant_id, customer_id, received_date),
+            (tenant_id, customer_id, loading_date),
         )
     return rows[0]["tracking_code"] if rows else None
 

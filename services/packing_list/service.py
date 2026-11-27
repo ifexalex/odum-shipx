@@ -204,8 +204,9 @@ def _build_item_rows(
     *,
     delivery_date_mode: str = "same_day",
     header_delivery_date: date | None = None,
+    header_loading_date: date | None = None,
 ) -> list[dict[str, Any]]:
-    """Generate item dicts with carton tags, one shared tracking code, and CBM values."""
+    """Generate item dicts with distinct carton tags and tracking codes grouped by loading date."""
     if min_cbm is None:
         min_cbm = get_min_cbm_per_item(tenant_id)
     rows: list[dict[str, Any]] = []
@@ -221,25 +222,38 @@ def _build_item_rows(
         else:
             effective_dates.append(item.received_date or header_delivery_date or date.today())
 
-    # ENG-3 invariant: all items in one packing list share a SINGLE tracking code,
-    # even when items were delivered across multiple days.
-    shared_tracking_code: str | None = None
-    if effective_dates:
-        anchor_date = (
-            header_delivery_date
-            if delivery_date_mode == "same_day" and header_delivery_date is not None
-            else min(effective_dates)
-        )
-        date_str = anchor_date.strftime("%Y%m%d")
-        date_prefix = f"{tenant_short}-TRK-{date_str}"
-        existing = repo.get_existing_tracking_code(tenant_id, customer_id, anchor_date, container_id=container_id)
-        if existing:
-            shared_tracking_code = existing
-        else:
-            trk_seq = repo.get_next_tracking_sequence(tenant_id, date_prefix)
-            shared_tracking_code = f"{date_prefix}-{trk_seq:03d}"
+    # Tracking code rule: items loaded on the same day share ONE tracking code
+    # (anchored on their effective loading date), even when delivered across
+    # multiple days. Each line item still receives its own distinct carton_tag.
+    fallback_anchor: date = (
+        header_delivery_date
+        if delivery_date_mode == "same_day" and header_delivery_date is not None
+        else (min(effective_dates) if effective_dates else date.today())
+    )
+    tracking_by_load_date: dict[date, str] = {}
+    tracking_seq_cache: dict[str, int] = {}
 
     for item, item_date in zip(items, effective_dates, strict=True):
+        item_load_date: date | None = getattr(item, "loading_date", None)
+        effective_load_date: date = item_load_date or header_loading_date or fallback_anchor
+
+        if effective_load_date in tracking_by_load_date:
+            tracking_code = tracking_by_load_date[effective_load_date]
+        else:
+            date_str = effective_load_date.strftime("%Y%m%d")
+            date_prefix = f"{tenant_short}-TRK-{date_str}"
+            existing = repo.get_existing_tracking_code(tenant_id, customer_id, effective_load_date, container_id=container_id)
+            if existing:
+                tracking_code = existing
+            else:
+                if date_prefix not in tracking_seq_cache:
+                    trk_seq = repo.get_next_tracking_sequence(tenant_id, date_prefix)
+                else:
+                    trk_seq = tracking_seq_cache[date_prefix]
+                tracking_seq_cache[date_prefix] = trk_seq + 1
+                tracking_code = f"{date_prefix}-{trk_seq:03d}"
+            tracking_by_load_date[effective_load_date] = tracking_code
+
         # Floor the per-package CBM at the tenant's minimum (default 0.1).
         # Preserve an explicit item.cbm if dimensions are omitted (e.g. manifest-imported rows).
         computed_cbm = _compute_cbm(item.length_cm, item.width_cm, item.height_cm)
@@ -264,13 +278,13 @@ def _build_item_rows(
                 ),
                 "weight_actual_kg": (float(item.weight_actual_kg * quantity) if item.weight_actual_kg is not None else None),
                 "carton_tag": f"{tenant_short}-{container_number}-{seq:03d}",
-                "tracking_code": shared_tracking_code,
+                "tracking_code": tracking_code,
                 "cbm": float(line_cbm),
                 "length_cm": float(item.length_cm) if item.length_cm is not None else None,
                 "width_cm": float(item.width_cm) if item.width_cm is not None else None,
                 "height_cm": float(item.height_cm) if item.height_cm is not None else None,
                 "received_date": item_date,
-                "loading_date": getattr(item, "loading_date", None),
+                "loading_date": item_load_date,
                 # Stored per unit (multiply by quantity for line total value).
                 "declared_value_usd": (float(item.declared_value_usd) if item.declared_value_usd is not None else None),
                 "quantity": quantity,
@@ -360,6 +374,7 @@ def create_packing_list(
             carton_seq_start=carton_seq,
             delivery_date_mode=delivery_date_mode,
             header_delivery_date=req.delivery_date if delivery_date_mode == "same_day" else None,
+            header_loading_date=req.loading_date,
         )
         added_cbm = sum((Decimal(str(r["cbm"])) for r in item_rows), Decimal("0"))
         _assert_container_capacity(tenant_id, container, added_cbm)
@@ -507,6 +522,7 @@ def update_packing_list(
             carton_seq_start=carton_seq,
             delivery_date_mode=delivery_date_mode,
             header_delivery_date=delivery_date if delivery_date_mode == "same_day" else None,
+            header_loading_date=loading_date,
         )
         updated_cbm = sum((Decimal(str(r["cbm"])) for r in item_rows), Decimal("0"))
         _assert_container_capacity(tenant_id, container, updated_cbm, exclude_pl_id=pl_id)
