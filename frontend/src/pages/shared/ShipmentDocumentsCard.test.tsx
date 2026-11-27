@@ -120,4 +120,45 @@ describe('ShipmentDocumentsCard (ENG-4 & ENG-5)', () => {
     expect(screen.getByRole('button', { name: /Send on WhatsApp \(PDF · 3p\)/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Send on WhatsApp \(PDF · 2p\)/i })).toBeInTheDocument()
   })
+
+  it('hides download and WhatsApp buttons for both documents until the packing list is approved', async () => {
+    vi.spyOn(packingListApi, 'documents').mockResolvedValue({
+      packing_list_id: 'pl-1',
+      customer_phone: '+2348000000001',
+      loading_receipt: {
+        available: false,
+        reference: null,
+        lang: 'zh',
+        page_count: 0,
+        image_eligible: false,
+        image_disabled_reason: null,
+      },
+      packing_list: {
+        available: false,
+        finalized: false,
+        reference: 'PL-20261127-001',
+        lang: 'en',
+        page_count: 0,
+        image_eligible: false,
+        image_disabled_reason: null,
+      },
+    })
+
+    render(
+      withQuery(
+        <ShipmentDocumentsCard
+          packingList={makePl({ status: 'pending_approval', loading_receipt_number: null })}
+          canShareWhatsApp
+        />,
+      ),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Available after approval')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Issued on approval')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Download PDF/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Download Image/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Send on WhatsApp/i })).not.toBeInTheDocument()
+  })
 })

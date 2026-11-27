@@ -100,9 +100,10 @@ export function ShipmentDocumentsCard({
     packingList.estimated_arrival_date ??
     packingList.container_eta ??
     null
-  const plFinalized = docs?.packing_list.finalized ?? Boolean(shipDate)
+  const plAvailable = docs?.packing_list.available ?? packingList.status === 'approved'
+  const plFinalized = plAvailable && (docs?.packing_list.finalized ?? Boolean(shipDate))
   const plPages = docs?.packing_list.page_count ?? 1
-  const plImageEligible = docs ? docs.packing_list.image_eligible : true
+  const plImageEligible = docs ? docs.packing_list.image_eligible : plAvailable
   const plDisabledReason = docs?.packing_list.image_disabled_reason ?? null
 
   const hasCustomerPhone = Boolean(
@@ -239,14 +240,23 @@ export function ShipmentDocumentsCard({
               <div className={styles.docTitleRow}>
                 <span className={styles.docTitle}>Packing list</span>
                 {packingList.reference && <Mono>{packingList.reference}</Mono>}
-                <Badge variant={plFinalized ? 'success' : 'info'} size="sm">
-                  {plFinalized ? 'Finalized' : 'Preliminary'}
+                <Badge
+                  variant={!plAvailable ? 'neutral' : plFinalized ? 'success' : 'info'}
+                  size="sm"
+                >
+                  {!plAvailable
+                    ? 'Available after approval'
+                    : plFinalized
+                      ? 'Finalized'
+                      : 'Preliminary'}
                 </Badge>
               </div>
               <span className={styles.docSub}>
-                {plFinalized
-                  ? `Shipped ${formatDate(shipDate!)}${etaDate ? ` · ETA ${formatDate(etaDate)}` : ''} · ${plPages} ${plPages === 1 ? 'page' : 'pages'}.`
-                  : `Pre-departure packing list — finalized with Shipping date & ETA when container moves to In transit (${plPages} ${plPages === 1 ? 'page' : 'pages'}).`}
+                {!plAvailable
+                  ? 'Approve this packing list to unlock Packing List PDF/Image downloads and WhatsApp sharing.'
+                  : plFinalized
+                    ? `Shipped ${formatDate(shipDate!)}${etaDate ? ` · ETA ${formatDate(etaDate)}` : ''} · ${plPages} ${plPages === 1 ? 'page' : 'pages'}.`
+                    : `Pre-departure packing list — finalized with Shipping date & ETA when container moves to In transit (${plPages} ${plPages === 1 ? 'page' : 'pages'}).`}
               </span>
             </div>
             <LangToggle
@@ -261,61 +271,63 @@ export function ShipmentDocumentsCard({
             />
           </div>
 
-          {plDisabledReason && (
+          {plAvailable && plDisabledReason && (
             <Banner variant="warning" title="Multi-page document — PDF only">
               {plDisabledReason}
             </Banner>
           )}
 
-          <div className={styles.controlsRow}>
-            <div className={styles.actionsGroup}>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="file"
-                onClick={() =>
-                  void runDocument('the packing list PDF', () =>
-                    packingListApi.pdf(packingList.id, plLang),
-                  )
-                }
-              >
-                Download PDF
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="download"
-                disabled={!plImageEligible}
-                title={plDisabledReason ?? 'Download single-page PNG image'}
-                onClick={() =>
-                  void runDocument('the packing list image', () =>
-                    packingListApi.image(packingList.id, plLang),
-                  )
-                }
-              >
-                Download Image (PNG)
-              </Button>
+          {plAvailable && (
+            <div className={styles.controlsRow}>
+              <div className={styles.actionsGroup}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="file"
+                  onClick={() =>
+                    void runDocument('the packing list PDF', () =>
+                      packingListApi.pdf(packingList.id, plLang),
+                    )
+                  }
+                >
+                  Download PDF
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon="download"
+                  disabled={!plImageEligible}
+                  title={plDisabledReason ?? 'Download single-page PNG image'}
+                  onClick={() =>
+                    void runDocument('the packing list image', () =>
+                      packingListApi.image(packingList.id, plLang),
+                    )
+                  }
+                >
+                  Download Image (PNG)
+                </Button>
+              </div>
+              {canShareWhatsApp && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon="arrowright"
+                  loading={sharingDoc === 'packing_list'}
+                  disabled={!hasCustomerPhone || sharingDoc !== null}
+                  title={
+                    !hasCustomerPhone
+                      ? 'Customer has no WhatsApp or phone number on file'
+                      : plImageEligible
+                        ? 'Sends as PNG Image on WhatsApp'
+                        : `Multi-page (${plPages} pages) — sends as PDF on WhatsApp`
+                  }
+                  onClick={() => void handleShareWhatsApp('packing_list')}
+                >
+                  Send on WhatsApp ({plImageEligible ? 'Image' : `PDF · ${plPages}p`})
+                </Button>
+              )}
             </div>
-            {canShareWhatsApp && (
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="arrowright"
-                loading={sharingDoc === 'packing_list'}
-                disabled={!hasCustomerPhone || sharingDoc !== null}
-                title={
-                  !hasCustomerPhone
-                    ? 'Customer has no WhatsApp or phone number on file'
-                    : plImageEligible
-                      ? 'Sends as PNG Image on WhatsApp'
-                      : `Multi-page (${plPages} pages) — sends as PDF on WhatsApp`
-                }
-                onClick={() => void handleShareWhatsApp('packing_list')}
-              >
-                Send on WhatsApp ({plImageEligible ? 'Image' : `PDF · ${plPages}p`})
-              </Button>
-            )}
-          </div>
+          )}
         </div>
       </div>
       </div>

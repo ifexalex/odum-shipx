@@ -347,3 +347,29 @@ class TestEng5DualFormatGuardrailAndWhatsApp:
             wa_components_pdf = mock_wa.call_args.kwargs["components"]
             assert wa_components_pdf[0]["type"] == "header"
             assert wa_components_pdf[0]["parameters"][0]["type"] == "document"
+
+    def test_unapproved_packing_list_blocks_pdf_image_and_whatsapp_exports(self) -> None:
+        pending_pl = _sample_pl(status="pending_approval", loading_receipt_number=None)
+        with (
+            patch.object(excel_service.repo, "get_packing_list_for_export", return_value=pending_pl),
+            patch.object(excel_service.repo, "get_items_for_packing_list", return_value=_sample_items(1)),
+            patch.object(excel_service.repo, "get_tenant_branding", return_value={"company_name": "Acme"}),
+        ):
+            docs = excel_service.get_packing_list_documents("tenant-1", "pl-1")
+            assert docs["loading_receipt"]["available"] is False
+            assert docs["packing_list"]["available"] is False
+            assert docs["packing_list"]["image_eligible"] is False
+
+            with pytest.raises(BusinessRuleViolationError) as pdf_exc:
+                excel_service.export_packing_list_pdf("tenant-1", "pl-1", actor_id="u1", actor_role="china_office_staff")
+            assert pdf_exc.value.rule_id == "PACKING_LIST_NOT_APPROVED"
+
+            with pytest.raises(BusinessRuleViolationError) as img_exc:
+                excel_service.export_packing_list_image("tenant-1", "pl-1", actor_id="u1", actor_role="china_office_staff")
+            assert img_exc.value.rule_id == "PACKING_LIST_NOT_APPROVED"
+
+            with pytest.raises(BusinessRuleViolationError) as wa_exc:
+                excel_service.share_packing_list_document_whatsapp(
+                    "tenant-1", "pl-1", "packing_list", actor_id="u1", actor_role="china_office_staff"
+                )
+            assert wa_exc.value.rule_id == "PACKING_LIST_NOT_APPROVED"

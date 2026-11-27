@@ -335,9 +335,9 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                 </div>
 
                 <div className={styles.itemField}>
-                  <span className={styles.itemFieldLabel}>Decl. / unit (USD)</span>
+                  <span className={styles.itemFieldLabel}>Unit price (¥ CNY)</span>
                   <CellInput
-                    label={`Declared value per unit (USD), item ${index + 1}`}
+                    label={`Unit price (CNY), item ${index + 1}`}
                     className={styles.cellInputNumber}
                     type="number"
                     min={0}
@@ -426,7 +426,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                         ? `${formatKg(item.weight_actual_kg * qty)} kg`
                         : null,
                       item.declared_value_usd != null
-                        ? `$${(item.declared_value_usd * qty).toFixed(0)} declared ($${item.declared_value_usd}/unit)`
+                        ? `¥${(item.declared_value_usd * qty).toFixed(0)} total (¥${item.declared_value_usd}/unit)`
                         : null,
                       'one tag for all packages',
                     ]
@@ -469,8 +469,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
             )}
           </span>
           <span>
-            <span className={styles.itemTotalKey}>Declared</span>{' '}
-            <Mono>${totals.declaredUsd.toFixed(0)}</Mono>
+            <span className={styles.itemTotalKey}>Goods value</span>{' '}
+            <Mono>¥{totals.declaredUsd.toFixed(0)}</Mono>
           </span>
         </div>
       </div>

@@ -701,6 +701,14 @@ def _normalize_lr_lang(lang: str | None) -> Any:
     return "en" if (lang or "").strip().lower() == "en" else "zh"
 
 
+def _assert_packing_list_approved(pl: dict[str, Any]) -> None:
+    if pl.get("status") != "approved":
+        raise BusinessRuleViolationError(
+            "Packing list must be approved before generating or sharing documents.",
+            rule_id="PACKING_LIST_NOT_APPROVED",
+        )
+
+
 def _assert_loading_receipt_ready(pl: dict[str, Any]) -> None:
     if pl.get("status") != "approved" or not pl.get("loading_receipt_number"):
         raise BusinessRuleViolationError(
@@ -723,6 +731,7 @@ def export_packing_list_pdf(
     if not pl:
         raise ResourceNotFoundError("packing_list", pl_id)
     _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
+    _assert_packing_list_approved(pl)
     brand = _brand(tenant_id)
     norm_lang = _normalize_pl_lang(lang)
     rendered = generate_packing_list_pdf_with_meta(
@@ -756,6 +765,7 @@ def export_packing_list_image(
     if not pl:
         raise ResourceNotFoundError("packing_list", pl_id)
     _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
+    _assert_packing_list_approved(pl)
     brand = _brand(tenant_id)
     norm_lang = _normalize_pl_lang(lang)
     rendered = generate_packing_list_pdf_with_meta(
@@ -864,11 +874,16 @@ def get_packing_list_documents(
     norm_lr = _normalize_lr_lang(lang_lr)
     norm_pl = _normalize_pl_lang(lang_pl)
 
-    pl_rendered = generate_packing_list_pdf_with_meta(brand, dict(pl), items, lang=norm_pl)
-    pl_pages = pl_rendered.page_count
-    is_finalized = bool(pl.get("ship_date") or pl.get("container_ship_date"))
+    is_approved = pl.get("status") == "approved"
+    is_finalized = is_approved and bool(pl.get("ship_date") or pl.get("container_ship_date"))
+    pl_pages = 0
+    pl_reason: str | None = None
+    if is_approved:
+        pl_rendered = generate_packing_list_pdf_with_meta(brand, dict(pl), items, lang=norm_pl)
+        pl_pages = pl_rendered.page_count
+        pl_reason = image_disabled_reason(pl_pages)
 
-    lr_available = pl.get("status") == "approved" and bool(pl.get("loading_receipt_number"))
+    lr_available = is_approved and bool(pl.get("loading_receipt_number"))
     lr_pages = 0
     lr_reason: str | None = None
     if lr_available:
@@ -890,15 +905,15 @@ def get_packing_list_documents(
             "image_disabled_reason": lr_reason,
         },
         "packing_list": {
-            "available": True,
+            "available": is_approved,
             "finalized": is_finalized,
             "reference": pl.get("reference"),
             "ship_date": pl.get("ship_date") or pl.get("container_ship_date"),
             "estimated_arrival_date": pl.get("estimated_arrival_date") or pl.get("container_eta"),
             "lang": norm_pl,
             "page_count": pl_pages,
-            "image_eligible": pl_pages == 1,
-            "image_disabled_reason": image_disabled_reason(pl_pages),
+            "image_eligible": is_approved and pl_pages == 1,
+            "image_disabled_reason": pl_reason,
         },
     }
 
@@ -923,6 +938,8 @@ def share_packing_list_document_whatsapp(
         raise ResourceNotFoundError("packing_list", pl_id)
     if document_type == "loading_receipt":
         _assert_loading_receipt_ready(pl)
+    else:
+        _assert_packing_list_approved(pl)
 
     recipient_phone = str(pl.get("customer_whatsapp") or pl.get("customer_phone") or "").strip()
     if not recipient_phone:

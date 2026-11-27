@@ -164,7 +164,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                 </span>
                 <span className={[styles.previewCol, styles.previewColRight].join(' ')}>L×W×H</span>
                 <span className={[styles.previewCol, styles.previewColRight].join(' ')}>CBM</span>
-                <span className={[styles.previewCol, styles.previewColRight].join(' ')}>USD</span>
+                <span className={[styles.previewCol, styles.previewColRight].join(' ')}>CNY</span>
               </div>
               {items.map((item, i) => {
                 const cbm =
@@ -244,7 +244,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                       ].join(' ')}
                     >
                       {item.declared_value_usd != null
-                        ? `$${(item.declared_value_usd * qty).toFixed(0)}`
+                        ? `¥${(item.declared_value_usd * qty).toFixed(0)}`
                         : '—'}
                     </span>
                   </div>
@@ -260,7 +260,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                 <span>·</span>
                 <span className={styles.previewCbm}>{formatCbm(totals.cbm)} CBM</span>
                 <span>·</span>
-                <span>${totals.declaredUsd.toFixed(0)}</span>
+                <span>¥{totals.declaredUsd.toFixed(0)}</span>
               </div>
             </div>
           </div>
@@ -281,8 +281,8 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
             value={<Mono color="var(--color-success)">{formatCbm(totals.cbm)}</Mono>}
           />
           <Kvp
-            label="Declared value"
-            value={<Mono>${totals.declaredUsd.toFixed(0)} USD</Mono>}
+            label="Goods value"
+            value={<Mono>¥{totals.declaredUsd.toFixed(0)} CNY</Mono>}
             divider={shippingUsd != null || shippingNgn != null}
           />
           {shippingUsd != null && (

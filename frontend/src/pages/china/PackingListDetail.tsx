@@ -349,7 +349,7 @@ export function PackingListDetail(): JSX.Element {
                 </Button>
               )}
               <ExportButton
-                formats={['xlsx', 'csv', 'pdf']}
+                formats={pl.status === 'approved' ? ['xlsx', 'csv', 'pdf'] : ['xlsx', 'csv']}
                 onExport={(fmt) =>
                   fmt === 'pdf' ? packingListApi.pdf(pl.id) : packingListApi.export(pl.id, fmt)
                 }
@@ -371,12 +371,17 @@ export function PackingListDetail(): JSX.Element {
                   },
                 ]
               : []),
-            // Print is the PDF, the one packing-list document (FD-40).
-            {
-              label: 'Print',
-              icon: 'file',
-              onSelect: () => void runDocument('the packing list', () => packingListApi.pdf(pl.id)),
-            },
+            // Print is the PDF, available once approved (Option 1).
+            ...(pl.status === 'approved'
+              ? [
+                  {
+                    label: 'Print',
+                    icon: 'file' as const,
+                    onSelect: () =>
+                      void runDocument('the packing list', () => packingListApi.pdf(pl.id)),
+                  },
+                ]
+              : []),
           ]}
           moreLabel="More packing list actions"
         />
@@ -459,7 +464,7 @@ export function PackingListDetail(): JSX.Element {
             { title: 'Weight (kg)', type: 'number' as const },
             { title: 'L × W × H (cm)', align: 'center' },
             { title: 'Volume (CBM)', type: 'number' as const },
-            { title: 'Decl. / unit ($)', type: 'money' as const },
+            { title: 'Unit price (¥)', type: 'money' as const },
             ...(showDeliveredColumn ? [{ title: 'Delivered' }] : []),
             ...(showLoadedColumn ? [{ title: 'Loaded' }] : []),
             ...(showFlagColumn ? [{ title: 'Flag' }] : []),
@@ -536,7 +541,7 @@ export function PackingListDetail(): JSX.Element {
                         {liveCbm != null ? formatCbm(liveCbm) : '—'}
                       </Mono>,
                       <CellInput
-                        label={`Declared value (USD), item ${index + 1}`}
+                        label={`Unit price (CNY), item ${index + 1}`}
                         key="usd"
                         className={styles.cellInputNumber}
                         type="number"
@@ -578,8 +583,8 @@ export function PackingListDetail(): JSX.Element {
                     <Mono key="usd">
                       {item.declared_value_usd != null
                         ? Number(item.quantity ?? 1) > 1
-                          ? `$${item.declared_value_usd}/unit ($${(Number(item.declared_value_usd) * Number(item.quantity ?? 1)).toFixed(0)})`
-                          : `$${item.declared_value_usd}`
+                          ? `¥${item.declared_value_usd}/unit (¥${(Number(item.declared_value_usd) * Number(item.quantity ?? 1)).toFixed(0)})`
+                          : `¥${item.declared_value_usd}`
                         : '—'}
                     </Mono>,
                     ...(showDeliveredColumn
