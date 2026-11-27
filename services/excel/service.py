@@ -1,10 +1,14 @@
 """Orchestration: fetch data → generate file → upload S3 → presigned URL."""
 
 import csv
+import hashlib
 import io
+import json
 import logging
 import re
+import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -610,22 +614,167 @@ def export_report_container_billing(
 #: A document link lasts five minutes: long enough to open, short enough that a forwarded link soon stops working.
 _PDF_LINK_SECONDS = 300
 
+#: Bump whenever PDF/PNG layout templates change so fingerprinted Blob caches invalidate automatically.
+_DOC_CACHE_VERSION = "v2"
+_LOGO_CACHE_TTL_SECONDS = 300.0
+_LOGO_CACHE_MAX_ENTRIES = 128
+_PAGE_COUNT_CACHE_TTL_SECONDS = 600.0
+_PAGE_COUNT_CACHE_MAX_ENTRIES = 512
 
-def _brand(tenant_id: str) -> pdf_theme.Brand:
+# Process-local caches: safe across requests because keys include tenant_id + immutable key/fingerprint.
+_LOGO_CACHE: dict[tuple[str, str], tuple[float, bytes]] = {}
+_PAGE_COUNT_CACHE: dict[str, tuple[float, int]] = {}
+
+
+def _clear_document_caches() -> None:
+    """Clear in-memory logo and page-count caches (intended for tests)."""
+    _LOGO_CACHE.clear()
+    _PAGE_COUNT_CACHE.clear()
+
+
+def _get_cached_logo(tenant_id: str, logo_key: str) -> bytes | None:
+    now = time.monotonic()
+    entry = _LOGO_CACHE.get((tenant_id, logo_key))
+    if entry is not None:
+        expires_at, data = entry
+        if now < expires_at:
+            return data
+        _LOGO_CACHE.pop((tenant_id, logo_key), None)
+    return None
+
+
+def _store_cached_logo(tenant_id: str, logo_key: str, data: bytes) -> None:
+    if len(_LOGO_CACHE) >= _LOGO_CACHE_MAX_ENTRIES:
+        _LOGO_CACHE.clear()
+    _LOGO_CACHE[(tenant_id, logo_key)] = (time.monotonic() + _LOGO_CACHE_TTL_SECONDS, data)
+
+
+def _get_cached_page_count(cache_key: str) -> int | None:
+    now = time.monotonic()
+    entry = _PAGE_COUNT_CACHE.get(cache_key)
+    if entry is not None:
+        expires_at, count = entry
+        if now < expires_at:
+            return count
+        _PAGE_COUNT_CACHE.pop(cache_key, None)
+    return None
+
+
+def _store_cached_page_count(cache_key: str, page_count: int) -> None:
+    if len(_PAGE_COUNT_CACHE) >= _PAGE_COUNT_CACHE_MAX_ENTRIES:
+        _PAGE_COUNT_CACHE.clear()
+    _PAGE_COUNT_CACHE[cache_key] = (time.monotonic() + _PAGE_COUNT_CACHE_TTL_SECONDS, page_count)
+
+
+def _document_fingerprint(
+    doc_type: str,
+    lang: str,
+    branding: dict[str, Any],
+    pl: dict[str, Any],
+    items: list[dict[str, Any]],
+) -> str:
+    """Deterministic SHA-256 prefix covering every field rendered on a Packing List or Loading Receipt."""
+    payload = {
+        "v": _DOC_CACHE_VERSION,
+        "doc_type": doc_type,
+        "lang": lang,
+        "branding": branding,
+        "pl": pl,
+        "items": items,
+    }
+    raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
+def _cached_blob_key(tenant_id: str, pl_id: str, doc_type: str, lang: str, fingerprint: str, fmt: str) -> str:
+    return f"{tenant_id}/exports/cache/{pl_id}/{doc_type}_{lang}_{fingerprint}.{fmt}"
+
+
+def _cached_export_or_render(
+    *,
+    tenant_id: str,
+    pl_id: str,
+    doc_type: str,
+    lang: str,
+    fingerprint: str,
+    filename: str,
+    fmt: str,
+    expires_in: int,
+    render_fn: Callable[[], tuple[BytesIO, int]],
+) -> tuple[dict[str, Any], int]:
+    """Return a presigned download dict from the content-fingerprinted Blob cache, rendering only on miss."""
+    storage = get_storage_provider()
+    blob_key = _cached_blob_key(tenant_id, pl_id, doc_type, lang, fingerprint, fmt)
+    page_cache_key = f"{doc_type}:{lang}:{fingerprint}"
+
+    cached_size = storage.object_size(blob_key)
+    if isinstance(cached_size, int) and cached_size > 0:
+        download_url = storage.presigned_get_url(
+            blob_key,
+            expires_in=expires_in,
+            response_content_disposition=_disposition(filename, fmt),
+        )
+        expires_at = (datetime.now(UTC) + timedelta(seconds=expires_in)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cached_pages = _get_cached_page_count(page_cache_key)
+        page_count = cached_pages if cached_pages is not None else 1
+        return (
+            {
+                "filename": filename,
+                "download_url": download_url,
+                "expires_at": expires_at,
+                "file_size_bytes": cached_size,
+                "format": fmt,
+                "expires_in_seconds": expires_in,
+            },
+            page_count,
+        )
+
+    buf, page_count = render_fn()
+    _store_cached_page_count(page_cache_key, page_count)
+    file_bytes = buf.getvalue()
+    storage.put_object(blob_key, file_bytes, content_type=_CONTENT_TYPES.get(fmt, _CONTENT_TYPES["pdf"]))
+    download_url = storage.presigned_get_url(
+        blob_key,
+        expires_in=expires_in,
+        response_content_disposition=_disposition(filename, fmt),
+    )
+    expires_at = (datetime.now(UTC) + timedelta(seconds=expires_in)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (
+        {
+            "filename": filename,
+            "download_url": download_url,
+            "expires_at": expires_at,
+            "file_size_bytes": len(file_bytes),
+            "format": fmt,
+            "expires_in_seconds": expires_in,
+        },
+        page_count,
+    )
+
+
+def _brand(tenant_id: str, branding: dict[str, Any] | None = None) -> pdf_theme.Brand:
     """The tenant's branding for a document, with its logo's bytes when one is set (FD-29).
 
-    The logo is read only from this tenant's own logo prefix. A logo that cannot be read leaves the initials tile:
-    a document must never fail for want of its logo.
+    The logo is read only from this tenant's own logo prefix and cached in memory for 5 minutes
+    keyed on ``(tenant_id, logo_key)`` so repeat exports skip Blob downloads. A logo that cannot
+    be read leaves the initials tile: a document must never fail for want of its logo.
     """
-    branding = repo.get_tenant_branding(tenant_id)
+    resolved_branding = branding if branding is not None else repo.get_tenant_branding(tenant_id)
     logo: bytes | None = None
-    key = branding.get("logo_key")
+    key = resolved_branding.get("logo_key")
     if isinstance(key, str) and key.startswith(f"{tenant_id}/branding/logo/"):
-        try:
-            logo = get_storage_provider().get_object(key)
-        except Exception:  # noqa: BLE001 — any storage failure falls back to the initials tile
-            logger.warning("Could not read the tenant logo for a document", exc_info=True)
-    return pdf_theme.Brand.from_branding(branding, logo=logo)
+        logo = _get_cached_logo(tenant_id, key)
+        if logo is None:
+            try:
+                fetched = get_storage_provider().get_object(key)
+                if isinstance(fetched, (bytes, bytearray)) and fetched:
+                    logo = bytes(fetched)
+                    _store_cached_logo(tenant_id, key, logo)
+                else:
+                    logo = fetched
+            except Exception:  # noqa: BLE001 — any storage failure falls back to the initials tile
+                logger.warning("Could not read the tenant logo for a document", exc_info=True)
+    return pdf_theme.Brand.from_branding(resolved_branding, logo=logo)
 
 
 def _publish_pdf(
@@ -732,21 +881,39 @@ def export_packing_list_pdf(
         raise ResourceNotFoundError("packing_list", pl_id)
     _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
     _assert_packing_list_approved(pl)
-    brand = _brand(tenant_id)
+    branding = repo.get_tenant_branding(tenant_id)
+    brand = _brand(tenant_id, branding=branding)
+    items = repo.get_items_for_packing_list(tenant_id, pl_id)
     norm_lang = _normalize_pl_lang(lang)
-    rendered = generate_packing_list_pdf_with_meta(
-        brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id), lang=norm_lang
+    pl_dict = dict(pl)
+    fp = _document_fingerprint("packing_list", norm_lang, branding, pl_dict, items)
+    filename = f"{_stem(brand, f'packing_list_{norm_lang}', pl.get('reference') or pl.get('container_number'))}.pdf"
+
+    def _render() -> tuple[BytesIO, int]:
+        rendered = generate_packing_list_pdf_with_meta(brand, pl_dict, items, lang=norm_lang)
+        return rendered.buf, rendered.page_count
+
+    result, page_count = _cached_export_or_render(
+        tenant_id=tenant_id,
+        pl_id=pl_id,
+        doc_type="packing_list",
+        lang=norm_lang,
+        fingerprint=fp,
+        filename=filename,
+        fmt="pdf",
+        expires_in=_PDF_LINK_SECONDS,
+        render_fn=_render,
     )
-    result = _publish_pdf(
-        tenant_id,
-        rendered.buf,
-        _stem(brand, f"packing_list_{norm_lang}", pl.get("reference") or pl.get("container_number")),
+    log_audit(
+        tenant_id=tenant_id,
         entity_type="packing_list",
         entity_id=pl_id,
+        action="EXPORT",
         actor_id=actor_id,
         actor_role=actor_role,
+        after_state={"format": "pdf", "filename": result["filename"]},
     )
-    result["page_count"] = rendered.page_count
+    result["page_count"] = page_count
     result["lang"] = norm_lang
     return result
 
@@ -766,22 +933,40 @@ def export_packing_list_image(
         raise ResourceNotFoundError("packing_list", pl_id)
     _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
     _assert_packing_list_approved(pl)
-    brand = _brand(tenant_id)
+    branding = repo.get_tenant_branding(tenant_id)
+    brand = _brand(tenant_id, branding=branding)
+    items = repo.get_items_for_packing_list(tenant_id, pl_id)
     norm_lang = _normalize_pl_lang(lang)
-    rendered = generate_packing_list_pdf_with_meta(
-        brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id), lang=norm_lang
+    pl_dict = dict(pl)
+    fp = _document_fingerprint("packing_list", norm_lang, branding, pl_dict, items)
+    filename = f"{_stem(brand, f'packing_list_{norm_lang}', pl.get('reference') or pl.get('container_number'))}.png"
+
+    def _render() -> tuple[BytesIO, int]:
+        rendered = generate_packing_list_pdf_with_meta(brand, pl_dict, items, lang=norm_lang)
+        png_buf = render_single_page_png(rendered.buf.getvalue(), rendered.page_count)
+        return png_buf, rendered.page_count
+
+    result, page_count = _cached_export_or_render(
+        tenant_id=tenant_id,
+        pl_id=pl_id,
+        doc_type="packing_list",
+        lang=norm_lang,
+        fingerprint=fp,
+        filename=filename,
+        fmt="png",
+        expires_in=_PDF_LINK_SECONDS,
+        render_fn=_render,
     )
-    png_buf = render_single_page_png(rendered.buf.getvalue(), rendered.page_count)
-    result = _publish_image(
-        tenant_id,
-        png_buf,
-        _stem(brand, f"packing_list_{norm_lang}", pl.get("reference") or pl.get("container_number")),
+    log_audit(
+        tenant_id=tenant_id,
         entity_type="packing_list",
         entity_id=pl_id,
+        action="EXPORT",
         actor_id=actor_id,
         actor_role=actor_role,
+        after_state={"format": "png", "filename": result["filename"]},
     )
-    result["page_count"] = rendered.page_count
+    result["page_count"] = page_count
     result["lang"] = norm_lang
     return result
 
@@ -801,21 +986,39 @@ def export_loading_receipt_pdf(
         raise ResourceNotFoundError("packing_list", pl_id)
     _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
     _assert_loading_receipt_ready(pl)
-    brand = _brand(tenant_id)
+    branding = repo.get_tenant_branding(tenant_id)
+    brand = _brand(tenant_id, branding=branding)
+    items = repo.get_items_for_packing_list(tenant_id, pl_id)
     norm_lang = _normalize_lr_lang(lang)
-    rendered = generate_loading_receipt_pdf_with_meta(
-        brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id), lang=norm_lang
+    pl_dict = dict(pl)
+    fp = _document_fingerprint("loading_receipt", norm_lang, branding, pl_dict, items)
+    filename = f"{_stem(brand, f'loading_receipt_{norm_lang}', pl.get('loading_receipt_number') or pl.get('reference'))}.pdf"
+
+    def _render() -> tuple[BytesIO, int]:
+        rendered = generate_loading_receipt_pdf_with_meta(brand, pl_dict, items, lang=norm_lang)
+        return rendered.buf, rendered.page_count
+
+    result, page_count = _cached_export_or_render(
+        tenant_id=tenant_id,
+        pl_id=pl_id,
+        doc_type="loading_receipt",
+        lang=norm_lang,
+        fingerprint=fp,
+        filename=filename,
+        fmt="pdf",
+        expires_in=_PDF_LINK_SECONDS,
+        render_fn=_render,
     )
-    result = _publish_pdf(
-        tenant_id,
-        rendered.buf,
-        _stem(brand, f"loading_receipt_{norm_lang}", pl.get("loading_receipt_number") or pl.get("reference")),
+    log_audit(
+        tenant_id=tenant_id,
         entity_type="packing_list",
         entity_id=pl_id,
+        action="EXPORT",
         actor_id=actor_id,
         actor_role=actor_role,
+        after_state={"format": "pdf", "filename": result["filename"]},
     )
-    result["page_count"] = rendered.page_count
+    result["page_count"] = page_count
     result["lang"] = norm_lang
     return result
 
@@ -835,22 +1038,40 @@ def export_loading_receipt_image(
         raise ResourceNotFoundError("packing_list", pl_id)
     _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
     _assert_loading_receipt_ready(pl)
-    brand = _brand(tenant_id)
+    branding = repo.get_tenant_branding(tenant_id)
+    brand = _brand(tenant_id, branding=branding)
+    items = repo.get_items_for_packing_list(tenant_id, pl_id)
     norm_lang = _normalize_lr_lang(lang)
-    rendered = generate_loading_receipt_pdf_with_meta(
-        brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id), lang=norm_lang
+    pl_dict = dict(pl)
+    fp = _document_fingerprint("loading_receipt", norm_lang, branding, pl_dict, items)
+    filename = f"{_stem(brand, f'loading_receipt_{norm_lang}', pl.get('loading_receipt_number') or pl.get('reference'))}.png"
+
+    def _render() -> tuple[BytesIO, int]:
+        rendered = generate_loading_receipt_pdf_with_meta(brand, pl_dict, items, lang=norm_lang)
+        png_buf = render_single_page_png(rendered.buf.getvalue(), rendered.page_count)
+        return png_buf, rendered.page_count
+
+    result, page_count = _cached_export_or_render(
+        tenant_id=tenant_id,
+        pl_id=pl_id,
+        doc_type="loading_receipt",
+        lang=norm_lang,
+        fingerprint=fp,
+        filename=filename,
+        fmt="png",
+        expires_in=_PDF_LINK_SECONDS,
+        render_fn=_render,
     )
-    png_buf = render_single_page_png(rendered.buf.getvalue(), rendered.page_count)
-    result = _publish_image(
-        tenant_id,
-        png_buf,
-        _stem(brand, f"loading_receipt_{norm_lang}", pl.get("loading_receipt_number") or pl.get("reference")),
+    log_audit(
+        tenant_id=tenant_id,
         entity_type="packing_list",
         entity_id=pl_id,
+        action="EXPORT",
         actor_id=actor_id,
         actor_role=actor_role,
+        after_state={"format": "png", "filename": result["filename"]},
     )
-    result["page_count"] = rendered.page_count
+    result["page_count"] = page_count
     result["lang"] = norm_lang
     return result
 
@@ -870,25 +1091,43 @@ def get_packing_list_documents(
     _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
 
     items = repo.get_items_for_packing_list(tenant_id, pl_id)
-    brand = _brand(tenant_id)
+    branding = repo.get_tenant_branding(tenant_id)
     norm_lr = _normalize_lr_lang(lang_lr)
     norm_pl = _normalize_pl_lang(lang_pl)
+    pl_dict = dict(pl)
+    brand: pdf_theme.Brand | None = None
 
     is_approved = pl.get("status") == "approved"
     is_finalized = is_approved and bool(pl.get("ship_date") or pl.get("container_ship_date"))
     pl_pages = 0
     pl_reason: str | None = None
     if is_approved:
-        pl_rendered = generate_packing_list_pdf_with_meta(brand, dict(pl), items, lang=norm_pl)
-        pl_pages = pl_rendered.page_count
+        pl_fp = _document_fingerprint("packing_list", norm_pl, branding, pl_dict, items)
+        pl_cache_key = f"packing_list:{norm_pl}:{pl_fp}"
+        cached_pl_pages = _get_cached_page_count(pl_cache_key)
+        if cached_pl_pages is not None:
+            pl_pages = cached_pl_pages
+        else:
+            brand = brand or _brand(tenant_id, branding=branding)
+            pl_rendered = generate_packing_list_pdf_with_meta(brand, pl_dict, items, lang=norm_pl)
+            pl_pages = pl_rendered.page_count
+            _store_cached_page_count(pl_cache_key, pl_pages)
         pl_reason = image_disabled_reason(pl_pages)
 
     lr_available = is_approved and bool(pl.get("loading_receipt_number"))
     lr_pages = 0
     lr_reason: str | None = None
     if lr_available:
-        lr_rendered = generate_loading_receipt_pdf_with_meta(brand, dict(pl), items, lang=norm_lr)
-        lr_pages = lr_rendered.page_count
+        lr_fp = _document_fingerprint("loading_receipt", norm_lr, branding, pl_dict, items)
+        lr_cache_key = f"loading_receipt:{norm_lr}:{lr_fp}"
+        cached_lr_pages = _get_cached_page_count(lr_cache_key)
+        if cached_lr_pages is not None:
+            lr_pages = cached_lr_pages
+        else:
+            brand = brand or _brand(tenant_id, branding=branding)
+            lr_rendered = generate_loading_receipt_pdf_with_meta(brand, pl_dict, items, lang=norm_lr)
+            lr_pages = lr_rendered.page_count
+            _store_cached_page_count(lr_cache_key, lr_pages)
         lr_reason = image_disabled_reason(lr_pages)
 
     return {
@@ -950,30 +1189,70 @@ def share_packing_list_document_whatsapp(
 
     items = repo.get_items_for_packing_list(tenant_id, pl_id)
     branding = repo.get_tenant_branding(tenant_id)
-    brand = _brand(tenant_id)
+    brand = _brand(tenant_id, branding=branding)
+    pl_dict = dict(pl)
 
     if document_type == "loading_receipt":
         norm_lang = _normalize_lr_lang(lang)
-        rendered = generate_loading_receipt_pdf_with_meta(brand, dict(pl), items, lang=norm_lang)
         ref = str(pl.get("loading_receipt_number") or pl.get("reference") or pl_id)
         stem = _stem(brand, f"loading_receipt_{norm_lang}", ref)
+        pdf_gen = generate_loading_receipt_pdf_with_meta
     else:
         norm_lang = _normalize_pl_lang(lang)
-        rendered = generate_packing_list_pdf_with_meta(brand, dict(pl), items, lang=norm_lang)
         ref = str(pl.get("reference") or pl.get("container_number") or pl_id)
         stem = _stem(brand, f"packing_list_{norm_lang}", ref)
+        pdf_gen = generate_packing_list_pdf_with_meta
 
-    page_count = rendered.page_count
+    fp = _document_fingerprint(document_type, norm_lang, branding, pl_dict, items)
+    page_cache_key = f"{document_type}:{norm_lang}:{fp}"
+    cached_pages = _get_cached_page_count(page_cache_key)
+    rendered_pdf: pdf_theme.RenderedPdf | None = None
+    if cached_pages is None:
+        rendered_pdf = pdf_gen(brand, pl_dict, items, lang=norm_lang)
+        page_count = rendered_pdf.page_count
+        _store_cached_page_count(page_cache_key, page_count)
+    else:
+        page_count = cached_pages
+
     notice: str | None = None
     if page_count == 1:
         format_sent = "image"
-        png_buf = render_single_page_png(rendered.buf.getvalue(), page_count)
-        upload = _upload_and_presign(tenant_id, f"{stem}.png", png_buf, fmt="png", expires_in=_PRESIGNED_EXPIRY)
+
+        def _render_png() -> tuple[BytesIO, int]:
+            pdf_out = rendered_pdf or pdf_gen(brand, pl_dict, items, lang=norm_lang)
+            return render_single_page_png(pdf_out.buf.getvalue(), pdf_out.page_count), pdf_out.page_count
+
+        upload, _ = _cached_export_or_render(
+            tenant_id=tenant_id,
+            pl_id=pl_id,
+            doc_type=document_type,
+            lang=norm_lang,
+            fingerprint=fp,
+            filename=f"{stem}.png",
+            fmt="png",
+            expires_in=_PRESIGNED_EXPIRY,
+            render_fn=_render_png,
+        )
         media_header: dict[str, Any] = {"type": "image", "link": upload["download_url"]}
         event_type = f"{document_type}_image"
     else:
         format_sent = "pdf"
-        upload = _upload_and_presign(tenant_id, f"{stem}.pdf", rendered.buf, fmt="pdf", expires_in=_PRESIGNED_EXPIRY)
+
+        def _render_pdf() -> tuple[BytesIO, int]:
+            pdf_out = rendered_pdf or pdf_gen(brand, pl_dict, items, lang=norm_lang)
+            return pdf_out.buf, pdf_out.page_count
+
+        upload, _ = _cached_export_or_render(
+            tenant_id=tenant_id,
+            pl_id=pl_id,
+            doc_type=document_type,
+            lang=norm_lang,
+            fingerprint=fp,
+            filename=f"{stem}.pdf",
+            fmt="pdf",
+            expires_in=_PRESIGNED_EXPIRY,
+            render_fn=_render_pdf,
+        )
         media_header = {"type": "document", "link": upload["download_url"], "filename": upload["filename"]}
         event_type = f"{document_type}_pdf"
         notice = (

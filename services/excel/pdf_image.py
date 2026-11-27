@@ -54,7 +54,9 @@ def render_single_page_png(pdf_bytes: bytes, page_count: int, *, dpi: int = 200)
             bitmap = page.render(scale=scale)
             pil_image = bitmap.to_pil().convert("RGB")
             out = BytesIO()
-            pil_image.save(out, format="PNG", optimize=True)
+            # compress_level=1 is ~5x faster than optimize=True (zlib level 9) on 0.5 vCPU containers
+            # while keeping full 200 DPI visual sharpness.
+            pil_image.save(out, format="PNG", compress_level=1)
             out.seek(0)
             return out
         finally:

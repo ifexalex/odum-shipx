@@ -487,3 +487,60 @@ class TestEng5DualFormatGuardrailAndWhatsApp:
                     "tenant-1", "pl-1", "packing_list", actor_id="u1", actor_role="china_office_staff"
                 )
             assert wa_exc.value.rule_id == "PACKING_LIST_NOT_APPROVED"
+
+    def test_document_logo_and_blob_fingerprint_caches_skip_repeat_renders(self) -> None:
+        excel_service._clear_document_caches()
+        pl = _sample_pl()
+        items = _sample_items(1)
+        branding = {"company_name": "Acme", "logo_key": "tenant-1/branding/logo/logo.png"}
+
+        stored: dict[str, bytes] = {}
+        fake_storage = MagicMock()
+        fake_storage.get_object.return_value = b"\x89PNG\r\n\x1a\nfake"
+        fake_storage.object_size.side_effect = lambda key: len(stored[key]) if key in stored else None
+        fake_storage.put_object.side_effect = lambda key, body, **_: stored.__setitem__(key, body)
+        fake_storage.presigned_get_url.side_effect = lambda key, **_: f"https://cdn.shipx.test/{key}"
+
+        with (
+            patch.object(excel_service.repo, "get_packing_list_for_export", return_value=pl),
+            patch.object(excel_service.repo, "get_items_for_packing_list", return_value=items),
+            patch.object(excel_service.repo, "get_tenant_branding", return_value=branding),
+            patch.object(excel_service, "get_storage_provider", return_value=fake_storage),
+            patch.object(excel_service, "log_audit"),
+        ):
+            # First PDF + Image exports render and populate both logo and blob caches
+            first_pdf = excel_service.export_loading_receipt_pdf(
+                "tenant-1", "pl-1", actor_id="u1", actor_role="china_office_staff", lang="zh"
+            )
+            first_png = excel_service.export_loading_receipt_image(
+                "tenant-1", "pl-1", actor_id="u1", actor_role="china_office_staff", lang="zh"
+            )
+            assert fake_storage.get_object.call_count == 1  # logo downloaded once, reused for PNG
+            assert fake_storage.put_object.call_count == 2  # 1 PDF + 1 PNG cached
+
+            # Second PDF + Image exports hit the fingerprinted blob cache (no re-render, no put_object)
+            with (
+                patch.object(excel_service, "generate_loading_receipt_pdf_with_meta") as mock_gen,
+                patch.object(excel_service, "render_single_page_png") as mock_png,
+            ):
+                second_pdf = excel_service.export_loading_receipt_pdf(
+                    "tenant-1", "pl-1", actor_id="u1", actor_role="china_office_staff", lang="zh"
+                )
+                second_png = excel_service.export_loading_receipt_image(
+                    "tenant-1", "pl-1", actor_id="u1", actor_role="china_office_staff", lang="zh"
+                )
+                mock_gen.assert_not_called()
+                mock_png.assert_not_called()
+
+            assert second_pdf["download_url"] == first_pdf["download_url"]
+            assert second_png["download_url"] == first_png["download_url"]
+            assert fake_storage.put_object.call_count == 2
+
+            # Changing document data (e.g. remarks) invalidates the fingerprint and creates a new key
+            updated_pl = _sample_pl(remarks="Updated packing note")
+            with patch.object(excel_service.repo, "get_packing_list_for_export", return_value=updated_pl):
+                third_pdf = excel_service.export_loading_receipt_pdf(
+                    "tenant-1", "pl-1", actor_id="u1", actor_role="china_office_staff", lang="zh"
+                )
+            assert third_pdf["download_url"] != first_pdf["download_url"]
+            assert fake_storage.put_object.call_count == 3
