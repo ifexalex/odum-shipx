@@ -289,6 +289,23 @@ class TestEng4LoadingReceiptApprovalAndBilingualPdfs:
                 text = "\n".join(val) if isinstance(val, list) else str(val)
                 assert pdf_theme.missing_glyphs(text) == set()
 
+    def test_destination_warehouse_formats_country_city_name_and_address(self) -> None:
+        from services.excel.export_packing_list_pdf import format_destination_warehouse
+
+        headline, address = format_destination_warehouse(
+            {
+                "destination": "Nigeria",
+                "arrival_warehouse_country": "Nigeria",
+                "arrival_warehouse_state": "Lagos",
+                "arrival_warehouse_city": "Lagos",
+                "arrival_warehouse_name": "Trade Fair Warehouse",
+                "arrival_warehouse_address": "Block C, Trade Fair Complex",
+            }
+        )
+        assert headline == "Nigeria · Lagos — Trade Fair Warehouse"
+        assert address == "Block C, Trade Fair Complex"
+        assert pdf_theme.initials("示例国际货运代理有限公司 · Acme Global Shipping") == "AG"
+
 
 class TestEng5DualFormatGuardrailAndWhatsApp:
     def test_single_page_pdf_rasterizes_to_valid_png(self) -> None:

@@ -123,6 +123,15 @@ def brand_color(value: object) -> colors.Color:
     return colors.HexColor(value if isinstance(value, str) and _HEX.match(value) else DEFAULT_BRAND)
 
 
+def brand_tint(value: object, weight: float = 0.08) -> colors.Color:
+    """A subtle print-safe pastel tint of the tenant's brand colour (default 8% brand + 92% white)."""
+    base = brand_color(value)
+    r = base.red * weight + (1.0 - weight)
+    g = base.green * weight + (1.0 - weight)
+    b = base.blue * weight + (1.0 - weight)
+    return colors.Color(r, g, b)
+
+
 @cache
 def styles() -> dict[str, ParagraphStyle]:
     """The paragraph styles every template uses."""
@@ -326,9 +335,18 @@ class Brand:
 
 
 def initials(name: str) -> str:
-    """Up to two initials, as the app's logo tile shows them."""
-    words = [w for w in name.split() if w]
-    return "".join(w[0].upper() for w in words[:2]) or "?"
+    """Up to two initials, preferring Latin characters so the bold monogram tile never drops CJK glyphs."""
+    latin_words = [w for w in name.split() if any("A" <= ch.upper() <= "Z" or ch.isdigit() for ch in w)]
+    source = latin_words if latin_words else [w for w in name.split() if w and w not in ("·", "-", "/")]
+    chars: list[str] = []
+    for word in source:
+        for ch in word:
+            if ch.isalnum() and _in_body(ch):
+                chars.append(ch.upper())
+                break
+        if len(chars) == 2:
+            break
+    return "".join(chars) or "?"
 
 
 class InitialsTile(Flowable):  # type: ignore[misc]  # reportlab ships no type hints
@@ -655,6 +673,7 @@ def render_with_meta(
     *,
     facts: Sequence[tuple[str, str]] = (),
     subject: str = "",
+    include_brand_block: bool = True,
 ) -> RenderedPdf:
     """Lay out a document and return both the PDF buffer and its exact page count."""
     register_fonts()
@@ -686,8 +705,11 @@ def render_with_meta(
         bottomPadding=0,
     )
     doc.addPageTemplates([PageTemplate(id="page", frames=[frame])])
+    story: list[Flowable] = (
+        [brand_block(brand, title, reference, facts), Spacer(1, 0.4 * cm), *body] if include_brand_block else list(body)
+    )
     doc.build(
-        [brand_block(brand, title, reference, facts), Spacer(1, 0.4 * cm), *body],
+        story,
         canvasmaker=_numbered_canvas(brand, title, reference, page_count_out),
     )
     buf.seek(0)

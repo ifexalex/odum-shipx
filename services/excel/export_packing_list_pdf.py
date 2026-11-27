@@ -162,13 +162,13 @@ def _columns_for(lang: Lang, *, show_delivered: bool, show_loaded: bool) -> list
     s = _STRINGS[lang]
     cols = [
         t.Column(s["col_tag"], 2.3),
-        t.Column(s["col_desc"], 3.8 if (show_delivered or show_loaded) else 4.4),
+        t.Column(s["col_desc"], 3.45 if (show_delivered and show_loaded) else (3.8 if (show_delivered or show_loaded) else 4.4)),
         t.Column(s["col_type"], 1.15),
         t.Column(s["col_qty"], 0.7, "right"),
         t.Column(s["col_dims"], 1.9, "right"),
         t.Column(s["col_cbm"], 1.15, "right"),
-        t.Column(s["col_dispatch_kg"], 1.25, "right"),
-        t.Column(s["col_actual_kg"], 1.25, "right"),
+        t.Column(s["col_dispatch_kg"], 1.45, "right"),
+        t.Column(s["col_actual_kg"], 1.35, "right"),
     ]
     if show_delivered:
         cols.append(t.Column(s["col_delivered"], 1.45))
@@ -206,6 +206,54 @@ def item_rows(
             row.append(t.day(item.get("loading_date") or default_loading_date))
         rows.append(row)
     return rows
+
+
+def format_destination_warehouse(pl: dict[str, Any]) -> tuple[str, str]:
+    """Return ``(headline, address_line)`` formatted as ``Nigeria · Lagos — Warehouse`` + street address.
+
+    Deduplicates country / state / city / container destination tokens case-insensitively so
+    fields like ``destination="Nigeria"`` + ``country="Nigeria"`` or ``city="Lagos"`` + ``state="Lagos"``
+    never repeat awkwardly.
+    """
+
+    def _clean(key: str) -> str:
+        val = pl.get(key)
+        return str(val).strip() if val not in (None, "") else ""
+
+    country = _clean("arrival_warehouse_country")
+    dest = _clean("destination")
+    city = _clean("arrival_warehouse_city")
+    state = _clean("arrival_warehouse_state")
+    wh_name = _clean("arrival_warehouse_name")
+    wh_addr = _clean("arrival_warehouse_address")
+
+    loc_parts: list[str] = []
+    seen_lower: set[str] = set()
+
+    def _add_loc(part: str) -> None:
+        if not part:
+            return
+        low = part.lower()
+        if low not in seen_lower and all(low not in existing for existing in seen_lower):
+            loc_parts.append(part)
+            seen_lower.add(low)
+
+    # Order: Country → City/State → Container destination fallback
+    _add_loc(country)
+    if not country and dest:
+        _add_loc(dest)
+    _add_loc(city)
+    _add_loc(state)
+    if country and dest:
+        _add_loc(dest)
+
+    loc_str = " · ".join(loc_parts)
+    if wh_name and wh_name.lower() not in seen_lower:
+        headline = f"{loc_str} — {wh_name}" if loc_str else wh_name
+    else:
+        headline = loc_str or t.MISSING
+
+    return headline, wh_addr
 
 
 def _effective_brand(brand: t.Brand, lang: Lang) -> t.Brand:
@@ -254,8 +302,8 @@ def generate_packing_list_pdf_with_meta(
     else:
         container_label = container_num or parcel_num or s["not_assigned"]
 
-    dest_parts = [str(p).strip() for p in (pl.get("destination"), pl.get("arrival_warehouse_name")) if p]
-    destination_label = " · ".join(dict.fromkeys(dest_parts)) or t.MISSING
+    dest_headline, dest_address = format_destination_warehouse(pl)
+    destination_label = f"{dest_headline}\n{dest_address}" if dest_address else dest_headline
 
     vessel_parts = [str(p).strip() for p in (pl.get("shipping_line"), pl.get("vessel_name"), pl.get("voyage_number")) if p]
     vessel_label = " / ".join(vessel_parts)

@@ -88,6 +88,11 @@ def get_packing_list_for_export(tenant_id: str, pl_id: str) -> dict[str, Any] | 
                co.ship_date              AS container_ship_date,
                co.estimated_arrival_date AS container_eta,
                w.name                    AS arrival_warehouse_name,
+               w.country                 AS arrival_warehouse_country,
+               w.state                   AS arrival_warehouse_state,
+               w.city                    AS arrival_warehouse_city,
+               w.address                 AS arrival_warehouse_address,
+               w.phone                   AS arrival_warehouse_phone,
                tu_c.full_name            AS created_by_name,
                tu_a.full_name            AS approved_by_name
         FROM packing_list pl
