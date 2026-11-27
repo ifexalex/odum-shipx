@@ -120,10 +120,6 @@ export const PACKAGE_UNITS: { value: PackageUnit; label: string }[] = [
   { value: 'sack', label: 'Sack' },
 ]
 
-
-/** Above this, saving asks for an explicit confirmation of the total. */
-export const BULK_CONFIRM_THRESHOLD = 25
-
 export interface PackingListItemInput {
   description: string
   weight_dispatch_kg?: number

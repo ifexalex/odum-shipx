@@ -532,7 +532,8 @@ describe('CreatePackingList — bulk quantity', () => {
     expect(qty).toHaveValue(1200)
   })
 
-  it('asks for confirmation before saving a large quantity, and can be cancelled', async () => {
+  it('saves a large confirmed identical quantity directly without an obsolete expansion modal', async () => {
+    vi.mocked(packingListApi.create).mockResolvedValue({ id: 'pl1' } as PackingList)
     await reachItemsStep()
     await userEvent.click(screen.getByRole('checkbox', { name: /item 1: all packages identical/i }))
     const qty = screen.getByRole('spinbutton', { name: /item 1: quantity/i })
@@ -542,10 +543,8 @@ describe('CreatePackingList — bulk quantity', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
 
-    expect(await screen.findByText(/Create 100 packages\?/i)).toBeInTheDocument()
-    // Cancelling must not write anything.
-    await userEvent.click(screen.getByRole('button', { name: /go back/i }))
-    expect(packingListApi.create).not.toHaveBeenCalled()
+    await waitFor(() => expect(packingListApi.create).toHaveBeenCalled())
+    expect(screen.queryByText(/Create 100 packages\?/i)).not.toBeInTheDocument()
   })
 
   it('does not interrupt a save when every line is a single package', async () => {

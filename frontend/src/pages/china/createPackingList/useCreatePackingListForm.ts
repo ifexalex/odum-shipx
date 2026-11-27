@@ -100,13 +100,10 @@ export function useCreatePackingListForm() {
     rawCbm,
     qtyOf,
     totals,
-    bulkLines,
     cbmCharge,
     shippingUsd,
     shippingNgn,
   } = usePackingListPricing(items)
-  // Set when a save is held back pending confirmation of a bulk line.
-  const [pendingSave, setPendingSave] = useState<{ submitForApproval: boolean } | null>(null)
   // When editing a draft, the customer/container are fixed (the update API
   // keeps them) — show them read-only once loaded.
   const [draftSeeded, setDraftSeeded] = useState(false)
@@ -344,24 +341,11 @@ export function useCreatePackingListForm() {
     return items.filter((item) => item.batch_ref === batchRef).length
   }
 
-  /** Ask before creating a lot of packages from one keystroke.
-   *
-   *  Only above BULK_CONFIRM_THRESHOLD: prompting on every "2" would train
-   *  people to dismiss it, which is worse than not asking. The dialog restates
-   *  the figures that actually matter — package count, CBM, weight — because
-   *  "500" in a narrow input looks much like "50", while the CBM it implies
-   *  does not.
-   */
   async function requestSave(submitForApproval: boolean): Promise<void> {
-    if (bulkLines.length > 0) {
-      setPendingSave({ submitForApproval })
-      return
-    }
     await handleSave(submitForApproval)
   }
 
   async function handleSave(submitForApproval: boolean): Promise<void> {
-    setPendingSave(null)
     setSubmitting(true)
     setError(null)
     try {
@@ -482,8 +466,6 @@ export function useCreatePackingListForm() {
     itemDateErrors,
     items,
     setItems,
-    pendingSave,
-    setPendingSave,
     draftSeeded,
     setDraftSeeded,
     submitting,
@@ -518,7 +500,6 @@ export function useCreatePackingListForm() {
     remainingCapacityCbm,
     exceedsCapacity,
     totals,
-    bulkLines,
     cbmCharge,
     shippingUsd,
     shippingNgn,
