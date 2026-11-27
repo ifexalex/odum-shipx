@@ -298,6 +298,9 @@ class Brand:
     footer: str = ""
     color: str = DEFAULT_BRAND
     logo: bytes | None = None
+    chinese_name: str = ""
+    china_warehouse_address: str = ""
+    china_warehouse_phone: str = ""
 
     @classmethod
     def from_branding(cls, branding: dict[str, Any], logo: bytes | None = None) -> "Brand":
@@ -316,6 +319,9 @@ class Brand:
             footer=text("document_footer"),
             color=text("primary_color") if _HEX.match(text("primary_color")) else DEFAULT_BRAND,
             logo=logo,
+            chinese_name=text("chinese_display_name"),
+            china_warehouse_address=text("china_warehouse_address"),
+            china_warehouse_phone=text("china_warehouse_phone"),
         )
 
 
@@ -577,7 +583,15 @@ def qr_code(data: str, size: float = 2.6 * cm) -> Flowable:
 # ---------------------------------------------------------------------------
 
 
-def _numbered_canvas(brand: Brand, title: str, reference: str) -> type[Canvas]:
+@dataclass(frozen=True)
+class RenderedPdf:
+    """Rendered PDF buffer paired with its exact page count from ``NumberedCanvas``."""
+
+    buf: BytesIO
+    page_count: int
+
+
+def _numbered_canvas(brand: Brand, title: str, reference: str, page_count_out: list[int] | None = None) -> type[Canvas]:
     """A canvas that draws the running header and footer once the page count is known ("Page n of N")."""
 
     class NumberedCanvas(Canvas):  # type: ignore[misc]  # reportlab ships no type hints
@@ -591,6 +605,8 @@ def _numbered_canvas(brand: Brand, title: str, reference: str) -> type[Canvas]:
 
         def save(self) -> None:
             total = len(self._pages)
+            if page_count_out is not None:
+                page_count_out.append(total)
             for state in self._pages:
                 self.__dict__.update(state)
                 self._decorate(total)
@@ -631,7 +647,7 @@ def _plain(text: str) -> str:
     return "".join(ch if _in_body(ch) else "?" for ch in text)
 
 
-def render(
+def render_with_meta(
     brand: Brand,
     title: str,
     reference: str,
@@ -639,19 +655,11 @@ def render(
     *,
     facts: Sequence[tuple[str, str]] = (),
     subject: str = "",
-) -> BytesIO:
-    """Lay out a document: the brand block, then ``body``, on A4 pages with the running header and footer.
-
-    Args:
-        brand: Who the document is from.
-        title: What it is ("Invoice"), also the PDF title with ``reference``.
-        reference: Its number ("INV-A-002").
-        body: The document's content.
-        facts: Short label/value pairs under the title (date, status).
-        subject: The PDF's subject metadata.
-    """
+) -> RenderedPdf:
+    """Lay out a document and return both the PDF buffer and its exact page count."""
     register_fonts()
     buf = BytesIO()
+    page_count_out: list[int] = []
     doc = BaseDocTemplate(
         buf,
         pagesize=A4,
@@ -680,7 +688,20 @@ def render(
     doc.addPageTemplates([PageTemplate(id="page", frames=[frame])])
     doc.build(
         [brand_block(brand, title, reference, facts), Spacer(1, 0.4 * cm), *body],
-        canvasmaker=_numbered_canvas(brand, title, reference),
+        canvasmaker=_numbered_canvas(brand, title, reference, page_count_out),
     )
     buf.seek(0)
-    return buf
+    return RenderedPdf(buf=buf, page_count=page_count_out[-1] if page_count_out else 1)
+
+
+def render(
+    brand: Brand,
+    title: str,
+    reference: str,
+    body: Sequence[Flowable],
+    *,
+    facts: Sequence[tuple[str, str]] = (),
+    subject: str = "",
+) -> BytesIO:
+    """Lay out a document: the brand block, then ``body``, on A4 pages with the running header and footer."""
+    return render_with_meta(brand, title, reference, body, facts=facts, subject=subject).buf

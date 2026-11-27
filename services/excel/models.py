@@ -166,3 +166,10 @@ class ContainerListExportQuery(ListExportQuery):
             if getattr(self, key):
                 filters[key] = getattr(self, key)
         return filters
+
+
+class ShareWhatsAppRequest(BaseModel):
+    """Body for POST /v1/packing-lists/{id}/share-whatsapp (ENG-5)."""
+
+    document_type: Literal["loading_receipt", "packing_list"]
+    lang: Literal["zh", "en"] | None = None

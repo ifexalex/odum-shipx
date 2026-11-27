@@ -242,24 +242,76 @@ def get_next_tracking_sequence(tenant_id: str, date_prefix: str) -> int:
 # ---------------------------------------------------------------------------
 
 
+def get_next_loading_receipt_number(tenant_id: str) -> str:
+    """Generate the next Loading Receipt number for this tenant in LR-YYYYMMDD-NNN format."""
+    date_str = datetime.now(tz=UTC).strftime("%Y%m%d")
+    prefix = f"LR-{date_str}-"
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT GREATEST(
+            COUNT(*),
+            COALESCE(
+                MAX(
+                    CASE
+                        WHEN loading_receipt_number ~ '-[0-9]+$'
+                        THEN substring(loading_receipt_number FROM '([0-9]+)$')::int
+                        ELSE 0
+                    END
+                ),
+                0
+            )
+        ) AS cnt
+        FROM packing_list
+        WHERE tenant_id = %s AND loading_receipt_number LIKE %s
+        """,
+        (tenant_id, prefix + "%"),
+    )
+    seq = (int(rows[0]["cnt"]) + 1) if rows else 1
+    return f"{prefix}{seq:03d}"
+
+
+def stamp_loading_receipt(tenant_id: str, pl_id: str, receipt_number: str) -> dict[str, Any] | None:
+    """Stamp loading_receipt_number and loaded_at onto an approved packing list (idempotent)."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE packing_list
+        SET loading_receipt_number = COALESCE(loading_receipt_number, %(receipt_number)s),
+            loaded_at = COALESCE(loaded_at, NOW()),
+            loading_date = COALESCE(loading_date, CURRENT_DATE),
+            updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        RETURNING *
+        """,
+        {"tenant_id": tenant_id, "id": pl_id, "receipt_number": receipt_number},
+    )
+
+
 def create_packing_list(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     return execute_write_with_tenant(
         tenant_id,
         """
         INSERT INTO packing_list (
             tenant_id, container_id, customer_id, status, created_by, reference,
-            loading_date, delivery_date, arrival_warehouse_id
+            loading_date, delivery_date, delivery_date_mode, arrival_warehouse_id,
+            supplier_name, supplier_phone, remarks
         )
         VALUES (
             %(tenant_id)s, %(container_id)s, %(customer_id)s, 'draft', %(created_by)s, %(reference)s,
-            %(loading_date)s, %(delivery_date)s, %(arrival_warehouse_id)s
+            %(loading_date)s, %(delivery_date)s, %(delivery_date_mode)s, %(arrival_warehouse_id)s,
+            %(supplier_name)s, %(supplier_phone)s, %(remarks)s
         )
         RETURNING *
         """,
         {
             "loading_date": data.get("loading_date"),
             "delivery_date": data.get("delivery_date"),
+            "delivery_date_mode": data.get("delivery_date_mode") or "same_day",
             "arrival_warehouse_id": data.get("arrival_warehouse_id"),
+            "supplier_name": data.get("supplier_name"),
+            "supplier_phone": data.get("supplier_phone"),
+            "remarks": data.get("remarks"),
             **data,
         },
     )
@@ -278,7 +330,44 @@ def set_packing_list_warehouse(tenant_id: str, pl_id: str, warehouse_id: str | N
     )
 
 
-def set_packing_list_dates(tenant_id: str, pl_id: str, loading_date: Any, delivery_date: Any) -> dict[str, Any] | None:
+def set_packing_list_dates(
+    tenant_id: str,
+    pl_id: str,
+    loading_date: Any,
+    delivery_date: Any,
+    *,
+    delivery_date_mode: str | None = None,
+    supplier_name: str | None = None,
+    supplier_phone: str | None = None,
+    remarks: str | None = None,
+    update_metadata: bool = False,
+) -> dict[str, Any] | None:
+    if update_metadata:
+        return execute_write_with_tenant(
+            tenant_id,
+            """
+            UPDATE packing_list
+            SET loading_date = %(loading_date)s,
+                delivery_date = %(delivery_date)s,
+                delivery_date_mode = COALESCE(%(delivery_date_mode)s, delivery_date_mode),
+                supplier_name = %(supplier_name)s,
+                supplier_phone = %(supplier_phone)s,
+                remarks = %(remarks)s,
+                updated_at = NOW()
+            WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+            RETURNING *
+            """,
+            {
+                "tenant_id": tenant_id,
+                "id": pl_id,
+                "loading_date": loading_date,
+                "delivery_date": delivery_date,
+                "delivery_date_mode": delivery_date_mode,
+                "supplier_name": supplier_name,
+                "supplier_phone": supplier_phone,
+                "remarks": remarks,
+            },
+        )
     return execute_write_with_tenant(
         tenant_id,
         """
@@ -306,6 +395,7 @@ _ITEM_INSERT_COLUMNS: tuple[tuple[str, str], ...] = (
     ("width_cm", "numeric"),
     ("height_cm", "numeric"),
     ("received_date", "date"),
+    ("loading_date", "date"),
     ("declared_value_usd", "numeric"),
     ("quantity", "integer"),
     ("package_unit", "varchar"),
@@ -362,8 +452,17 @@ def get_packing_list_by_id(tenant_id: str, pl_id: str) -> dict[str, Any] | None:
         SELECT pl.*,
                c.name  AS customer_name,
                c.phone AS customer_phone,
+               c.whatsapp AS customer_whatsapp,
                co.container_number,
+               co.parcel_number AS container_parcel_number,
                co.status AS container_status,
+               co.vessel_name,
+               co.voyage_number,
+               co.shipping_line,
+               co.origin,
+               co.destination,
+               co.ship_date AS container_ship_date,
+               co.estimated_arrival_date AS container_eta,
                w.name AS arrival_warehouse_name,
                tu_a.full_name AS approved_by_name,
                tu_r.full_name AS rejected_by_name,

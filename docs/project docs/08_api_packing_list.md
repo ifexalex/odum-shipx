@@ -367,3 +367,11 @@ expanded into N rows; as of 2026-11-25 it stays **one row with one `carton_tag` 
 ### Packing list PDF rebuilt (FD-40/41, 2026-11-21)
 
 `GET /v1/packing-lists/{id}/pdf` is the one packing-list document (the `/packing-lists/:id/print` page is retired; "Print" opens the PDF). Now with type, quantity, dimensions, CBM to 3 decimals and kg to 1, wrapping 40-character tags, page numbers, and packed by / approved by with dates. `GET /v1/packing-lists/{id}/export?format=pdf` is now 422. See `19_excel_import_export.md`.
+
+## Delivery date modes, shared tracking code, per-item loading dates & Loading Receipts (ENG-2/3/4, migration 073, 2026-11-27)
+
+- **Schema (migration `073_transit_dates_and_loading_receipts.py`):** Added `packing_list.{ship_date, estimated_arrival_date, delivery_date_mode, loading_receipt_number, loaded_at, supplier_name, supplier_phone, remarks}` (with partial unique index `uq_packing_list_loading_receipt_number` and `delivery_date_mode IN ('same_day','multiple_days')`) and `packing_list_item.loading_date`.
+- **Delivery date modes (`ENG-3`):** `POST`/`PUT /v1/packing-lists` accept `delivery_date_mode` (`same_day` default | `multiple_days`), optional `supplier_name`/`supplier_phone`/`remarks`, and optional per-item `loading_date` overrides. In `same_day` mode, header `delivery_date` propagates to every item's `received_date`; in `multiple_days` mode, each item records its own `received_date` validated `<= today + 1d UTC` and `<= effective loading_date`.
+- **Shared tracking code invariant (`ENG-3`):** All line items inside one packing list share a **single tracking code**, even when items have different delivery dates (`multiple_days` mode).
+- **Automatic Loading Receipt on approval (`ENG-4`):** Both single `PATCH /v1/packing-lists/{id}/approve` and `POST /v1/packing-lists/bulk-approve` atomically stamp `loading_receipt_number` (`LR-YYYYMMDD-NNN`) and `loaded_at = NOW()` inside `tenant_transaction`.
+- **Tests:** `tests/unit/test_transit_and_documents.py`.

@@ -735,3 +735,12 @@ Both imports (`POST /v1/packing-lists/import`, the manifest import) check the st
 
 - Summary header shows total authorised cartons (sum of `quantity`, not tag count) plus collected and remaining progress when partial pickups have been recorded.
 - The authorised tags table adds a `Qty` column whenever any tag carries `quantity > 1`.
+
+## Bilingual Packing List & Loading Receipt PDFs, Single-Page PNG Image Export, Multi-Page Guardrail & WhatsApp Sharing (ENG-2/4/5, 2026-11-27)
+
+- **Bilingual Packing List (`services/excel/export_packing_list_pdf.py`):** `GET /v1/packing-lists/{id}/pdf?lang=en|zh` (default `en`) renders finalized post-shipment metadata (**Shipping Date**, dynamically calculated **ETA**, Container & Parcel No., Shipping Line / Vessel / Voyage, linked Loading Receipt No., delivery/loading dates including per-item date columns when items vary, item dimensions `L × W × H cm`, remarks, terms, and sign-off).
+- **Modern Bilingual Loading Receipt (`services/excel/export_loading_receipt_pdf.py`):** `GET /v1/packing-lists/{id}/loading-receipt/pdf?lang=zh|en` (default `zh`; requires `status = 'approved'` and `loading_receipt_number`, else `422 LOADING_RECEIPT_NOT_READY`) renders the China warehouse loading proof (`LR-YYYYMMDD-NNN`) with full item dimensions (`L × W × H cm`), CBM, weight, QR code, warehouse terms, and sign-off.
+- **Dual-Format Export & Multi-Page Guardrail (`services/excel/pdf_image.py`, `pypdfium2` + `Pillow`):**
+  - `GET /v1/packing-lists/{id}/documents?lang_lr=zh&lang_pl=en` returns page counts and `image_eligible` / `image_disabled_reason` for both documents.
+  - `GET /v1/packing-lists/{id}/image?lang=en|zh` and `GET /v1/packing-lists/{id}/loading-receipt/image?lang=zh|en` rasterize single-page documents at 200 DPI PNG; any document spanning `> 1` page skips rasterization and returns `422 MULTIPAGE_IMAGE_DISABLED`.
+- **WhatsApp Media Sharing (`POST /v1/packing-lists/{id}/share-whatsapp`):** Staff can send either `loading_receipt` or `packing_list` in `zh` or `en` via Meta Cloud API. Single-page documents are sent with an `image` header; multi-page documents skip image generation and attach the `document` (PDF) header with an explanatory notice. All routes are registered in `services/excel/handler.py`, `shared/http_routing.py`, and `infrastructure/aws/modules/api-gateway/main.tf`.

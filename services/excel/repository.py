@@ -69,17 +69,27 @@ def get_tenant_destination_country(tenant_id: str) -> str | None:
 
 
 def get_packing_list_for_export(tenant_id: str, pl_id: str) -> dict[str, Any] | None:
-    """Return packing list row with customer_name and container_number."""
+    """Return packing list row with customer, container, shipping, and warehouse metadata."""
     rows = execute_with_tenant(
         tenant_id,
         """
         SELECT pl.*,
-               c.name              AS customer_name,
-               c.phone             AS customer_phone,
-               co.container_number AS container_number,
-               w.name              AS arrival_warehouse_name,
-               tu_c.full_name      AS created_by_name,
-               tu_a.full_name      AS approved_by_name
+               c.name                    AS customer_name,
+               c.phone                   AS customer_phone,
+               c.whatsapp                AS customer_whatsapp,
+               co.container_number       AS container_number,
+               co.parcel_number          AS container_parcel_number,
+               co.status                 AS container_status,
+               co.vessel_name            AS vessel_name,
+               co.voyage_number          AS voyage_number,
+               co.shipping_line          AS shipping_line,
+               co.origin                 AS origin,
+               co.destination            AS destination,
+               co.ship_date              AS container_ship_date,
+               co.estimated_arrival_date AS container_eta,
+               w.name                    AS arrival_warehouse_name,
+               tu_c.full_name            AS created_by_name,
+               tu_a.full_name            AS approved_by_name
         FROM packing_list pl
         LEFT JOIN customer  c  ON c.id  = pl.customer_id  AND c.tenant_id  = pl.tenant_id
         LEFT JOIN container co ON co.id = pl.container_id AND co.tenant_id = pl.tenant_id

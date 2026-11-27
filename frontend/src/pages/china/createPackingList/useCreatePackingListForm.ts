@@ -4,6 +4,7 @@ import { ApiError } from '../../../api/client'
 import { SessionContext } from '../../../auth/SessionContext'
 import {
   packingListApi,
+  type DeliveryDateMode,
   type PackageUnit,
   type PackingList,
   type PackingListItemInput,
@@ -29,8 +30,12 @@ interface WizardDraft {
   customerId: string
   containerId: string
   arrivalWarehouseId: string
+  deliveryDateMode: DeliveryDateMode
   loadingDate: string
   deliveryDate: string
+  supplierName: string
+  supplierPhone: string
+  remarks: string
   items: PackingListItemInput[]
 }
 
@@ -78,8 +83,14 @@ export function useCreatePackingListForm() {
   const [customerId, setCustomerId] = useState(seed?.customerId ?? '')
   const [containerId, setContainerId] = useState(prefilledContainerId || (seed?.containerId ?? ''))
   const [arrivalWarehouseId, setArrivalWarehouseId] = useState(seed?.arrivalWarehouseId ?? '')
+  const [deliveryDateMode, setDeliveryDateMode] = useState<DeliveryDateMode>(
+    seed?.deliveryDateMode ?? 'same_day',
+  )
   const [loadingDate, setLoadingDate] = useState(seed?.loadingDate ?? '')
   const [deliveryDate, setDeliveryDate] = useState(seed?.deliveryDate ?? '')
+  const [supplierName, setSupplierName] = useState(seed?.supplierName ?? '')
+  const [supplierPhone, setSupplierPhone] = useState(seed?.supplierPhone ?? '')
+  const [remarks, setRemarks] = useState(seed?.remarks ?? '')
   const [items, setItems] = useState<PackingListItemInput[]>(seed?.items ?? [emptyItem()])
   // CBM and dollar rates, totals and the live shipping estimate (usePackingListPricing).
   const {
@@ -144,8 +155,12 @@ export function useCreatePackingListForm() {
       setCustomerId(pl.customer_id)
       setContainerId(pl.container_id)
       setArrivalWarehouseId(pl.arrival_warehouse_id ?? '')
+      setDeliveryDateMode(pl.delivery_date_mode ?? 'same_day')
       setLoadingDate(pl.loading_date ?? '')
       setDeliveryDate(pl.delivery_date ?? '')
+      setSupplierName(pl.supplier_name ?? '')
+      setSupplierPhone(pl.supplier_phone ?? '')
+      setRemarks(pl.remarks ?? '')
       setItems(
         // collapseBatches folds an expanded bulk line back into the single
         // row that produced it, so the quantity the user typed is what they
@@ -167,13 +182,8 @@ export function useCreatePackingListForm() {
                   declared_value_usd:
                     it.declared_value_usd != null ? Number(it.declared_value_usd) : undefined,
                   package_unit: (it.package_unit as PackageUnit) ?? 'carton',
-                  // Carried through because the server falls back to
-                  // `received_date or date.today()`. Dropping it meant editing a
-                  // draft silently re-dated every item to today — and the
-                  // tracking code is derived from customer + received date, so
-                  // the grouping moved with it. Worst on an imported list, where
-                  // that date is real rather than the day of entry.
                   received_date: it.received_date ?? undefined,
+                  loading_date: it.loading_date ?? undefined,
                   quantity: qty,
                   identical_confirmed: qty > 1,
                   batch_ref: it.batch_ref ?? null,
@@ -201,14 +211,30 @@ export function useCreatePackingListForm() {
   // The tab keeps the input until it is saved for real. An untouched form (the default warehouse pre-selected and
   // nothing else) stores nothing, so opening the wizard and leaving does not leave a "draft" behind.
   const defaultWarehouseId = warehouseQuery.data?.find((w) => w.is_default)?.id ?? ''
-  const current: WizardDraft = { step, customerId, containerId, arrivalWarehouseId, loadingDate, deliveryDate, items }
+  const current: WizardDraft = {
+    step,
+    customerId,
+    containerId,
+    arrivalWarehouseId,
+    deliveryDateMode,
+    loadingDate,
+    deliveryDate,
+    supplierName,
+    supplierPhone,
+    remarks,
+    items,
+  }
   const pristine: WizardDraft = {
     step,
     customerId: '',
     containerId: prefilledContainerId,
     arrivalWarehouseId: arrivalWarehouseId === defaultWarehouseId ? arrivalWarehouseId : '',
+    deliveryDateMode: 'same_day',
     loadingDate: '',
     deliveryDate: '',
+    supplierName: '',
+    supplierPhone: '',
+    remarks: '',
     items: [emptyItem()],
   }
   const tabDraft = useTabDraft<WizardDraft>(DRAFT_FORM, current, pristine, keepsTabDraft)
@@ -232,8 +258,12 @@ export function useCreatePackingListForm() {
     setCustomerId('')
     setContainerId('')
     setArrivalWarehouseId(defaultWarehouseId)
+    setDeliveryDateMode('same_day')
     setLoadingDate('')
     setDeliveryDate('')
+    setSupplierName('')
+    setSupplierPhone('')
+    setRemarks('')
     setItems([emptyItem()])
   }
 
@@ -351,7 +381,11 @@ export function useCreatePackingListForm() {
       if (targetListId) {
         const updated = await packingListApi.update(targetListId, {
           loading_date: loadingDate || undefined,
-          delivery_date: deliveryDate || undefined,
+          delivery_date: deliveryDateMode === 'same_day' ? deliveryDate || undefined : undefined,
+          delivery_date_mode: deliveryDateMode,
+          supplier_name: supplierName.trim() || undefined,
+          supplier_phone: supplierPhone.trim() || undefined,
+          remarks: remarks.trim() || undefined,
           arrival_warehouse_id: arrivalWarehouseId || undefined,
           items,
         })
@@ -363,7 +397,11 @@ export function useCreatePackingListForm() {
             container_id: containerId,
             customer_id: customerId,
             loading_date: loadingDate || undefined,
-            delivery_date: deliveryDate || undefined,
+            delivery_date: deliveryDateMode === 'same_day' ? deliveryDate || undefined : undefined,
+            delivery_date_mode: deliveryDateMode,
+            supplier_name: supplierName.trim() || undefined,
+            supplier_phone: supplierPhone.trim() || undefined,
+            remarks: remarks.trim() || undefined,
             arrival_warehouse_id: arrivalWarehouseId || undefined,
             items,
           },
@@ -403,19 +441,35 @@ export function useCreatePackingListForm() {
   // ISO date strings (YYYY-MM-DD) compare correctly as plain strings, so no
   // Date parsing — and therefore no timezone shifting — is needed here.
   const deliveryDateError =
-    deliveryDate && deliveryDate > today
+    deliveryDateMode === 'same_day' && deliveryDate && deliveryDate > today
       ? 'Cannot be a future date — this is when the goods were received.'
       : undefined
   const loadingDateError =
-    loadingDate && deliveryDate && loadingDate < deliveryDate
+    deliveryDateMode === 'same_day' && loadingDate && deliveryDate && loadingDate < deliveryDate
       ? 'Cannot be before the delivery date — goods must be received before they are loaded.'
       : undefined
+
+  const itemDateErrors = items.map((item) => {
+    if (deliveryDateMode === 'multiple_days' && item.received_date && item.received_date > today) {
+      return 'Delivery date cannot be in the future.'
+    }
+    const effectiveDelivery =
+      deliveryDateMode === 'same_day' ? deliveryDate || item.received_date : item.received_date
+    const effectiveLoading = item.loading_date || loadingDate
+    if (effectiveDelivery && effectiveLoading && effectiveLoading < effectiveDelivery) {
+      return 'Loading date cannot be before delivery date.'
+    }
+    return undefined
+  })
 
   // A restored draft can name a container that has since been sealed; it is no longer offered, so it cannot be used.
   const canProceedFrom1 =
     Boolean(customerId && selectedContainer) && !deliveryDateError && !loadingDateError
   const canProceedFrom2 =
-    items.length > 0 && items.every((item) => item.description.trim() !== '') && !exceedsCapacity
+    items.length > 0 &&
+    items.every((item) => item.description.trim() !== '') &&
+    itemDateErrors.every((err) => !err) &&
+    !exceedsCapacity
 
   return {
     navigate,
@@ -433,10 +487,19 @@ export function useCreatePackingListForm() {
     setContainerId,
     arrivalWarehouseId,
     setArrivalWarehouseId,
+    deliveryDateMode,
+    setDeliveryDateMode,
     loadingDate,
     setLoadingDate,
     deliveryDate,
     setDeliveryDate,
+    supplierName,
+    setSupplierName,
+    supplierPhone,
+    setSupplierPhone,
+    remarks,
+    setRemarks,
+    itemDateErrors,
     items,
     setItems,
     pendingSave,

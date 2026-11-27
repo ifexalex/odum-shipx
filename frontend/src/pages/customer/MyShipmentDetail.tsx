@@ -33,6 +33,8 @@ import { arrivalLabel } from './shipmentStage'
 import { useBreadcrumbLabel } from '../../shell/breadcrumbs'
 import { PageHeader } from '../../shell/PageHeader'
 import { DetailPage } from '../../shell/DetailPage'
+import { ShipmentDocumentsCard } from '../shared/ShipmentDocumentsCard'
+import { formatDate } from '../../lib/format'
 
 // Ground truth: api/tracking.ts's ContainerStatus (services/tracking + the
 // `container` table) — the 9 real values. This map previously used fictional
@@ -117,8 +119,10 @@ export function MyShipmentDetail(): JSX.Element {
   const status = pl.container_status ?? 'loading'
   const totalCbm = Number(pl.total_cbm)
   const outstanding = shipmentBilling ? Number(shipmentBilling.outstanding_ngn) : 0
+  const shipDate = pl.ship_date ?? pl.container_ship_date ?? null
+  const etaDate = pl.estimated_arrival_date ?? pl.container_eta ?? null
   // Expected, delayed or arrived, by the container's real stage (FD-27).
-  const arrival = arrivalLabel(pl.container_status, pl.container_eta, todayIso())
+  const arrival = arrivalLabel(pl.container_status, etaDate, todayIso())
 
   return (
     <DetailPage
@@ -135,12 +139,15 @@ export function MyShipmentDetail(): JSX.Element {
               'Awaiting container assignment'
             ),
             plural(pl.carton_count, 'carton'),
+            shipDate && `Shipped ${formatDate(shipDate)}`,
             arrival && (arrival.detail ? `${arrival.label}: ${arrival.detail}` : arrival.label),
           ]}
         />
       }
     >
       <ReleaseNoteCard containerId={pl.container_id} />
+
+      <ShipmentDocumentsCard packingList={pl} canShareWhatsApp={false} />
 
       {/* Tracking */}
       <Card padding="large">

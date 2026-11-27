@@ -127,6 +127,10 @@ def resolve_service(path: str) -> str | None:
     if (
         (path_no_qs.endswith("/export") and any(path_no_qs.startswith(p) for p in _EXCEL_EXPORT_PREFIXES))
         or (path_no_qs.endswith("/pdf") and any(path_no_qs.startswith(p) for p in _EXCEL_PDF_PREFIXES))
+        or (
+            path_no_qs.startswith("/v1/packing-lists/")
+            and (path_no_qs.endswith("/image") or path_no_qs.endswith("/documents") or path_no_qs.endswith("/share-whatsapp"))
+        )
         or path_no_qs.endswith("/import")
         or path_no_qs.endswith("/import/presigned-url")
     ):

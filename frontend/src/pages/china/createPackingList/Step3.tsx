@@ -16,8 +16,12 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
   const {
     setStep,
     arrivalWarehouseId,
+    deliveryDateMode,
     loadingDate,
     deliveryDate,
+    supplierName,
+    supplierPhone,
+    remarks,
     items,
     submitting,
     warehouses,
@@ -100,12 +104,40 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                       submitting could not show when it loads or lands. */}
                 <div>
                   <div className={styles.previewMetaLabel}>Loading date</div>
-                  <div className={styles.previewMetaValue}>{loadingDate || '—'}</div>
+                  <div className={styles.previewMetaValue}>
+                    {loadingDate || '—'}
+                    {items.some((it) => it.loading_date) ? ' (+ per-item overrides)' : ''}
+                  </div>
                 </div>
                 <div>
                   <div className={styles.previewMetaLabel}>Delivery date</div>
-                  <div className={styles.previewMetaValue}>{deliveryDate || '—'}</div>
+                  <div className={styles.previewMetaValue}>
+                    {deliveryDateMode === 'multiple_days'
+                      ? (() => {
+                          const dates = Array.from(
+                            new Set(items.map((it) => it.received_date).filter(Boolean) as string[]),
+                          ).sort()
+                          if (dates.length > 1) return `${dates[0]} – ${dates[dates.length - 1]}`
+                          if (dates.length === 1) return dates[0]
+                          return 'Multiple days'
+                        })()
+                      : deliveryDate || '—'}
+                  </div>
                 </div>
+                {(supplierName || supplierPhone) && (
+                  <div>
+                    <div className={styles.previewMetaLabel}>Supplier</div>
+                    <div className={styles.previewMetaValue}>
+                      {[supplierName, supplierPhone].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                )}
+                {remarks && (
+                  <div>
+                    <div className={styles.previewMetaLabel}>Remarks</div>
+                    <div className={styles.previewMetaValue}>{remarks}</div>
+                  </div>
+                )}
                 <div>
                   <div className={styles.previewMetaLabel}>Arrival warehouse</div>
                   <div className={styles.previewMetaValue}>

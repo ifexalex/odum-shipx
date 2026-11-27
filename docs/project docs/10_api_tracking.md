@@ -195,3 +195,9 @@ Each event: `{ id, from_status, to_status, actor_id, notes, created_at }`
 - `POST /v1/containers` no longer requires or stores `estimated_arrival_date` at creation time (`services/tracking/service.py::create_container` always initializes `estimated_arrival_date = None`, ignoring any legacy `estimated_arrival_date` field in the request body for backward compatibility).
 - ETA is standardized via the tenant's **Default Transit Duration (Days)** setting (`default_transit_days`, default `45` days) and calculated automatically when the container transitions to `in_transit` (ENG-2).
 - **Tests:** `tests/unit/test_transit_duration.py::TestCreateContainerIgnoresEta`.
+
+## Automated Shipping Date & Dynamic ETA on `In Transit` (ENG-2, 2026-11-27)
+
+- Transitioning a container to `in_transit` (`PATCH /v1/containers/{id}/status`) reads the tenant's `default_transit_days` (default `45`), computes `estimated_arrival_date = ship_date + timedelta(days=default_transit_days)`, and atomically persists both `ship_date` and `estimated_arrival_date` onto `container` **and** all linked non-rejected `packing_list` rows (`stamp_packing_lists_transit_dates`) inside `tenant_transaction`.
+- Both dates are included in the `shipment_update` notification payload and container `STATUS_CHANGE` audit log; finalized Packing Lists are best-effort dispatched via WhatsApp when Meta WhatsApp credentials are configured (ENG-5).
+- **Tests:** `tests/unit/test_transit_and_documents.py::TestEng2InTransitAutomation`.
