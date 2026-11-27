@@ -124,7 +124,9 @@ def create_container(
             "parcel_number": data.get("parcel_number"),
             "origin": data.get("origin", "China"),
             "destination": data.get("destination", "Nigeria"),
-            "estimated_arrival_date": data.get("estimated_arrival_date"),
+            # ETA is no longer set at container creation (ENG-1); it is computed
+            # automatically when the container transitions to in_transit.
+            "estimated_arrival_date": None,
             "notes": data.get("notes"),
             "created_by": actor_id,
             # Vessel/voyage manifest details (migration 030) — all optional.

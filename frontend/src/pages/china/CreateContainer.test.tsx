@@ -11,6 +11,7 @@ vi.mock('../../api/tracking', () => ({
 }))
 vi.mock('../../api/tenantManagement', () => ({
   containerCapacitiesApi: { list: vi.fn().mockResolvedValue([]) },
+  configApi: { getConfig: vi.fn().mockResolvedValue({ webhook_config: null, default_transit_days: 45 }) },
 }))
 
 function renderPage() {
@@ -29,9 +30,10 @@ describe('CreateContainer', () => {
     vi.mocked(containersApi.create).mockReset()
   })
 
-  it('disables submit until a container number is entered', () => {
+  it('disables submit until a container number is entered and omits ETA on creation (ENG-1)', () => {
     renderPage()
     expect(screen.getByRole('button', { name: 'Create container' })).toBeDisabled()
+    expect(screen.queryByLabelText(/estimated arrival date/i)).toBeNull()
   })
 
   it('submits with an idempotency key and the entered fields', async () => {
@@ -66,6 +68,7 @@ describe('CreateContainer', () => {
     await waitFor(() => expect(containersApi.create).toHaveBeenCalledTimes(1))
     const [body, idemKey] = vi.mocked(containersApi.create).mock.calls[0]!
     expect(body.container_number).toBe('MSCU1234567')
+    expect(body.estimated_arrival_date).toBeUndefined()
     expect(typeof idemKey).toBe('string')
     expect(idemKey.length).toBeGreaterThan(0)
   })

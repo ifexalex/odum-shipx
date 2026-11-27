@@ -67,6 +67,35 @@ def _mask_paystack_config(config_map: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+DEFAULT_TRANSIT_DAYS = 45
+
+
+def _parse_transit_days(raw: Any) -> int:
+    """Coerce a stored default_transit_days value to a positive int, else DEFAULT_TRANSIT_DAYS (45)."""
+    if isinstance(raw, bool):
+        return DEFAULT_TRANSIT_DAYS
+    if isinstance(raw, int) and 1 <= raw <= 365:
+        return raw
+    if isinstance(raw, dict):
+        return _parse_transit_days(raw.get("days") or raw.get("default_transit_days"))
+    try:
+        parsed = int(raw)
+        if 1 <= parsed <= 365:
+            return parsed
+    except (TypeError, ValueError):
+        pass
+    return DEFAULT_TRANSIT_DAYS
+
+
+def get_default_transit_days(tenant_id: str) -> int:
+    """Return this tenant's configured transit duration in days, defaulting to 45."""
+    rows = repo.get_all_configs(tenant_id)
+    for row in rows:
+        if row.get("config_key") == "default_transit_days":
+            return _parse_transit_days(row.get("config_value"))
+    return DEFAULT_TRANSIT_DAYS
+
+
 def get_tenant_config(tenant_id: str) -> dict[str, Any]:
     """Return tenant config as a flat dict keyed by config_key.
 
@@ -82,6 +111,8 @@ def get_tenant_config(tenant_id: str) -> dict[str, Any]:
     # The logo is shown through a short-lived link, never its storage key (FD-29).
     if "branding_config" in config_map:
         config_map["branding_config"] = with_logo_url(tenant_id, config_map["branding_config"])
+    # Always expose the effective default transit duration (45 days unless overridden).
+    config_map["default_transit_days"] = _parse_transit_days(config_map.get("default_transit_days"))
     return _mask_paystack_config(_mask_webhook_config(config_map))
 
 
@@ -149,6 +180,18 @@ def update_tenant_config(
             actor_id=actor_id,
             actor_role="tenant_admin",
             after_state={"bank_transfer_config": bank_cfg},
+            ip_address=ip_address,
+        )
+    if req.default_transit_days is not None:
+        repo.upsert_config(tenant_id, "default_transit_days", {"days": req.default_transit_days}, updated_by=actor_id)
+        log_audit(
+            tenant_id=tenant_id,
+            entity_type="tenant_config",
+            entity_id=tenant_id,
+            action="UPDATE",
+            actor_id=actor_id,
+            actor_role="tenant_admin",
+            after_state={"default_transit_days": req.default_transit_days},
             ip_address=ip_address,
         )
     return get_tenant_config(tenant_id)

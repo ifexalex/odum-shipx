@@ -399,6 +399,10 @@ export interface BrandingConfig {
   pickup_phone?: string
   support_email?: string
   support_whatsapp?: string
+  /** Optional China origin warehouse identity for Loading Receipts & Packing Lists (ENG-1). */
+  chinese_display_name?: string
+  china_warehouse_address?: string
+  china_warehouse_phone?: string
   /** Multiline boilerplate at the bottom of generated documents. */
   document_footer?: string
 }
@@ -439,6 +443,8 @@ export interface TenantConfig {
   branding_config?: BrandingConfig | null
   paystack_config?: PaystackConfig | null
   bank_transfer_config?: BankTransferConfig | null
+  /** Default transit duration in days used to compute ETA when a container moves to In Transit (default 45). */
+  default_transit_days?: number
 }
 
 export interface WebhookTestResult {
@@ -575,6 +581,7 @@ export const configApi = {
     webhook_config?: Partial<Omit<WebhookConfig, 'secret'>>
     branding?: BrandingConfig
     bank_transfer_config?: BankTransferConfig
+    default_transit_days?: number
   }) => apiRequest<TenantConfig>({ method: 'PUT', path: '/v1/tenant/config', body }),
 
   rotateWebhookSecret: () =>

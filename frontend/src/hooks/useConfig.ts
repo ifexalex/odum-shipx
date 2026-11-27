@@ -140,10 +140,21 @@ export function useBankTransferConfig(enabled = true) {
   return { ...query, bankConfig: query.data?.bank_transfer_config ?? null }
 }
 
+type SaveCompanySettingsInput =
+  | BrandingConfig
+  | { branding?: BrandingConfig; default_transit_days?: number }
+
+function isConfigEnvelope(
+  payload: SaveCompanySettingsInput,
+): payload is { branding?: BrandingConfig; default_transit_days?: number } {
+  return 'branding' in payload || 'default_transit_days' in payload
+}
+
 export function useSaveBranding() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (branding: BrandingConfig) => configApi.updateConfig({ branding }),
+    mutationFn: (payload: SaveCompanySettingsInput) =>
+      configApi.updateConfig(isConfigEnvelope(payload) ? payload : { branding: payload }),
     onSuccess: (updated) => {
       // PUT returns the full updated config — write it into the cache directly
       // so the form re-syncs to the saved state without a refetch race.

@@ -219,6 +219,7 @@ class UpdateTenantConfigRequest(BaseModel):
     notification_preferences: dict[str, Any] | None = None
     webhook_config: WebhookConfigRequest | None = None
     bank_transfer_config: BankTransferConfigRequest | None = None
+    default_transit_days: int | None = Field(default=None, ge=1, le=365)
 
 
 class LogoUploadRequest(BaseModel):
