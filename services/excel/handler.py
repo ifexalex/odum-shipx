@@ -50,6 +50,7 @@ from .models import (
     ListExportQuery,
     ManifestImportRequest,
     ReportExportQuery,
+    ShareWhatsAppRequest,
 )
 
 setup_logging()
@@ -261,9 +262,96 @@ def _dispatch(
         )
         return created(result, location="/v1/packing-lists", request_id=request_id)
 
-    # GET /v1/packing-lists/{id}/pdf
+    # GET /v1/packing-lists/{id}/documents?lang_lr=zh&lang_pl=en (ENG-5)
+    if resource == "packing-lists" and len(parts) == 4 and parts[3] == "documents" and method == "GET":
+        ctx.assert_role(*_PL_PDF_ROLES)
+        qs = event.get("queryStringParameters") or {}
+        customer_user_id = _customer_user_id(ctx)
+        result = service.get_packing_list_documents(
+            tenant_id,
+            parts[2],
+            customer_user_id=customer_user_id,
+            lang_lr=qs.get("lang_lr") or "zh",
+            lang_pl=qs.get("lang_pl") or "en",
+        )
+        return success(result, request_id=request_id)
+
+    # POST /v1/packing-lists/{id}/share-whatsapp (ENG-5)
+    if resource == "packing-lists" and len(parts) == 4 and parts[3] == "share-whatsapp" and method == "POST":
+        ctx.assert_role(*_EXPORT_ROLES)
+        body = _parse_body(event)
+        req = parse_validated(ShareWhatsAppRequest, body)
+        result = service.share_packing_list_document_whatsapp(
+            tenant_id,
+            parts[2],
+            req.document_type,
+            lang=req.lang,
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/packing-lists/{id}/loading-receipt/pdf?lang=zh|en (ENG-4)
+    if (
+        resource == "packing-lists"
+        and len(parts) == 5
+        and parts[3] == "loading-receipt"
+        and parts[4] == "pdf"
+        and method == "GET"
+    ):
+        ctx.assert_role(*_PL_PDF_ROLES)
+        qs = event.get("queryStringParameters") or {}
+        customer_user_id = _customer_user_id(ctx)
+        result = service.export_loading_receipt_pdf(
+            tenant_id,
+            parts[2],
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+            customer_user_id=customer_user_id,
+            lang=qs.get("lang") or "zh",
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/packing-lists/{id}/loading-receipt/image?lang=zh|en (ENG-5)
+    if (
+        resource == "packing-lists"
+        and len(parts) == 5
+        and parts[3] == "loading-receipt"
+        and parts[4] == "image"
+        and method == "GET"
+    ):
+        ctx.assert_role(*_PL_PDF_ROLES)
+        qs = event.get("queryStringParameters") or {}
+        customer_user_id = _customer_user_id(ctx)
+        result = service.export_loading_receipt_image(
+            tenant_id,
+            parts[2],
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+            customer_user_id=customer_user_id,
+            lang=qs.get("lang") or "zh",
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/packing-lists/{id}/image?lang=en|zh (ENG-5)
+    if resource == "packing-lists" and len(parts) == 4 and parts[3] == "image" and method == "GET":
+        ctx.assert_role(*_PL_PDF_ROLES)
+        qs = event.get("queryStringParameters") or {}
+        customer_user_id = _customer_user_id(ctx)
+        result = service.export_packing_list_image(
+            tenant_id,
+            parts[2],
+            actor_id=ctx.user_id,
+            actor_role=str(ctx.role),
+            customer_user_id=customer_user_id,
+            lang=qs.get("lang") or "en",
+        )
+        return success(result, request_id=request_id)
+
+    # GET /v1/packing-lists/{id}/pdf?lang=en|zh
     if resource == "packing-lists" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_PL_PDF_ROLES)
+        qs = event.get("queryStringParameters") or {}
         customer_user_id = _customer_user_id(ctx)
         result = service.export_packing_list_pdf(
             tenant_id,
@@ -271,6 +359,7 @@ def _dispatch(
             actor_id=ctx.user_id,
             actor_role=str(ctx.role),
             customer_user_id=customer_user_id,
+            lang=qs.get("lang") or "en",
         )
         return success(result, request_id=request_id)
 

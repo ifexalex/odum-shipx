@@ -35,12 +35,14 @@ const FORMAT_LABEL: Record<ExportFormat, string> = {
   xlsx: 'Excel (.xlsx)',
   csv:  'CSV (.csv)',
   pdf:  'PDF (new tab)',
+  png:  'Image (.png)',
 }
 
 const FORMAT_ICON: Record<ExportFormat, 'download' | 'arrowright'> = {
   xlsx: 'download',
   csv:  'download',
   pdf:  'arrowright',
+  png:  'download',
 }
 
 export function ExportButton<F extends ExportFormat>({

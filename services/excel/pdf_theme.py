@@ -123,6 +123,15 @@ def brand_color(value: object) -> colors.Color:
     return colors.HexColor(value if isinstance(value, str) and _HEX.match(value) else DEFAULT_BRAND)
 
 
+def brand_tint(value: object, weight: float = 0.08) -> colors.Color:
+    """A subtle print-safe pastel tint of the tenant's brand colour (default 8% brand + 92% white)."""
+    base = brand_color(value)
+    r = base.red * weight + (1.0 - weight)
+    g = base.green * weight + (1.0 - weight)
+    b = base.blue * weight + (1.0 - weight)
+    return colors.Color(r, g, b)
+
+
 @cache
 def styles() -> dict[str, ParagraphStyle]:
     """The paragraph styles every template uses."""
@@ -298,6 +307,9 @@ class Brand:
     footer: str = ""
     color: str = DEFAULT_BRAND
     logo: bytes | None = None
+    chinese_name: str = ""
+    china_warehouse_address: str = ""
+    china_warehouse_phone: str = ""
 
     @classmethod
     def from_branding(cls, branding: dict[str, Any], logo: bytes | None = None) -> "Brand":
@@ -316,13 +328,25 @@ class Brand:
             footer=text("document_footer"),
             color=text("primary_color") if _HEX.match(text("primary_color")) else DEFAULT_BRAND,
             logo=logo,
+            chinese_name=text("chinese_display_name"),
+            china_warehouse_address=text("china_warehouse_address"),
+            china_warehouse_phone=text("china_warehouse_phone"),
         )
 
 
 def initials(name: str) -> str:
-    """Up to two initials, as the app's logo tile shows them."""
-    words = [w for w in name.split() if w]
-    return "".join(w[0].upper() for w in words[:2]) or "?"
+    """Up to two initials, preferring Latin characters so the bold monogram tile never drops CJK glyphs."""
+    latin_words = [w for w in name.split() if any("A" <= ch.upper() <= "Z" or ch.isdigit() for ch in w)]
+    source = latin_words if latin_words else [w for w in name.split() if w and w not in ("·", "-", "/")]
+    chars: list[str] = []
+    for word in source:
+        for ch in word:
+            if ch.isalnum() and _in_body(ch):
+                chars.append(ch.upper())
+                break
+        if len(chars) == 2:
+            break
+    return "".join(chars) or "?"
 
 
 class InitialsTile(Flowable):  # type: ignore[misc]  # reportlab ships no type hints
@@ -577,7 +601,15 @@ def qr_code(data: str, size: float = 2.6 * cm) -> Flowable:
 # ---------------------------------------------------------------------------
 
 
-def _numbered_canvas(brand: Brand, title: str, reference: str) -> type[Canvas]:
+@dataclass(frozen=True)
+class RenderedPdf:
+    """Rendered PDF buffer paired with its exact page count from ``NumberedCanvas``."""
+
+    buf: BytesIO
+    page_count: int
+
+
+def _numbered_canvas(brand: Brand, title: str, reference: str, page_count_out: list[int] | None = None) -> type[Canvas]:
     """A canvas that draws the running header and footer once the page count is known ("Page n of N")."""
 
     class NumberedCanvas(Canvas):  # type: ignore[misc]  # reportlab ships no type hints
@@ -591,6 +623,8 @@ def _numbered_canvas(brand: Brand, title: str, reference: str) -> type[Canvas]:
 
         def save(self) -> None:
             total = len(self._pages)
+            if page_count_out is not None:
+                page_count_out.append(total)
             for state in self._pages:
                 self.__dict__.update(state)
                 self._decorate(total)
@@ -631,7 +665,7 @@ def _plain(text: str) -> str:
     return "".join(ch if _in_body(ch) else "?" for ch in text)
 
 
-def render(
+def render_with_meta(
     brand: Brand,
     title: str,
     reference: str,
@@ -639,19 +673,12 @@ def render(
     *,
     facts: Sequence[tuple[str, str]] = (),
     subject: str = "",
-) -> BytesIO:
-    """Lay out a document: the brand block, then ``body``, on A4 pages with the running header and footer.
-
-    Args:
-        brand: Who the document is from.
-        title: What it is ("Invoice"), also the PDF title with ``reference``.
-        reference: Its number ("INV-A-002").
-        body: The document's content.
-        facts: Short label/value pairs under the title (date, status).
-        subject: The PDF's subject metadata.
-    """
+    include_brand_block: bool = True,
+) -> RenderedPdf:
+    """Lay out a document and return both the PDF buffer and its exact page count."""
     register_fonts()
     buf = BytesIO()
+    page_count_out: list[int] = []
     doc = BaseDocTemplate(
         buf,
         pagesize=A4,
@@ -678,9 +705,25 @@ def render(
         bottomPadding=0,
     )
     doc.addPageTemplates([PageTemplate(id="page", frames=[frame])])
+    story: list[Flowable] = (
+        [brand_block(brand, title, reference, facts), Spacer(1, 0.4 * cm), *body] if include_brand_block else list(body)
+    )
     doc.build(
-        [brand_block(brand, title, reference, facts), Spacer(1, 0.4 * cm), *body],
-        canvasmaker=_numbered_canvas(brand, title, reference),
+        story,
+        canvasmaker=_numbered_canvas(brand, title, reference, page_count_out),
     )
     buf.seek(0)
-    return buf
+    return RenderedPdf(buf=buf, page_count=page_count_out[-1] if page_count_out else 1)
+
+
+def render(
+    brand: Brand,
+    title: str,
+    reference: str,
+    body: Sequence[Flowable],
+    *,
+    facts: Sequence[tuple[str, str]] = (),
+    subject: str = "",
+) -> BytesIO:
+    """Lay out a document: the brand block, then ``body``, on A4 pages with the running header and footer."""
+    return render_with_meta(brand, title, reference, body, facts=facts, subject=subject).buf

@@ -16,8 +16,10 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
   const {
     setStep,
     arrivalWarehouseId,
+    deliveryDateMode,
     loadingDate,
     deliveryDate,
+    remarks,
     items,
     submitting,
     warehouses,
@@ -100,12 +102,32 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                       submitting could not show when it loads or lands. */}
                 <div>
                   <div className={styles.previewMetaLabel}>Loading date</div>
-                  <div className={styles.previewMetaValue}>{loadingDate || '—'}</div>
+                  <div className={styles.previewMetaValue}>
+                    {loadingDate || '—'}
+                    {items.some((it) => it.loading_date) ? ' (+ per-item overrides)' : ''}
+                  </div>
                 </div>
                 <div>
                   <div className={styles.previewMetaLabel}>Delivery date</div>
-                  <div className={styles.previewMetaValue}>{deliveryDate || '—'}</div>
+                  <div className={styles.previewMetaValue}>
+                    {deliveryDateMode === 'multiple_days'
+                      ? (() => {
+                          const dates = Array.from(
+                            new Set(items.map((it) => it.received_date).filter(Boolean) as string[]),
+                          ).sort()
+                          if (dates.length > 1) return `${dates[0]} – ${dates[dates.length - 1]}`
+                          if (dates.length === 1) return dates[0]
+                          return 'Multiple days'
+                        })()
+                      : deliveryDate || '—'}
+                  </div>
                 </div>
+                {remarks && (
+                  <div>
+                    <div className={styles.previewMetaLabel}>Remarks</div>
+                    <div className={styles.previewMetaValue}>{remarks}</div>
+                  </div>
+                )}
                 <div>
                   <div className={styles.previewMetaLabel}>Arrival warehouse</div>
                   <div className={styles.previewMetaValue}>
@@ -132,7 +154,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                 </span>
                 <span className={[styles.previewCol, styles.previewColRight].join(' ')}>L×W×H</span>
                 <span className={[styles.previewCol, styles.previewColRight].join(' ')}>CBM</span>
-                <span className={[styles.previewCol, styles.previewColRight].join(' ')}>USD</span>
+                <span className={[styles.previewCol, styles.previewColRight].join(' ')}>CNY</span>
               </div>
               {items.map((item, i) => {
                 const cbm =
@@ -212,7 +234,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                       ].join(' ')}
                     >
                       {item.declared_value_usd != null
-                        ? `$${(item.declared_value_usd * qty).toFixed(0)}`
+                        ? `¥${(item.declared_value_usd * qty).toFixed(0)}`
                         : '—'}
                     </span>
                   </div>
@@ -228,7 +250,7 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                 <span>·</span>
                 <span className={styles.previewCbm}>{formatCbm(totals.cbm)} CBM</span>
                 <span>·</span>
-                <span>${totals.declaredUsd.toFixed(0)}</span>
+                <span>¥{totals.declaredUsd.toFixed(0)}</span>
               </div>
             </div>
           </div>
@@ -249,8 +271,8 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
             value={<Mono color="var(--color-success)">{formatCbm(totals.cbm)}</Mono>}
           />
           <Kvp
-            label="Declared value"
-            value={<Mono>${totals.declaredUsd.toFixed(0)} USD</Mono>}
+            label="Goods value"
+            value={<Mono>¥{totals.declaredUsd.toFixed(0)} CNY</Mono>}
             divider={shippingUsd != null || shippingNgn != null}
           />
           {shippingUsd != null && (

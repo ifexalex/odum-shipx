@@ -130,6 +130,10 @@ WA_TEMPLATE_MAP_ZH: dict[str, str] = {
     "storage_first_reminder": "storage_first_reminder_zh",
     "storage_final_reminder": "storage_final_reminder_zh",
     "release_note_expired": "release_note_expired_zh",
+    "loading_receipt_image": "loading_receipt_image_zh",
+    "loading_receipt_pdf": "loading_receipt_pdf_zh",
+    "packing_list_image": "packing_list_image_zh",
+    "packing_list_pdf": "packing_list_pdf_zh",
 }
 
 
@@ -353,6 +357,10 @@ WA_TEMPLATE_MAP: dict[str, str] = {
     "storage_first_reminder": "storage_first_reminder",
     "storage_final_reminder": "storage_final_reminder",
     "release_note_expired": "release_note_expired",
+    "loading_receipt_image": "loading_receipt_image",
+    "loading_receipt_pdf": "loading_receipt_pdf",
+    "packing_list_image": "packing_list_image",
+    "packing_list_pdf": "packing_list_pdf",
 }
 
 _WA_MAX_PARAMS = 5
@@ -386,6 +394,10 @@ WA_TEMPLATE_PARAMS: dict[str, tuple[str, ...]] = {
     "storage_first_reminder": ("reference_number", "carton_count", "days_remaining"),
     "storage_final_reminder": ("reference_number", "carton_count"),
     "release_note_expired": ("reference_number", "valid_until"),
+    "loading_receipt_image": ("reference", "container_number"),
+    "loading_receipt_pdf": ("reference", "container_number"),
+    "packing_list_image": ("reference", "container_number"),
+    "packing_list_pdf": ("reference", "container_number"),
 }
 
 
@@ -393,8 +405,10 @@ def build_wa_components(
     branding: dict[str, Any],
     template_data: dict[str, Any],
     event_type: str | None = None,
+    *,
+    media_header: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build WhatsApp template body components.
+    """Build WhatsApp template components (optional image/document header + body).
 
     {{1}} is always the company name. When `event_type` has a declaration in
     WA_TEMPLATE_PARAMS, the remaining placeholders are filled from those keys in
@@ -419,7 +433,29 @@ def build_wa_components(
             break
         params.append({"type": "text", "text": str(val)})
 
-    return [{"type": "body", "parameters": params}]
+    components: list[dict[str, Any]] = []
+    if media_header:
+        header_type = media_header.get("type")
+        link = str(media_header.get("link") or "")
+        if header_type == "image" and link:
+            components.append(
+                {
+                    "type": "header",
+                    "parameters": [{"type": "image", "image": {"link": link}}],
+                }
+            )
+        elif header_type == "document" and link:
+            doc_obj: dict[str, Any] = {"link": link}
+            if media_header.get("filename"):
+                doc_obj["filename"] = str(media_header["filename"])
+            components.append(
+                {
+                    "type": "header",
+                    "parameters": [{"type": "document", "document": doc_obj}],
+                }
+            )
+    components.append({"type": "body", "parameters": params})
+    return components
 
 
 # Meta template language codes. Templates are registered per language, and a

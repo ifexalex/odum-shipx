@@ -18,6 +18,11 @@ class PackingListStatus(StrEnum):
     rejected = "rejected"
 
 
+class DeliveryDateMode(StrEnum):
+    same_day = "same_day"
+    multiple_days = "multiple_days"
+
+
 # ---------------------------------------------------------------------------
 # Nested input models
 # ---------------------------------------------------------------------------
@@ -31,6 +36,7 @@ class PackingListItemInput(BaseModel):
     width_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
     height_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
     received_date: date | None = None
+    loading_date: date | None = None
     cbm: Decimal | None = None  # auto-computed below
     declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
     # Package type: carton | bag | pallet | bale | sack (matches VARCHAR(20) column).
@@ -94,6 +100,7 @@ class UpdatePackingListItemInput(BaseModel):
     width_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
     height_cm: Decimal | None = Field(default=None, gt=Decimal("0"), allow_inf_nan=False)
     received_date: date | None = None
+    loading_date: date | None = None
     cbm: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
     declared_value_usd: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
     package_unit: str | None = Field(default=None, max_length=20)
@@ -141,13 +148,38 @@ class _ShipmentDatesMixin(BaseModel):
 
     loading_date: date | None = None
     delivery_date: date | None = None
+    delivery_date_mode: DeliveryDateMode = DeliveryDateMode.same_day
+    supplier_name: str | None = Field(default=None, max_length=200)
+    supplier_phone: str | None = Field(default=None, max_length=40)
+    remarks: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def _validate_shipment_dates(self) -> "_ShipmentDatesMixin":
-        if self.delivery_date is not None and self.delivery_date > _latest_acceptable_today():
+        latest_today = _latest_acceptable_today()
+        if self.delivery_date is not None and self.delivery_date > latest_today:
             raise ValueError("delivery_date cannot be in the future - it is the date the goods were received at the warehouse")
         if self.loading_date is not None and self.delivery_date is not None and self.loading_date < self.delivery_date:
             raise ValueError("loading_date cannot be before delivery_date - goods must be received before they can be loaded")
+
+        items = getattr(self, "items", None) or []
+        for idx, item in enumerate(items, start=1):
+            item_received: date | None = getattr(item, "received_date", None)
+            item_loading: date | None = getattr(item, "loading_date", None)
+            if item_received is not None and item_received > latest_today:
+                raise ValueError(
+                    f"Item #{idx} delivery date cannot be in the future - it is the date the goods were received at the warehouse"
+                )
+            effective_received = (
+                self.delivery_date
+                if self.delivery_date_mode == DeliveryDateMode.same_day and self.delivery_date is not None
+                else (item_received or self.delivery_date)
+            )
+            effective_loading = item_loading or self.loading_date
+            if effective_received is not None and effective_loading is not None and effective_loading < effective_received:
+                raise ValueError(
+                    f"Item #{idx} loading date cannot be before its delivery date - "
+                    "goods must be received before they can be loaded"
+                )
         return self
 
 
@@ -220,6 +252,7 @@ class PackingListItemResponse(BaseModel):
     width_cm: Decimal | None = None
     height_cm: Decimal | None = None
     received_date: date | None = None
+    loading_date: date | None = None
 
 
 class PackingListResponse(BaseModel):

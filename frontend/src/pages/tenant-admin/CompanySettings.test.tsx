@@ -116,6 +116,26 @@ describe('CompanySettings (4.1)', () => {
     expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled()
   })
 
+  it('defaults transit duration to 45 days, validates bounds, and saves overrides (ENG-1)', async () => {
+    renderPage()
+    const transitInput = await screen.findByLabelText(/default transit duration/i)
+    expect(transitInput).toHaveValue(45)
+
+    await userEvent.clear(transitInput)
+    await userEvent.type(transitInput, '0')
+    expect(screen.getByText(/between 1 and 365 days/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /save changes/i })).toBeDisabled()
+
+    await userEvent.clear(transitInput)
+    await userEvent.type(transitInput, '30')
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }))
+
+    await waitFor(() => {
+      expect(configApi.updateConfig).toHaveBeenCalledWith({ default_transit_days: 30 })
+    })
+    expect(await screen.findByText('Company settings saved')).toBeInTheDocument()
+  })
+
   it('config sub-nav navigates to the other config pages (hub function preserved)', async () => {
     renderPage()
     await screen.findByDisplayValue('Acme Logistics Ltd')

@@ -1,5 +1,5 @@
 import { applyMinCbm, computeCbm } from '../../../api/packingListRules'
-import { BULK_CONFIRM_THRESHOLD, type PackingListItemInput } from '../../../api/packingList'
+import { type PackingListItemInput } from '../../../api/packingList'
 import { type CbmRateCurrency } from '../../../api/tenantManagement'
 import { useCbmRate, useDollarRate } from '../../../hooks/useConfig'
 
@@ -55,11 +55,6 @@ export function usePackingListPricing(items: PackingListItemInput[]) {
     { cartons: 0, weightDispatch: 0, weight: 0, cbm: 0, declaredUsd: 0 },
   )
 
-  /** Lines whose quantity is large enough to warrant a second look on save. */
-  const bulkLines = items
-    .map((item, index) => ({ item, index, qty: qtyOf(item) }))
-    .filter(({ qty }) => qty >= BULK_CONFIRM_THRESHOLD)
-
   // Live pricing: CBM × rate, in whichever currency the tenant configured —
   // then derive the other currency's tile via the FX rate. Null rates
   // degrade to "—".
@@ -92,7 +87,6 @@ export function usePackingListPricing(items: PackingListItemInput[]) {
     rawCbm,
     qtyOf,
     totals,
-    bulkLines,
     cbmCharge,
     shippingUsd,
     shippingNgn,

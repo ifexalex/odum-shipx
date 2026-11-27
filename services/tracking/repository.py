@@ -22,7 +22,7 @@ from shared.tenant_context import PLATFORM_TENANT_ID
 logger = logging.getLogger(__name__)
 
 # Allowlist for dynamic extra fields in container status update
-_CONTAINER_EXTRA_FIELDS = frozenset({"ship_date", "actual_arrival_date", "notes"})
+_CONTAINER_EXTRA_FIELDS = frozenset({"ship_date", "estimated_arrival_date", "actual_arrival_date", "notes"})
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +204,51 @@ def update_container_status(
         """,
         params,
     )
+
+
+def stamp_packing_lists_transit_dates(
+    tenant_id: str,
+    container_id: str,
+    ship_date: Any,
+    estimated_arrival_date: Any,
+) -> int:
+    """Stamp ship_date and calculated ETA onto all non-rejected packing lists for a container."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        UPDATE packing_list
+        SET ship_date = %(ship_date)s,
+            estimated_arrival_date = %(estimated_arrival_date)s,
+            updated_at = NOW()
+        WHERE tenant_id = %(tenant_id)s
+          AND container_id = %(container_id)s
+          AND status <> 'rejected'
+        RETURNING id
+        """,
+        {
+            "tenant_id": tenant_id,
+            "container_id": container_id,
+            "ship_date": ship_date,
+            "estimated_arrival_date": estimated_arrival_date,
+        },
+    )
+    return len(rows)
+
+
+def list_approved_packing_list_ids_for_container(tenant_id: str, container_id: str) -> list[str]:
+    """Return IDs of all approved packing lists on a container (for in_transit document dispatch)."""
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT id::text AS id
+        FROM packing_list
+        WHERE tenant_id = %s
+          AND container_id = %s
+          AND status = 'approved'
+        """,
+        (tenant_id, container_id),
+    )
+    return [str(r["id"]) for r in rows]
 
 
 # ---------------------------------------------------------------------------

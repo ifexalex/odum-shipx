@@ -24,7 +24,7 @@ import { ThemeProvider } from '../../design/ThemeProvider'
 import { ApiError } from '../../api/client'
 import { LogoFileError } from '../../api/uploads'
 import { Banner, Button, Card, Field, Modal, PageSkeleton, PhoneField, Pressable, ColorField, ConfirmDialog, ErrorState, FileInput } from '../../design/components'
-import { useBranding, useSaveBranding, useTenantLogo } from '../../hooks/useConfig'
+import { useSaveBranding, useTenantConfig, useTenantLogo } from '../../hooks/useConfig'
 import { TenantLogo } from '../../shell/TenantLogo'
 import { PageHeader } from '../../shell/PageHeader'
 import { UnsavedChangesGuard } from '../../shell/UnsavedChangesGuard'
@@ -48,8 +48,13 @@ const EMPTY_FORM: FormState = {
   pickup_phone: '',
   support_email: '',
   support_whatsapp: '',
+  chinese_display_name: '',
+  china_warehouse_address: '',
+  china_warehouse_phone: '',
   document_footer: '',
 }
+
+const DEFAULT_TRANSIT_DAYS = 45
 
 function formFromBranding(branding: BrandingConfig | null): FormState {
   const next = { ...EMPTY_FORM }
@@ -284,23 +289,30 @@ function LogoBlock({
  */
 function CompanySettingsForm({
   branding,
+  initialTransitDays,
   loadError,
   isLoading,
 }: {
   branding: BrandingConfig | null
+  initialTransitDays: number
   loadError: Error | null
   isLoading: boolean
 }): JSX.Element {
   const save = useSaveBranding()
 
   const [form, setForm] = useState<FormState>(() => formFromBranding(branding))
+  const [transitDaysInput, setTransitDaysInput] = useState<string>(() => String(initialTransitDays))
   const [previewDoc, setPreviewDoc] = useState<'pl' | 'rn'>('pl')
   const [previewModalOpen, setPreviewModalOpen] = useState(false)
 
-  const dirty = useMemo(
+  const brandingDirty = useMemo(
     () => JSON.stringify(brandingFromForm(form)) !== JSON.stringify(brandingFromForm(formFromBranding(branding))),
     [form, branding],
   )
+  const parsedTransitDays = /^\d+$/.test(transitDaysInput.trim()) ? Number.parseInt(transitDaysInput.trim(), 10) : NaN
+  const transitInvalid = !Number.isInteger(parsedTransitDays) || parsedTransitDays < 1 || parsedTransitDays > 365
+  const transitDirty = !transitInvalid && parsedTransitDays !== initialTransitDays
+  const dirty = brandingDirty || transitDirty || transitDaysInput.trim() !== String(initialTransitDays)
 
   const colorInvalid = form.primary_color.trim() !== '' && !isValidHexColor(form.primary_color.trim())
 
@@ -319,7 +331,13 @@ function CompanySettingsForm({
   }
 
   async function handleSave(): Promise<void> {
-    await save.mutateAsync(brandingFromForm(form))
+    const payload: { branding?: BrandingConfig; default_transit_days?: number } = {}
+    if (brandingDirty) payload.branding = brandingFromForm(form)
+    if (transitDirty) payload.default_transit_days = parsedTransitDays
+    if (!payload.branding && payload.default_transit_days === undefined) {
+      payload.branding = brandingFromForm(form)
+    }
+    await save.mutateAsync(payload)
     toast.success('Company settings saved', 'Documents and the portal show the change.')
   }
 
@@ -441,6 +459,65 @@ function CompanySettingsForm({
           </Card>
 
           <Card>
+            <SectionHead
+              title="Transit & China origin warehouse"
+              sub="Default sea transit duration for ETA calculation and origin details printed on loading receipts and packing lists"
+            />
+            <div style={{ height: 16 }} />
+            <div className={styles.grid2}>
+              <Field
+                label="Default transit duration (days)"
+                name="default_transit_days"
+                type="number"
+                min={1}
+                max={365}
+                step={1}
+                value={transitDaysInput}
+                onChange={(e) => setTransitDaysInput(e.target.value)}
+                error={transitInvalid ? 'Enter a whole number between 1 and 365 days.' : undefined}
+                helper={
+                  transitInvalid
+                    ? undefined
+                    : 'Used to calculate ETA automatically when a container moves to In Transit (Ship date + days). Already-shipped containers are not altered.'
+                }
+                disabled={isLoading}
+              />
+              <Field
+                label="Chinese company name"
+                name="chinese_display_name"
+                optional
+                placeholder="e.g. 示例国际货运代理有限公司"
+                value={form.chinese_display_name}
+                onChange={set('chinese_display_name')}
+                helper="Shown alongside your English name on Chinese loading receipts and packing lists."
+                disabled={isLoading}
+              />
+            </div>
+            <Field
+              label="China warehouse address"
+              name="china_warehouse_address"
+              multiline
+              rows={2}
+              optional
+              placeholder="e.g. 广州市白云区XX路XX号XX园区XX号楼XX室"
+              value={form.china_warehouse_address}
+              onChange={set('china_warehouse_address')}
+              helper="Printed at the top of loading receipts and packing lists."
+              disabled={isLoading}
+            />
+            <Field
+              label="China warehouse phone"
+              name="china_warehouse_phone"
+              optional
+              placeholder="e.g. +86 138 0000 0000"
+              value={form.china_warehouse_phone}
+              onChange={set('china_warehouse_phone')}
+              helper="Delivery enquiry contact printed on loading receipts."
+              disabled={isLoading}
+            />
+          </Card>
+
+          <Card>
             <SectionHead title="Document footer" sub="Boilerplate at the bottom of generated documents" />
             <div style={{ height: 16 }} />
             <Field
@@ -464,7 +541,10 @@ function CompanySettingsForm({
             <Button
               variant="ghost"
               disabled={!dirty || save.isPending}
-              onClick={() => setForm(formFromBranding(branding))}
+              onClick={() => {
+                setForm(formFromBranding(branding))
+                setTransitDaysInput(String(initialTransitDays))
+              }}
             >
               Discard
             </Button>
@@ -472,7 +552,7 @@ function CompanySettingsForm({
               variant="primary"
               icon="check"
               loading={save.isPending}
-              disabled={!dirty || colorInvalid || !form.display_name.trim()}
+              disabled={!dirty || colorInvalid || transitInvalid || !form.display_name.trim()}
               onClick={() => void handleSave()}
             >
               Save changes
@@ -535,9 +615,11 @@ function CompanySettingsForm({
 }
 
 export function CompanySettings(): JSX.Element {
-  const { branding, isLoading, error: loadError } = useBranding()
+  const { data: tenantConfig, isLoading, error: loadError } = useTenantConfig()
+  const branding = tenantConfig?.branding_config ?? null
+  const initialTransitDays = tenantConfig?.default_transit_days ?? DEFAULT_TRANSIT_DAYS
 
-  if (isLoading && !branding) {
+  if (isLoading && !tenantConfig) {
     return (
       <div>
         <PageHeader
@@ -549,17 +631,13 @@ export function CompanySettings(): JSX.Element {
     )
   }
 
-  // Keyed on whether branding has ARRIVED, not on its contents: the form needs
-  // seeding exactly once, when the fetch resolves. Keying on the contents would
-  // remount after every save — the save invalidates the config cache — which
-  // threw away the "Saved" confirmation along with the rest of the state.
-  //
-  // Re-syncing after a save is not needed: a successful save means the form
-  // already holds precisely what was persisted.
+  // Keyed on whether config has ARRIVED, not on its contents: the form needs
+  // seeding exactly once, when the fetch resolves.
   return (
     <CompanySettingsForm
-      key={branding === null ? 'empty' : 'loaded'}
+      key={tenantConfig === undefined ? 'empty' : 'loaded'}
       branding={branding}
+      initialTransitDays={initialTransitDays}
       loadError={loadError}
       isLoading={isLoading}
     />

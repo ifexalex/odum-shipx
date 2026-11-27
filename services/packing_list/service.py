@@ -201,39 +201,58 @@ def _build_item_rows(
     container_number: str,
     carton_seq_start: int,
     min_cbm: Decimal | None = None,
+    *,
+    delivery_date_mode: str = "same_day",
+    header_delivery_date: date | None = None,
+    header_loading_date: date | None = None,
 ) -> list[dict[str, Any]]:
-    """Generate item dicts with carton tags, tracking codes, and CBM values."""
+    """Generate item dicts with distinct carton tags and tracking codes grouped by loading date."""
     if min_cbm is None:
         min_cbm = get_min_cbm_per_item(tenant_id)
     rows: list[dict[str, Any]] = []
     seq = carton_seq_start
-    # Cache tracking codes for (customer_id, received_date) within this batch
-    tracking_cache: dict[tuple[str, Any], str] = {}
-    # Cache next available in-batch tracking seq per date_prefix
+
+    # Resolve each item's effective received_date first:
+    #   - same_day: header delivery_date governs every item when provided
+    #   - multiple_days: each item carries its own received_date (falling back to header / today)
+    effective_dates: list[date] = []
+    for item in items:
+        if delivery_date_mode == "same_day" and header_delivery_date is not None:
+            effective_dates.append(header_delivery_date)
+        else:
+            effective_dates.append(item.received_date or header_delivery_date or date.today())
+
+    # Tracking code rule: items loaded on the same day share ONE tracking code
+    # (anchored on their effective loading date), even when delivered across
+    # multiple days. Each line item still receives its own distinct carton_tag.
+    fallback_anchor: date = (
+        header_delivery_date
+        if delivery_date_mode == "same_day" and header_delivery_date is not None
+        else (min(effective_dates) if effective_dates else date.today())
+    )
+    tracking_by_load_date: dict[date, str] = {}
     tracking_seq_cache: dict[str, int] = {}
 
-    for item in items:
-        item_date: date = item.received_date or date.today()
-        date_str = item_date.strftime("%Y%m%d")
-        date_prefix = f"{tenant_short}-TRK-{date_str}"
-        cache_key = (customer_id, item_date)
+    for item, item_date in zip(items, effective_dates, strict=True):
+        item_load_date: date | None = getattr(item, "loading_date", None)
+        effective_load_date: date = item_load_date or header_loading_date or fallback_anchor
 
-        # Resolve tracking code: same container+customer+date → same code
-        if cache_key in tracking_cache:
-            tracking_code = tracking_cache[cache_key]
+        if effective_load_date in tracking_by_load_date:
+            tracking_code = tracking_by_load_date[effective_load_date]
         else:
-            existing = repo.get_existing_tracking_code(tenant_id, customer_id, item_date, container_id=container_id)
+            date_str = effective_load_date.strftime("%Y%m%d")
+            date_prefix = f"{tenant_short}-TRK-{date_str}"
+            existing = repo.get_existing_tracking_code(tenant_id, customer_id, effective_load_date, container_id=container_id)
             if existing:
                 tracking_code = existing
             else:
                 if date_prefix not in tracking_seq_cache:
                     trk_seq = repo.get_next_tracking_sequence(tenant_id, date_prefix)
-                    tracking_seq_cache[date_prefix] = trk_seq + 1
                 else:
                     trk_seq = tracking_seq_cache[date_prefix]
-                    tracking_seq_cache[date_prefix] = trk_seq + 1
+                tracking_seq_cache[date_prefix] = trk_seq + 1
                 tracking_code = f"{date_prefix}-{trk_seq:03d}"
-            tracking_cache[cache_key] = tracking_code
+            tracking_by_load_date[effective_load_date] = tracking_code
 
         # Floor the per-package CBM at the tenant's minimum (default 0.1).
         # Preserve an explicit item.cbm if dimensions are omitted (e.g. manifest-imported rows).
@@ -265,6 +284,7 @@ def _build_item_rows(
                 "width_cm": float(item.width_cm) if item.width_cm is not None else None,
                 "height_cm": float(item.height_cm) if item.height_cm is not None else None,
                 "received_date": item_date,
+                "loading_date": item_load_date,
                 # Stored per unit (multiply by quantity for line total value).
                 "declared_value_usd": (float(item.declared_value_usd) if item.declared_value_usd is not None else None),
                 "quantity": quantity,
@@ -320,6 +340,7 @@ def create_packing_list(
         reference = repo.get_next_pl_reference(tenant_id)
 
         # 5. Insert packing list row
+        delivery_date_mode = str(req.delivery_date_mode or "same_day")
         pl = repo.create_packing_list(
             tenant_id,
             {
@@ -329,8 +350,12 @@ def create_packing_list(
                 "created_by": actor_id,
                 "reference": reference,
                 "loading_date": req.loading_date,
-                "delivery_date": req.delivery_date,
+                "delivery_date": req.delivery_date if delivery_date_mode == "same_day" else None,
+                "delivery_date_mode": delivery_date_mode,
                 "arrival_warehouse_id": arrival_warehouse_id,
+                "supplier_name": req.supplier_name.strip() if req.supplier_name else None,
+                "supplier_phone": req.supplier_phone.strip() if req.supplier_phone else None,
+                "remarks": req.remarks.strip() if req.remarks else None,
             },
         )
         if pl is None:
@@ -347,6 +372,9 @@ def create_packing_list(
             tenant_short=tenant_short,
             container_number=container_number,
             carton_seq_start=carton_seq,
+            delivery_date_mode=delivery_date_mode,
+            header_delivery_date=req.delivery_date if delivery_date_mode == "same_day" else None,
+            header_loading_date=req.loading_date,
         )
         added_cbm = sum((Decimal(str(r["cbm"])) for r in item_rows), Decimal("0"))
         _assert_container_capacity(tenant_id, container, added_cbm)
@@ -444,7 +472,23 @@ def update_packing_list(
 
     fields_set: set[str] = getattr(req, "model_fields_set", set())
     loading_date = req.loading_date if "loading_date" in fields_set else pl.get("loading_date")
-    delivery_date = req.delivery_date if "delivery_date" in fields_set else pl.get("delivery_date")
+    delivery_date_mode = (
+        str(req.delivery_date_mode) if "delivery_date_mode" in fields_set else str(pl.get("delivery_date_mode") or "same_day")
+    )
+    if delivery_date_mode == "multiple_days":
+        delivery_date = None
+    else:
+        delivery_date = req.delivery_date if "delivery_date" in fields_set else pl.get("delivery_date")
+    supplier_name = (
+        (req.supplier_name.strip() if req.supplier_name else None) if "supplier_name" in fields_set else pl.get("supplier_name")
+    )
+    supplier_phone = (
+        (req.supplier_phone.strip() if req.supplier_phone else None)
+        if "supplier_phone" in fields_set
+        else pl.get("supplier_phone")
+    )
+    remarks = (req.remarks.strip() if req.remarks else None) if "remarks" in fields_set else pl.get("remarks")
+    metadata_touched = bool(fields_set & {"delivery_date_mode", "supplier_name", "supplier_phone", "remarks"})
 
     if "arrival_warehouse_id" in fields_set:
         arrival_warehouse = _resolve_arrival_warehouse(tenant_id, req.arrival_warehouse_id)
@@ -476,12 +520,28 @@ def update_packing_list(
             tenant_short=tenant_short,
             container_number=container_number,
             carton_seq_start=carton_seq,
+            delivery_date_mode=delivery_date_mode,
+            header_delivery_date=delivery_date if delivery_date_mode == "same_day" else None,
+            header_loading_date=loading_date,
         )
         updated_cbm = sum((Decimal(str(r["cbm"])) for r in item_rows), Decimal("0"))
         _assert_container_capacity(tenant_id, container, updated_cbm, exclude_pl_id=pl_id)
         inserted_items = [r for r in repo.insert_packing_list_items(tenant_id, item_rows) if r is not None]
 
-        repo.set_packing_list_dates(tenant_id, pl_id, loading_date, delivery_date)
+        if metadata_touched:
+            repo.set_packing_list_dates(
+                tenant_id,
+                pl_id,
+                loading_date,
+                delivery_date,
+                delivery_date_mode=delivery_date_mode,
+                supplier_name=supplier_name,
+                supplier_phone=supplier_phone,
+                remarks=remarks,
+                update_metadata=True,
+            )
+        else:
+            repo.set_packing_list_dates(tenant_id, pl_id, loading_date, delivery_date)
         repo.set_packing_list_warehouse(tenant_id, pl_id, arrival_warehouse_id)
 
         updated_pl: dict[str, Any]
@@ -586,6 +646,17 @@ def _apply_approval_db_writes(
     repo.recalculate_manifest_totals(tenant_id, manifest_id)
     repo.reset_manifest_verification_if_verified(tenant_id, manifest_id)
 
+    # ENG-4: automatically issue a Loading Receipt number + loaded_at timestamp on approval
+    if not pl.get("loading_receipt_number"):
+        lr_number = repo.get_next_loading_receipt_number(tenant_id)
+        stamped = repo.stamp_loading_receipt(tenant_id, str(pl["id"]), lr_number)
+        if stamped:
+            pl["loading_receipt_number"] = stamped.get("loading_receipt_number") or lr_number
+            pl["loaded_at"] = stamped.get("loaded_at")
+            pl["loading_date"] = stamped.get("loading_date") or pl.get("loading_date")
+        else:
+            pl["loading_receipt_number"] = lr_number
+
     items = repo.get_items_by_packing_list(tenant_id, str(pl["id"]))
     seen_codes: set[str] = set()
     for item in items:
@@ -677,6 +748,23 @@ def _notify_customer_packing_list_approved(tenant_id: str, pl: dict[str, Any], r
                 body=f"Your packing list {pl.get('reference') or ''} has been approved.",
                 target_user_id=str(customer["user_id"]),
             )
+        # ENG-5: best-effort automatic WhatsApp Loading Receipt dispatch when Meta WhatsApp is configured
+        import os
+
+        if os.environ.get("META_WHATSAPP_PHONE_ID") and os.environ.get("META_WHATSAPP_ACCESS_TOKEN") and pl.get("id"):
+            try:
+                from services.excel.service import share_packing_list_document_whatsapp
+
+                share_packing_list_document_whatsapp(
+                    tenant_id,
+                    str(pl["id"]),
+                    "loading_receipt",
+                    lang="zh" if customer.get("locale") == "zh" else "en",
+                    actor_id=str(pl.get("approved_by") or "system"),
+                    actor_role="system",
+                )
+            except Exception:
+                logger.warning("Best-effort WhatsApp loading receipt dispatch failed for %s", pl.get("id"))
     except Exception:
         logger.exception(
             "Failed to enqueue packing_list_approved notification for packing list %s",
@@ -730,7 +818,12 @@ def approve_packing_list(
         ip_address=ip_address,
     )
 
-    return _assemble_response({**dict(updated), "manifest_id": manifest_id}, items)
+    response_pl = {**dict(updated), "manifest_id": manifest_id}
+    if pl.get("loading_receipt_number"):
+        response_pl["loading_receipt_number"] = pl["loading_receipt_number"]
+    if pl.get("loaded_at"):
+        response_pl["loaded_at"] = pl["loaded_at"]
+    return _assemble_response(response_pl, items)
 
 
 def bulk_approve_packing_lists(

@@ -10,6 +10,8 @@ import {
   type ContainerStatusUpdate,
 } from '../../../api/tracking'
 import { Banner, Button, Field, Modal, Mono, DateField } from '../../../design/components'
+import { useTenantConfig } from '../../../hooks/useConfig'
+import { addDaysIso, formatDate } from '../../../lib/format'
 import styles from '../ContainerDetail.module.css'
 import { statusLabel } from '../../../design/status'
 import { toast } from '../../../design/toast'
@@ -67,6 +69,9 @@ export function AdvanceStatusModal({
   const [error, setError] = useState<string | null>(null)
   const requirementHint = containerAdvanceRequirementHint(target)
   const requiresShipDate = target === 'in_transit'
+  const { data: tenantConfig } = useTenantConfig()
+  const transitDays = tenantConfig?.default_transit_days ?? 45
+  const calculatedEta = requiresShipDate && shipDate ? addDaysIso(shipDate, transitDays) : null
   const impact = customerImpactFor(target, customerCount)
   const sealingWithoutApproved = target === 'sealed' && approvedCount === 0
 
@@ -148,13 +153,22 @@ export function AdvanceStatusModal({
             )}
             {requirementHint && <Banner variant="info">{requirementHint}</Banner>}
             {requiresShipDate && (
-              <DateField
-                label="Ship date"
-                name="shipDate"
-                required
-                value={shipDate}
-                onChange={(event) => setShipDate(event.target.value)}
-              />
+              <>
+                <DateField
+                  label="Ship date"
+                  name="shipDate"
+                  required
+                  value={shipDate}
+                  onChange={(event) => setShipDate(event.target.value)}
+                />
+                {calculatedEta && (
+                  <Banner variant="info" title={`Estimated arrival (ETA): ${formatDate(calculatedEta)}`}>
+                    Calculated automatically from Ship date + {transitDays}{' '}
+                    {transitDays === 1 ? 'day' : 'days'} (your organization&apos;s transit duration).
+                    Both Shipping date and ETA will be stamped onto all linked packing lists.
+                  </Banner>
+                )}
+              </>
             )}
             <Field
               label="Notes"
@@ -175,7 +189,12 @@ export function AdvanceStatusModal({
                 {statusLabel('container', container.status)} →{' '}
                 <strong>{statusLabel('container', target)}</strong>
               </span>
-              {shipDate && <span className={styles.advanceSummaryMeta}>Ship date: {shipDate}</span>}
+              {shipDate && <span className={styles.advanceSummaryMeta}>Ship date: {formatDate(shipDate)}</span>}
+              {calculatedEta && (
+                <span className={styles.advanceSummaryMeta}>
+                  Calculated ETA: {formatDate(calculatedEta)} (+{transitDays} days)
+                </span>
+              )}
             </div>
             {impact ? (
               <Banner variant={impact.variant} icon="bell" title="Customers will be contacted">

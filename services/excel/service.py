@@ -32,14 +32,16 @@ from .export_lists import (
     CONTAINER_LIST_COLUMNS,
     REPORT_CONTAINER_BILLING_COLUMNS,
 )
+from .export_loading_receipt_pdf import generate_loading_receipt_pdf_with_meta
 from .export_manifest import generate_manifest_xlsx
 from .export_manifest_pdf import generate_manifest_pdf
 from .export_packing_list import generate_packing_list_xlsx
-from .export_packing_list_pdf import generate_packing_list_pdf
+from .export_packing_list_pdf import generate_packing_list_pdf_with_meta
 from .export_receipt_pdf import generate_receipt_pdf
 from .export_release_note_pdf import generate_release_note_pdf
 from .import_manifest import parse_manifest_xlsx
 from .import_packing_list import parse_packing_list_xlsx
+from .pdf_image import image_disabled_reason, render_single_page_png
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ _CONTENT_TYPES = {
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "csv": "text/csv",
     "pdf": "application/pdf",
+    "png": "image/png",
 }
 
 
@@ -663,29 +666,363 @@ def _stem(brand: pdf_theme.Brand, kind: str, reference: object) -> str:
     return f"{_safe_name(brand.name)}_{kind}_{_safe_name(str(reference or ''))}"
 
 
+def _publish_image(
+    tenant_id: str,
+    buf: BytesIO,
+    stem: str,
+    *,
+    entity_type: str,
+    entity_id: str,
+    actor_id: str,
+    actor_role: str,
+    expires_in: int = _PDF_LINK_SECONDS,
+) -> dict[str, Any]:
+    """Store a single-page PNG document, return a presigned attachment link, and audit the export."""
+    filename = f"{stem}.png"
+    result = _upload_and_presign(tenant_id, filename, buf, fmt="png", expires_in=expires_in)
+    result["expires_in_seconds"] = expires_in
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action="EXPORT",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={"format": "png", "filename": result["filename"]},
+    )
+    return result
+
+
+def _normalize_pl_lang(lang: str | None) -> Any:
+    return "zh" if (lang or "").strip().lower() == "zh" else "en"
+
+
+def _normalize_lr_lang(lang: str | None) -> Any:
+    return "en" if (lang or "").strip().lower() == "en" else "zh"
+
+
+def _assert_packing_list_approved(pl: dict[str, Any]) -> None:
+    if pl.get("status") != "approved":
+        raise BusinessRuleViolationError(
+            "Packing list must be approved before generating or sharing documents.",
+            rule_id="PACKING_LIST_NOT_APPROVED",
+        )
+
+
+def _assert_loading_receipt_ready(pl: dict[str, Any]) -> None:
+    if pl.get("status") != "approved" or not pl.get("loading_receipt_number"):
+        raise BusinessRuleViolationError(
+            "Loading receipt is generated once the packing list has been approved.",
+            rule_id="LOADING_RECEIPT_NOT_READY",
+        )
+
+
 def export_packing_list_pdf(
     tenant_id: str,
     pl_id: str,
     actor_id: str,
     actor_role: str,
     customer_user_id: str | None = None,
+    *,
+    lang: str = "en",
 ) -> dict[str, Any]:
     """The packing list as its one PDF, behind a five-minute link (a customer: their own only)."""
     pl = repo.get_packing_list_for_export(tenant_id, pl_id)
     if not pl:
         raise ResourceNotFoundError("packing_list", pl_id)
     _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
+    _assert_packing_list_approved(pl)
     brand = _brand(tenant_id)
-    buf = generate_packing_list_pdf(brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id))
-    return _publish_pdf(
+    norm_lang = _normalize_pl_lang(lang)
+    rendered = generate_packing_list_pdf_with_meta(
+        brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id), lang=norm_lang
+    )
+    result = _publish_pdf(
         tenant_id,
-        buf,
-        _stem(brand, "packing_list", pl.get("reference") or pl.get("container_number")),
+        rendered.buf,
+        _stem(brand, f"packing_list_{norm_lang}", pl.get("reference") or pl.get("container_number")),
         entity_type="packing_list",
         entity_id=pl_id,
         actor_id=actor_id,
         actor_role=actor_role,
     )
+    result["page_count"] = rendered.page_count
+    result["lang"] = norm_lang
+    return result
+
+
+def export_packing_list_image(
+    tenant_id: str,
+    pl_id: str,
+    actor_id: str,
+    actor_role: str,
+    customer_user_id: str | None = None,
+    *,
+    lang: str = "en",
+) -> dict[str, Any]:
+    """Single-page PNG export of a packing list (422 MULTIPAGE_IMAGE_DISABLED when > 1 page)."""
+    pl = repo.get_packing_list_for_export(tenant_id, pl_id)
+    if not pl:
+        raise ResourceNotFoundError("packing_list", pl_id)
+    _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
+    _assert_packing_list_approved(pl)
+    brand = _brand(tenant_id)
+    norm_lang = _normalize_pl_lang(lang)
+    rendered = generate_packing_list_pdf_with_meta(
+        brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id), lang=norm_lang
+    )
+    png_buf = render_single_page_png(rendered.buf.getvalue(), rendered.page_count)
+    result = _publish_image(
+        tenant_id,
+        png_buf,
+        _stem(brand, f"packing_list_{norm_lang}", pl.get("reference") or pl.get("container_number")),
+        entity_type="packing_list",
+        entity_id=pl_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
+    result["page_count"] = rendered.page_count
+    result["lang"] = norm_lang
+    return result
+
+
+def export_loading_receipt_pdf(
+    tenant_id: str,
+    pl_id: str,
+    actor_id: str,
+    actor_role: str,
+    customer_user_id: str | None = None,
+    *,
+    lang: str = "zh",
+) -> dict[str, Any]:
+    """Bilingual Loading Receipt PDF (defaults to Chinese ``zh``; requires approved packing list)."""
+    pl = repo.get_packing_list_for_export(tenant_id, pl_id)
+    if not pl:
+        raise ResourceNotFoundError("packing_list", pl_id)
+    _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
+    _assert_loading_receipt_ready(pl)
+    brand = _brand(tenant_id)
+    norm_lang = _normalize_lr_lang(lang)
+    rendered = generate_loading_receipt_pdf_with_meta(
+        brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id), lang=norm_lang
+    )
+    result = _publish_pdf(
+        tenant_id,
+        rendered.buf,
+        _stem(brand, f"loading_receipt_{norm_lang}", pl.get("loading_receipt_number") or pl.get("reference")),
+        entity_type="packing_list",
+        entity_id=pl_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
+    result["page_count"] = rendered.page_count
+    result["lang"] = norm_lang
+    return result
+
+
+def export_loading_receipt_image(
+    tenant_id: str,
+    pl_id: str,
+    actor_id: str,
+    actor_role: str,
+    customer_user_id: str | None = None,
+    *,
+    lang: str = "zh",
+) -> dict[str, Any]:
+    """Single-page PNG export of a Loading Receipt (422 MULTIPAGE_IMAGE_DISABLED when > 1 page)."""
+    pl = repo.get_packing_list_for_export(tenant_id, pl_id)
+    if not pl:
+        raise ResourceNotFoundError("packing_list", pl_id)
+    _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
+    _assert_loading_receipt_ready(pl)
+    brand = _brand(tenant_id)
+    norm_lang = _normalize_lr_lang(lang)
+    rendered = generate_loading_receipt_pdf_with_meta(
+        brand, dict(pl), repo.get_items_for_packing_list(tenant_id, pl_id), lang=norm_lang
+    )
+    png_buf = render_single_page_png(rendered.buf.getvalue(), rendered.page_count)
+    result = _publish_image(
+        tenant_id,
+        png_buf,
+        _stem(brand, f"loading_receipt_{norm_lang}", pl.get("loading_receipt_number") or pl.get("reference")),
+        entity_type="packing_list",
+        entity_id=pl_id,
+        actor_id=actor_id,
+        actor_role=actor_role,
+    )
+    result["page_count"] = rendered.page_count
+    result["lang"] = norm_lang
+    return result
+
+
+def get_packing_list_documents(
+    tenant_id: str,
+    pl_id: str,
+    customer_user_id: str | None = None,
+    *,
+    lang_lr: str = "zh",
+    lang_pl: str = "en",
+) -> dict[str, Any]:
+    """Return dual-format & multi-page eligibility metadata for a packing list's documents."""
+    pl = repo.get_packing_list_for_export(tenant_id, pl_id)
+    if not pl:
+        raise ResourceNotFoundError("packing_list", pl_id)
+    _assert_customer_owns(tenant_id, customer_user_id, pl.get("customer_id"), "packing_list", pl_id)
+
+    items = repo.get_items_for_packing_list(tenant_id, pl_id)
+    brand = _brand(tenant_id)
+    norm_lr = _normalize_lr_lang(lang_lr)
+    norm_pl = _normalize_pl_lang(lang_pl)
+
+    is_approved = pl.get("status") == "approved"
+    is_finalized = is_approved and bool(pl.get("ship_date") or pl.get("container_ship_date"))
+    pl_pages = 0
+    pl_reason: str | None = None
+    if is_approved:
+        pl_rendered = generate_packing_list_pdf_with_meta(brand, dict(pl), items, lang=norm_pl)
+        pl_pages = pl_rendered.page_count
+        pl_reason = image_disabled_reason(pl_pages)
+
+    lr_available = is_approved and bool(pl.get("loading_receipt_number"))
+    lr_pages = 0
+    lr_reason: str | None = None
+    if lr_available:
+        lr_rendered = generate_loading_receipt_pdf_with_meta(brand, dict(pl), items, lang=norm_lr)
+        lr_pages = lr_rendered.page_count
+        lr_reason = image_disabled_reason(lr_pages)
+
+    return {
+        "packing_list_id": str(pl["id"]),
+        "customer_phone": pl.get("customer_phone"),
+        "customer_whatsapp": pl.get("customer_whatsapp") or pl.get("customer_phone"),
+        "loading_receipt": {
+            "available": lr_available,
+            "reference": pl.get("loading_receipt_number"),
+            "loaded_at": pl.get("loaded_at"),
+            "lang": norm_lr,
+            "page_count": lr_pages,
+            "image_eligible": lr_available and lr_pages == 1,
+            "image_disabled_reason": lr_reason,
+        },
+        "packing_list": {
+            "available": is_approved,
+            "finalized": is_finalized,
+            "reference": pl.get("reference"),
+            "ship_date": pl.get("ship_date") or pl.get("container_ship_date"),
+            "estimated_arrival_date": pl.get("estimated_arrival_date") or pl.get("container_eta"),
+            "lang": norm_pl,
+            "page_count": pl_pages,
+            "image_eligible": is_approved and pl_pages == 1,
+            "image_disabled_reason": pl_reason,
+        },
+    }
+
+
+def share_packing_list_document_whatsapp(
+    tenant_id: str,
+    pl_id: str,
+    document_type: str,
+    *,
+    lang: str | None = None,
+    actor_id: str,
+    actor_role: str,
+) -> dict[str, Any]:
+    """Share a Loading Receipt or Packing List via WhatsApp (PNG for 1-page, PDF for multi-page)."""
+    from services.notification import service as notif_service
+
+    if document_type not in ("loading_receipt", "packing_list"):
+        raise ValidationError("document_type must be 'loading_receipt' or 'packing_list'")
+
+    pl = repo.get_packing_list_for_export(tenant_id, pl_id)
+    if not pl:
+        raise ResourceNotFoundError("packing_list", pl_id)
+    if document_type == "loading_receipt":
+        _assert_loading_receipt_ready(pl)
+    else:
+        _assert_packing_list_approved(pl)
+
+    recipient_phone = str(pl.get("customer_whatsapp") or pl.get("customer_phone") or "").strip()
+    if not recipient_phone:
+        raise BusinessRuleViolationError(
+            "Customer has no WhatsApp or phone number on file.",
+            rule_id="MISSING_CUSTOMER_PHONE",
+        )
+
+    items = repo.get_items_for_packing_list(tenant_id, pl_id)
+    branding = repo.get_tenant_branding(tenant_id)
+    brand = _brand(tenant_id)
+
+    if document_type == "loading_receipt":
+        norm_lang = _normalize_lr_lang(lang)
+        rendered = generate_loading_receipt_pdf_with_meta(brand, dict(pl), items, lang=norm_lang)
+        ref = str(pl.get("loading_receipt_number") or pl.get("reference") or pl_id)
+        stem = _stem(brand, f"loading_receipt_{norm_lang}", ref)
+    else:
+        norm_lang = _normalize_pl_lang(lang)
+        rendered = generate_packing_list_pdf_with_meta(brand, dict(pl), items, lang=norm_lang)
+        ref = str(pl.get("reference") or pl.get("container_number") or pl_id)
+        stem = _stem(brand, f"packing_list_{norm_lang}", ref)
+
+    page_count = rendered.page_count
+    notice: str | None = None
+    if page_count == 1:
+        format_sent = "image"
+        png_buf = render_single_page_png(rendered.buf.getvalue(), page_count)
+        upload = _upload_and_presign(tenant_id, f"{stem}.png", png_buf, fmt="png", expires_in=_PRESIGNED_EXPIRY)
+        media_header: dict[str, Any] = {"type": "image", "link": upload["download_url"]}
+        event_type = f"{document_type}_image"
+    else:
+        format_sent = "pdf"
+        upload = _upload_and_presign(tenant_id, f"{stem}.pdf", rendered.buf, fmt="pdf", expires_in=_PRESIGNED_EXPIRY)
+        media_header = {"type": "document", "link": upload["download_url"], "filename": upload["filename"]}
+        event_type = f"{document_type}_pdf"
+        notice = (
+            f"Image export is disabled for multi-page documents ({page_count} pages) to preserve readability. "
+            "The PDF version was attached instead."
+        )
+
+    template_map = notif_service.WA_TEMPLATE_MAP_ZH if norm_lang == "zh" else notif_service.WA_TEMPLATE_MAP
+    template_name = template_map.get(event_type, event_type)
+    components = notif_service.build_wa_components(
+        branding,
+        {"reference": ref, "container_number": str(pl.get("container_number") or "")},
+        event_type=event_type,
+        media_header=media_header,
+    )
+    message_id = notif_service.send_whatsapp(
+        phone=recipient_phone,
+        template_name=template_name,
+        components=components,
+        tenant_id=tenant_id,
+        language_code=notif_service.wa_language_code(norm_lang),
+    )
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="packing_list",
+        entity_id=pl_id,
+        action="EXPORT",
+        actor_id=actor_id,
+        actor_role=actor_role,
+        after_state={
+            "channel": "whatsapp",
+            "document_type": document_type,
+            "format_sent": format_sent,
+            "page_count": page_count,
+            "lang": norm_lang,
+        },
+    )
+
+    return {
+        "document_type": document_type,
+        "format_sent": format_sent,
+        "page_count": page_count,
+        "lang": norm_lang,
+        "recipient_phone": recipient_phone,
+        "filename": upload["filename"],
+        "message_id": message_id or None,
+        "notice": notice,
+    }
 
 
 def export_release_note_pdf(

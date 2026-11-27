@@ -8,6 +8,8 @@ import { apiDownloadFile, apiRequest, apiRequestList, type ExportFormat } from '
 // documented response model but are real, present on every response, and
 // load-bearing for the self-approval-hiding rule (08_api_packing_list.md).
 export type PackingListStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected'
+export type DeliveryDateMode = 'same_day' | 'multiple_days'
+export type DocumentLang = 'en' | 'zh'
 
 // weight_dispatch_kg/weight_actual_kg/cbm/length_cm/width_cm/height_cm/declared_value_usd
 // are DECIMAL columns in Postgres. shared/responses.py's json.dumps(body, default=str)
@@ -26,6 +28,7 @@ export interface PackingListItem {
   width_cm: string | null
   height_cm: string | null
   received_date: string | null
+  loading_date?: string | null
   declared_value_usd: string | null
   // Bulk-package fields from a forwarder manifest import (migration 040).
   // One row can be "16 bags", so quantity is not always 1.
@@ -59,15 +62,29 @@ export interface PackingList {
   reference?: string | null
   container_id: string
   container_number: string | null
+  container_parcel_number?: string | null
   container_status?: string | null
+  container_ship_date?: string | null
   container_eta?: string | null
+  shipping_line?: string | null
+  origin?: string | null
+  destination?: string | null
   vessel_name?: string | null
   voyage_number?: string | null
   customer_id: string
   customer_name?: string | null
   customer_phone?: string | null
+  customer_whatsapp?: string | null
   loading_date?: string | null
   delivery_date?: string | null
+  delivery_date_mode?: DeliveryDateMode | null
+  ship_date?: string | null
+  estimated_arrival_date?: string | null
+  loading_receipt_number?: string | null
+  loaded_at?: string | null
+  supplier_name?: string | null
+  supplier_phone?: string | null
+  remarks?: string | null
   arrival_warehouse_id?: string | null
   arrival_warehouse_name?: string | null
   /** Total packages (sums bulk quantities), unlike carton_count which counts rows. */
@@ -103,10 +120,6 @@ export const PACKAGE_UNITS: { value: PackageUnit; label: string }[] = [
   { value: 'sack', label: 'Sack' },
 ]
 
-
-/** Above this, saving asks for an explicit confirmation of the total. */
-export const BULK_CONFIRM_THRESHOLD = 25
-
 export interface PackingListItemInput {
   description: string
   weight_dispatch_kg?: number
@@ -115,6 +128,7 @@ export interface PackingListItemInput {
   width_cm?: number
   height_cm?: number
   received_date?: string
+  loading_date?: string
   declared_value_usd?: number
   package_unit?: PackageUnit
   /**
@@ -138,6 +152,10 @@ export interface CreatePackingListInput {
   customer_id: string
   loading_date?: string
   delivery_date?: string
+  delivery_date_mode?: DeliveryDateMode
+  supplier_name?: string
+  supplier_phone?: string
+  remarks?: string
   arrival_warehouse_id?: string
   items: PackingListItemInput[]
 }
@@ -149,8 +167,44 @@ export interface UpdatePackingListItemInput extends PackingListItemInput {
 export interface UpdatePackingListInput {
   loading_date?: string
   delivery_date?: string
+  delivery_date_mode?: DeliveryDateMode
+  supplier_name?: string
+  supplier_phone?: string
+  remarks?: string
   arrival_warehouse_id?: string
   items: UpdatePackingListItemInput[]
+}
+
+export interface PackingListDocumentInfo {
+  available: boolean
+  finalized?: boolean
+  reference?: string | null
+  loaded_at?: string | null
+  ship_date?: string | null
+  estimated_arrival_date?: string | null
+  lang: DocumentLang
+  page_count: number
+  image_eligible: boolean
+  image_disabled_reason: string | null
+}
+
+export interface PackingListDocumentsResponse {
+  packing_list_id: string
+  customer_phone?: string | null
+  customer_whatsapp?: string | null
+  loading_receipt: PackingListDocumentInfo
+  packing_list: PackingListDocumentInfo
+}
+
+export interface ShareWhatsAppResponse {
+  document_type: 'loading_receipt' | 'packing_list'
+  format_sent: 'image' | 'pdf'
+  page_count: number
+  lang: DocumentLang
+  recipient_phone: string
+  filename: string
+  message_id?: string | null
+  notice?: string | null
 }
 
 export interface RejectPackingListInput {
@@ -220,10 +274,51 @@ export const packingListApi = {
     apiRequest<BulkActionResult>({ method: 'POST', path: '/v1/packing-lists/bulk-reject', body: { ids, comments } }),
 
   /** xlsx or csv export — triggers browser download. */
-  export: (id: string, format: Exclude<ExportFormat, 'pdf'>) =>
+  export: (id: string, format: Exclude<ExportFormat, 'pdf' | 'png'>) =>
     apiDownloadFile(`/v1/packing-lists/${id}/export`, format, `packing-list-${id}.${format}`),
 
-  /** PDF export — opens in new browser tab. */
-  pdf: (id: string) =>
-    apiDownloadFile(`/v1/packing-lists/${id}/pdf`, 'pdf', `packing-list-${id}.pdf`),
+  /** Packing List PDF export — opens in new browser tab. */
+  pdf: (id: string, lang: DocumentLang = 'en') =>
+    apiDownloadFile(`/v1/packing-lists/${id}/pdf`, 'pdf', `packing-list-${id}-${lang}.pdf`, { lang }),
+
+  /** Packing List single-page PNG image export (422 if > 1 page). */
+  image: (id: string, lang: DocumentLang = 'en') =>
+    apiDownloadFile(`/v1/packing-lists/${id}/image`, 'png', `packing-list-${id}-${lang}.png`, { lang }),
+
+  /** Bilingual Loading Receipt PDF (defaults to Chinese). */
+  loadingReceiptPdf: (id: string, lang: DocumentLang = 'zh') =>
+    apiDownloadFile(
+      `/v1/packing-lists/${id}/loading-receipt/pdf`,
+      'pdf',
+      `loading-receipt-${id}-${lang}.pdf`,
+      { lang },
+    ),
+
+  /** Bilingual Loading Receipt single-page PNG image (422 if > 1 page). */
+  loadingReceiptImage: (id: string, lang: DocumentLang = 'zh') =>
+    apiDownloadFile(
+      `/v1/packing-lists/${id}/loading-receipt/image`,
+      'png',
+      `loading-receipt-${id}-${lang}.png`,
+      { lang },
+    ),
+
+  /** Dual-format & multi-page eligibility metadata for both documents. */
+  documents: (id: string, opts?: { lang_lr?: DocumentLang; lang_pl?: DocumentLang }) =>
+    apiRequest<PackingListDocumentsResponse>({
+      method: 'GET',
+      path: `/v1/packing-lists/${id}/documents`,
+      query: { lang_lr: opts?.lang_lr ?? 'zh', lang_pl: opts?.lang_pl ?? 'en' },
+    }),
+
+  /** Share Loading Receipt or Packing List with customer via WhatsApp (image for 1-page, PDF for multi-page). */
+  shareWhatsApp: (
+    id: string,
+    body: { document_type: 'loading_receipt' | 'packing_list'; lang?: DocumentLang },
+  ) =>
+    apiRequest<ShareWhatsAppResponse>({
+      method: 'POST',
+      path: `/v1/packing-lists/${id}/share-whatsapp`,
+      body,
+    }),
 }

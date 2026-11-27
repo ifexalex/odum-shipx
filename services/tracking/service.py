@@ -7,12 +7,15 @@ tracking updates, billing event triggers, and customer-facing tracking lookup.
 import logging
 import math
 import re
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from services.billing.service import generate_container_invoices
 from services.metering.service import check_container_limit
+from services.tenant_management.tenant_config import get_default_transit_days
 from shared import uploads
 from shared.audit import log_audit
+from shared.db import tenant_transaction
 from shared.events import publish_event
 from shared.exceptions import (
     BusinessRuleViolationError,
@@ -45,6 +48,20 @@ def _positive_or_none(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return num if math.isfinite(num) and num > 0 else None
+
+
+def _parse_iso_date(value: Any) -> date | None:
+    """Parse a date, datetime, or ISO YYYY-MM-DD string into a date."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return date.fromisoformat(value.strip()[:10])
+        except ValueError:
+            return None
+    return None
 
 
 def _is_customer_only(ctx: Any) -> bool:
@@ -124,7 +141,9 @@ def create_container(
             "parcel_number": data.get("parcel_number"),
             "origin": data.get("origin", "China"),
             "destination": data.get("destination", "Nigeria"),
-            "estimated_arrival_date": data.get("estimated_arrival_date"),
+            # ETA is no longer set at container creation (ENG-1); it is computed
+            # automatically when the container transitions to in_transit.
+            "estimated_arrival_date": None,
             "notes": data.get("notes"),
             "created_by": actor_id,
             # Vessel/voyage manifest details (migration 030) — all optional.
@@ -358,12 +377,27 @@ def update_container_status(
                 rule_id="MANIFEST_NOT_VERIFIED",
             )
 
-    # in_transit requires ship_date
-    if new_status == "in_transit" and not extra.get("ship_date"):
-        raise BusinessRuleViolationError(
-            "ship_date is required when transitioning to in_transit",
-            rule_id="MISSING_SHIP_DATE",
-        )
+    # in_transit requires ship_date and automatically computes ETA = ship_date + default_transit_days
+    effective_extra: dict[str, Any] = dict(extra)
+    computed_ship_date: date | None = None
+    computed_eta: date | None = None
+    if new_status == "in_transit":
+        raw_ship_date = effective_extra.get("ship_date")
+        if not raw_ship_date:
+            raise BusinessRuleViolationError(
+                "ship_date is required when transitioning to in_transit",
+                rule_id="MISSING_SHIP_DATE",
+            )
+        computed_ship_date = _parse_iso_date(raw_ship_date)
+        if computed_ship_date is None:
+            raise BusinessRuleViolationError(
+                "ship_date must be a valid ISO date (YYYY-MM-DD)",
+                rule_id="INVALID_SHIP_DATE",
+            )
+        transit_days = get_default_transit_days(tenant_id)
+        computed_eta = computed_ship_date + timedelta(days=transit_days)
+        effective_extra["ship_date"] = computed_ship_date
+        effective_extra["estimated_arrival_date"] = computed_eta
 
     # at_warehouse → fully_released requires all billed cartons to have been collected
     if new_status == "fully_released":
@@ -374,13 +408,28 @@ def update_container_status(
                 rule_id="UNRELEASED_CARTONS_REMAIN",
             )
 
-    # Update container row
-    updated = repo.update_container_status(tenant_id, container_id, new_status, extra)
-    if updated is None:
-        raise BusinessRuleViolationError(
-            "Container status changed concurrently — reload and retry.",
-            rule_id="CONCURRENT_STATUS_CHANGE",
-        )
+    # Update container row (and atomically stamp ship_date + ETA onto linked packing lists on in_transit)
+    if new_status == "in_transit" and computed_ship_date is not None and computed_eta is not None:
+        with tenant_transaction(tenant_id):
+            updated = repo.update_container_status(tenant_id, container_id, new_status, effective_extra)
+            if updated is None:
+                raise BusinessRuleViolationError(
+                    "Container status changed concurrently — reload and retry.",
+                    rule_id="CONCURRENT_STATUS_CHANGE",
+                )
+            repo.stamp_packing_lists_transit_dates(
+                tenant_id,
+                container_id,
+                computed_ship_date,
+                computed_eta,
+            )
+    else:
+        updated = repo.update_container_status(tenant_id, container_id, new_status, effective_extra)
+        if updated is None:
+            raise BusinessRuleViolationError(
+                "Container status changed concurrently — reload and retry.",
+                rule_id="CONCURRENT_STATUS_CHANGE",
+            )
 
     repo.insert_container_event(
         tenant_id=tenant_id,
@@ -467,6 +516,14 @@ def update_container_status(
                     template_data={
                         "tracking_code": container.get("container_number", ""),
                         "status": new_status.replace("_", " "),
+                        **(
+                            {
+                                "ship_date": computed_ship_date.isoformat(),
+                                "estimated_arrival_date": computed_eta.isoformat(),
+                            }
+                            if computed_ship_date is not None and computed_eta is not None
+                            else {}
+                        ),
                     },
                     locale=customer.get("locale", "en"),
                     request_id=request_id,
@@ -489,6 +546,29 @@ def update_container_status(
                     "Failed to enqueue shipment_update notification for customer %s",
                     customer["id"],
                 )
+
+        # ENG-5: best-effort automatic WhatsApp finalized Packing List dispatch on in_transit
+        if new_status == "in_transit":
+            import os
+
+            if os.environ.get("META_WHATSAPP_PHONE_ID") and os.environ.get("META_WHATSAPP_ACCESS_TOKEN"):
+                try:
+                    from services.excel.service import share_packing_list_document_whatsapp
+
+                    for pl_id in repo.list_approved_packing_list_ids_for_container(tenant_id, container_id):
+                        try:
+                            share_packing_list_document_whatsapp(
+                                tenant_id,
+                                pl_id,
+                                "packing_list",
+                                lang="en",
+                                actor_id=actor_id,
+                                actor_role=str(ctx.role),
+                            )
+                        except Exception:
+                            logger.warning("Best-effort WhatsApp packing list dispatch failed for %s", pl_id)
+                except Exception:
+                    logger.warning("Best-effort WhatsApp packing list lookup failed for container %s", container_id)
 
     # Billing trigger when container cleared.
     #
@@ -561,6 +641,11 @@ def update_container_status(
         request_id=request_id,
     )
 
+    audit_after: dict[str, Any] = {"status": new_status}
+    if computed_ship_date is not None and computed_eta is not None:
+        audit_after["ship_date"] = computed_ship_date.isoformat()
+        audit_after["estimated_arrival_date"] = computed_eta.isoformat()
+
     log_audit(
         tenant_id=tenant_id,
         entity_type="container",
@@ -569,7 +654,7 @@ def update_container_status(
         actor_id=actor_id,
         actor_role=str(ctx.role),
         before_state={"status": current},
-        after_state={"status": new_status},
+        after_state=audit_after,
         ip_address=ip_address,
     )
 

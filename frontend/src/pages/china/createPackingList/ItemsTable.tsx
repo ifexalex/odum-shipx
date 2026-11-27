@@ -1,4 +1,4 @@
-import { useEffect, useRef, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX } from 'react'
 import {
   applyMinCbm,
   baleSizeAbbr,
@@ -10,6 +10,7 @@ import {
   Badge,
   Button,
   Card,
+  DateField,
   Icon,
   Mono,
   IconButton,
@@ -28,6 +29,11 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
   const {
     items,
     setItems,
+    deliveryDateMode,
+    deliveryDate,
+    loadingDate,
+    today,
+    itemDateErrors,
     minCbm,
     totals,
     exceedsCapacity,
@@ -42,6 +48,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
   } = form
   const listRef = useRef<HTMLDivElement>(null)
   const focusRowIndexRef = useRef<number | null>(null)
+  const [customLoadOpen, setCustomLoadOpen] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     const idx = focusRowIndexRef.current
@@ -329,9 +336,9 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                 </div>
 
                 <div className={styles.itemField}>
-                  <span className={styles.itemFieldLabel}>Decl. / unit (USD)</span>
+                  <span className={styles.itemFieldLabel}>Unit price (¥ CNY)</span>
                   <CellInput
-                    label={`Declared value per unit (USD), item ${index + 1}`}
+                    label={`Unit price (CNY), item ${index + 1}`}
                     className={styles.cellInputNumber}
                     type="number"
                     min={0}
@@ -348,6 +355,64 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                 </div>
               </div>
 
+              {/* Row 3 (ENG-3): Per-item delivery date (multiple_days mode) and optional per-item loading date override */}
+              {(deliveryDateMode === 'multiple_days' ||
+                Boolean(item.loading_date) ||
+                customLoadOpen[index]) ? (
+                <div className={styles.itemDatesRow}>
+                  {deliveryDateMode === 'multiple_days' && (
+                    <div className={styles.itemField}>
+                      <DateField
+                        label="Delivery date"
+                        name={`item-delivery-date-${index}`}
+                        aria-label={`Delivery date, item ${index + 1}`}
+                        max={today}
+                        value={item.received_date ?? ''}
+                        onChange={(event) =>
+                          updateItem(index, {
+                            received_date: event.target.value || undefined,
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                  <div className={styles.itemField}>
+                    <DateField
+                      label="Loading date override"
+                      name={`item-loading-date-${index}`}
+                      aria-label={`Loading date override, item ${index + 1}`}
+                      optional
+                      min={
+                        (deliveryDateMode === 'same_day' ? deliveryDate : item.received_date) ||
+                        undefined
+                      }
+                      value={item.loading_date ?? ''}
+                      onChange={(event) =>
+                        updateItem(index, {
+                          loading_date: event.target.value || undefined,
+                        })
+                      }
+                    />
+                  </div>
+                  {itemDateErrors[index] && (
+                    <span className={styles.itemDateError}>{itemDateErrors[index]}</span>
+                  )}
+                </div>
+              ) : (
+                <div className={styles.itemDateToggleWrap}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setCustomLoadOpen((prev) => ({ ...prev, [index]: true }))
+                    }
+                  >
+                    Different loading date?
+                    {loadingDate ? ` (default: ${loadingDate})` : ''}
+                  </Button>
+                </div>
+              )}
+
               {qty > 1 && (
                 <div className={styles.qtyPreviewWrap}>
                   <span className={styles.qtyPreview}>
@@ -359,7 +424,7 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
                         ? `${formatKg(item.weight_actual_kg * qty)} kg`
                         : null,
                       item.declared_value_usd != null
-                        ? `$${(item.declared_value_usd * qty).toFixed(0)} declared ($${item.declared_value_usd}/unit)`
+                        ? `¥${(item.declared_value_usd * qty).toFixed(0)} total (¥${item.declared_value_usd}/unit)`
                         : null,
                       'one tag for all packages',
                     ]
@@ -402,8 +467,8 @@ export function ItemsTable({ form }: { form: PackingListForm }): JSX.Element {
             )}
           </span>
           <span>
-            <span className={styles.itemTotalKey}>Declared</span>{' '}
-            <Mono>${totals.declaredUsd.toFixed(0)}</Mono>
+            <span className={styles.itemTotalKey}>Goods value</span>{' '}
+            <Mono>¥{totals.declaredUsd.toFixed(0)}</Mono>
           </span>
         </div>
       </div>

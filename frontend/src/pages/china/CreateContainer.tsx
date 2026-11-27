@@ -7,7 +7,8 @@ import { containerCapacitiesApi } from '../../api/tenantManagement'
 import { containerCapacityKeys } from '../../api/keys'
 import { ApiError } from '../../api/client'
 import { safeNextPath } from '../../auth/returnPath'
-import { Banner, Button, Card, Combobox, Field, type ComboboxOption, DateField } from '../../design/components'
+import { Banner, Button, Card, Combobox, Field, type ComboboxOption } from '../../design/components'
+import { useTenantConfig } from '../../hooks/useConfig'
 import { PageHeader } from '../../shell/PageHeader'
 import { SectionHead } from '../../shell/SectionHead'
 import styles from './CreateContainer.module.css'
@@ -28,6 +29,8 @@ export function CreateContainer(): JSX.Element {
     queryKey: containerCapacityKeys.list(),
     queryFn: containerCapacitiesApi.list,
   })
+  const { data: tenantConfig } = useTenantConfig()
+  const defaultTransitDays = tenantConfig?.default_transit_days ?? 45
   const [containerNumber, setContainerNumber] = useState('')
   const [capacityId, setCapacityId] = useState('')
   const [sealNumber, setSealNumber] = useState('')
@@ -37,7 +40,6 @@ export function CreateContainer(): JSX.Element {
   const [parcelNumber, setParcelNumber] = useState('')
   const [origin, setOrigin] = useState('China')
   const [destination, setDestination] = useState('Nigeria')
-  const [estimatedArrivalDate, setEstimatedArrivalDate] = useState('')
   const [notes, setNotes] = useState('')
   const [showOptionalDetails, setShowOptionalDetails] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -77,7 +79,6 @@ export function CreateContainer(): JSX.Element {
           parcel_number: parcelNumber || undefined,
           origin,
           destination,
-          estimated_arrival_date: estimatedArrivalDate || undefined,
           notes: notes || undefined,
         },
         key,
@@ -149,7 +150,10 @@ export function CreateContainer(): JSX.Element {
             </span>
           </div>
 
-          <SectionHead title="Route & schedule" />
+          <SectionHead
+            title="Route"
+            sub={`Estimated arrival (ETA) is calculated automatically when the container departs (Ship date + ${defaultTransitDays} days).`}
+          />
           <div className={styles.spacerSm} />
           <div className={styles.grid2}>
             <Field
@@ -169,13 +173,6 @@ export function CreateContainer(): JSX.Element {
               onChange={(event) => setDestination(event.target.value)}
             />
           </div>
-          <DateField
-            label="Estimated arrival date"
-            name="estimatedArrivalDate"
-            optional
-            value={estimatedArrivalDate}
-            onChange={(event) => setEstimatedArrivalDate(event.target.value)}
-          />
 
           <div style={{ marginTop: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
             <Button

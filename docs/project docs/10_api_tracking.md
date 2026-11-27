@@ -189,3 +189,15 @@ Each event: `{ id, from_status, to_status, actor_id, notes, created_at }`
 **New route:** `GET /v1/containers/{id}/events/export?format=xlsx|csv` (excel service) — tenant_admin, nigeria_office_staff, china_office_staff, warehouse_attendant (everyone who can read `GET /v1/containers/{id}/events`). The container's tracking events, oldest first: Time (UTC), From, To, Updated By, Role, Notes; statuses and roles in words ("In transit", "China office staff"). Notes are staff-typed, so formulas are neutralised (`_tables`). Response: `{filename, download_url, expires_at, file_size_bytes, format, row_count}`; filename `{tenant}_tracking_{container_number}_{yyyymmdd}`. PDF → 422. Audited as `EXPORT` on the container (`scope: tracking_events`). Another tenant's container → 404.
 
 **Ground-truth gap closed:** the tracking tab's Export button had no handler and no endpoint existed (found 2026-11-17).
+
+## Container creation ETA removed (ENG-1, 2026-11-27)
+
+- `POST /v1/containers` no longer requires or stores `estimated_arrival_date` at creation time (`services/tracking/service.py::create_container` always initializes `estimated_arrival_date = None`, ignoring any legacy `estimated_arrival_date` field in the request body for backward compatibility).
+- ETA is standardized via the tenant's **Default Transit Duration (Days)** setting (`default_transit_days`, default `45` days) and calculated automatically when the container transitions to `in_transit` (ENG-2).
+- **Tests:** `tests/unit/test_transit_duration.py::TestCreateContainerIgnoresEta`.
+
+## Automated Shipping Date & Dynamic ETA on `In Transit` (ENG-2, 2026-11-27)
+
+- Transitioning a container to `in_transit` (`PATCH /v1/containers/{id}/status`) reads the tenant's `default_transit_days` (default `45`), computes `estimated_arrival_date = ship_date + timedelta(days=default_transit_days)`, and atomically persists both `ship_date` and `estimated_arrival_date` onto `container` **and** all linked non-rejected `packing_list` rows (`stamp_packing_lists_transit_dates`) inside `tenant_transaction`.
+- Both dates are included in the `shipment_update` notification payload and container `STATUS_CHANGE` audit log; finalized Packing Lists are best-effort dispatched via WhatsApp when Meta WhatsApp credentials are configured (ENG-5).
+- **Tests:** `tests/unit/test_transit_and_documents.py::TestEng2InTransitAutomation`.

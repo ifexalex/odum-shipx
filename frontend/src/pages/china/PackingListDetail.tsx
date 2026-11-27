@@ -20,6 +20,7 @@ import { toast } from '../../design/toast'
 import { DetailPage } from '../../shell/DetailPage'
 import { nextActionLabel } from '../../design/nextAction'
 import { runDocument } from '../../lib/documents'
+import { ShipmentDocumentsCard } from '../shared/ShipmentDocumentsCard'
 
 interface RejectModalProps {
   onCancel: () => void
@@ -271,6 +272,19 @@ export function PackingListDetail(): JSX.Element {
   const editTotalCbm = editLiveMetrics.reduce((sum, m) => sum + (m.cbm ?? 0), 0)
 
   const showFlagColumn = pl.status === 'rejected' && !editing
+  const shipDate = pl.ship_date ?? pl.container_ship_date ?? null
+  const etaDate = pl.estimated_arrival_date ?? pl.container_eta ?? null
+  const showDeliveredColumn =
+    !editing &&
+    (pl.delivery_date_mode === 'multiple_days' ||
+      new Set(pl.items.map((it) => it.received_date).filter(Boolean)).size > 1)
+  const showLoadedColumn =
+    !editing && pl.items.some((it) => Boolean(it.loading_date))
+  const isStaff =
+    session?.role === 'china_office_staff' ||
+    session?.role === 'nigeria_office_staff' ||
+    session?.role === 'tenant_admin' ||
+    session?.role === 'platform_admin'
 
   return (
     <DetailPage
@@ -289,6 +303,13 @@ export function PackingListDetail(): JSX.Element {
             ),
             `${packageSummary}, ${formatCbm(pl.total_cbm)} CBM`,
             pl.arrival_warehouse_name && `To ${pl.arrival_warehouse_name}`,
+            pl.loading_receipt_number && (
+              <>
+                Receipt <Mono>{pl.loading_receipt_number}</Mono>
+              </>
+            ),
+            shipDate && `Shipped ${formatDate(shipDate)}`,
+            etaDate && `ETA ${formatDate(etaDate)}`,
             `Submitted ${formatDate(pl.created_at)}`,
           ]}
           primary={
@@ -328,7 +349,7 @@ export function PackingListDetail(): JSX.Element {
                 </Button>
               )}
               <ExportButton
-                formats={['xlsx', 'csv', 'pdf']}
+                formats={pl.status === 'approved' ? ['xlsx', 'csv', 'pdf'] : ['xlsx', 'csv']}
                 onExport={(fmt) =>
                   fmt === 'pdf' ? packingListApi.pdf(pl.id) : packingListApi.export(pl.id, fmt)
                 }
@@ -350,12 +371,17 @@ export function PackingListDetail(): JSX.Element {
                   },
                 ]
               : []),
-            // Print is the PDF, the one packing-list document (FD-40).
-            {
-              label: 'Print',
-              icon: 'file',
-              onSelect: () => void runDocument('the packing list', () => packingListApi.pdf(pl.id)),
-            },
+            // Print is the PDF, available once approved (Option 1).
+            ...(pl.status === 'approved'
+              ? [
+                  {
+                    label: 'Print',
+                    icon: 'file' as const,
+                    onSelect: () =>
+                      void runDocument('the packing list', () => packingListApi.pdf(pl.id)),
+                  },
+                ]
+              : []),
           ]}
           moreLabel="More packing list actions"
         />
@@ -438,7 +464,9 @@ export function PackingListDetail(): JSX.Element {
             { title: 'Weight (kg)', type: 'number' as const },
             { title: 'L × W × H (cm)', align: 'center' },
             { title: 'Volume (CBM)', type: 'number' as const },
-            { title: 'Decl. / unit ($)', type: 'money' as const },
+            { title: 'Unit price (¥)', type: 'money' as const },
+            ...(showDeliveredColumn ? [{ title: 'Delivered' }] : []),
+            ...(showLoadedColumn ? [{ title: 'Loaded' }] : []),
             ...(showFlagColumn ? [{ title: 'Flag' }] : []),
             ...(editing ? [{ title: '', type: 'action' as const, width: '40px' }] : []),
           ]}
@@ -513,7 +541,7 @@ export function PackingListDetail(): JSX.Element {
                         {liveCbm != null ? formatCbm(liveCbm) : '—'}
                       </Mono>,
                       <CellInput
-                        label={`Declared value (USD), item ${index + 1}`}
+                        label={`Unit price (CNY), item ${index + 1}`}
                         key="usd"
                         className={styles.cellInputNumber}
                         type="number"
@@ -555,10 +583,28 @@ export function PackingListDetail(): JSX.Element {
                     <Mono key="usd">
                       {item.declared_value_usd != null
                         ? Number(item.quantity ?? 1) > 1
-                          ? `$${item.declared_value_usd}/unit ($${(Number(item.declared_value_usd) * Number(item.quantity ?? 1)).toFixed(0)})`
-                          : `$${item.declared_value_usd}`
+                          ? `¥${item.declared_value_usd}/unit (¥${(Number(item.declared_value_usd) * Number(item.quantity ?? 1)).toFixed(0)})`
+                          : `¥${item.declared_value_usd}`
                         : '—'}
                     </Mono>,
+                    ...(showDeliveredColumn
+                      ? [
+                          <span key="delivered">
+                            {item.received_date ? formatDate(item.received_date) : '—'}
+                          </span>,
+                        ]
+                      : []),
+                    ...(showLoadedColumn
+                      ? [
+                          <span key="loaded">
+                            {item.loading_date
+                              ? formatDate(item.loading_date)
+                              : pl.loading_date
+                                ? formatDate(pl.loading_date)
+                                : '—'}
+                          </span>,
+                        ]
+                      : []),
                     ...(showFlagColumn
                       ? [
                           rejectedItemIds.has(item.id) ? (
@@ -607,6 +653,8 @@ export function PackingListDetail(): JSX.Element {
           </div>
         )}
       </Card>
+
+      <ShipmentDocumentsCard packingList={pl} canShareWhatsApp={isStaff} />
 
       {showRejectModal && (
         <RejectModal

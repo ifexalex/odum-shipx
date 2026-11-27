@@ -4,6 +4,7 @@ import { ApiError } from '../../../api/client'
 import { SessionContext } from '../../../auth/SessionContext'
 import {
   packingListApi,
+  type DeliveryDateMode,
   type PackageUnit,
   type PackingList,
   type PackingListItemInput,
@@ -29,8 +30,10 @@ interface WizardDraft {
   customerId: string
   containerId: string
   arrivalWarehouseId: string
+  deliveryDateMode: DeliveryDateMode
   loadingDate: string
   deliveryDate: string
+  remarks: string
   items: PackingListItemInput[]
 }
 
@@ -78,8 +81,12 @@ export function useCreatePackingListForm() {
   const [customerId, setCustomerId] = useState(seed?.customerId ?? '')
   const [containerId, setContainerId] = useState(prefilledContainerId || (seed?.containerId ?? ''))
   const [arrivalWarehouseId, setArrivalWarehouseId] = useState(seed?.arrivalWarehouseId ?? '')
+  const [deliveryDateMode, setDeliveryDateMode] = useState<DeliveryDateMode>(
+    seed?.deliveryDateMode ?? 'same_day',
+  )
   const [loadingDate, setLoadingDate] = useState(seed?.loadingDate ?? '')
   const [deliveryDate, setDeliveryDate] = useState(seed?.deliveryDate ?? '')
+  const [remarks, setRemarks] = useState(seed?.remarks ?? '')
   const [items, setItems] = useState<PackingListItemInput[]>(seed?.items ?? [emptyItem()])
   // CBM and dollar rates, totals and the live shipping estimate (usePackingListPricing).
   const {
@@ -93,13 +100,10 @@ export function useCreatePackingListForm() {
     rawCbm,
     qtyOf,
     totals,
-    bulkLines,
     cbmCharge,
     shippingUsd,
     shippingNgn,
   } = usePackingListPricing(items)
-  // Set when a save is held back pending confirmation of a bulk line.
-  const [pendingSave, setPendingSave] = useState<{ submitForApproval: boolean } | null>(null)
   // When editing a draft, the customer/container are fixed (the update API
   // keeps them) — show them read-only once loaded.
   const [draftSeeded, setDraftSeeded] = useState(false)
@@ -144,8 +148,10 @@ export function useCreatePackingListForm() {
       setCustomerId(pl.customer_id)
       setContainerId(pl.container_id)
       setArrivalWarehouseId(pl.arrival_warehouse_id ?? '')
+      setDeliveryDateMode(pl.delivery_date_mode ?? 'same_day')
       setLoadingDate(pl.loading_date ?? '')
       setDeliveryDate(pl.delivery_date ?? '')
+      setRemarks(pl.remarks ?? '')
       setItems(
         // collapseBatches folds an expanded bulk line back into the single
         // row that produced it, so the quantity the user typed is what they
@@ -167,13 +173,8 @@ export function useCreatePackingListForm() {
                   declared_value_usd:
                     it.declared_value_usd != null ? Number(it.declared_value_usd) : undefined,
                   package_unit: (it.package_unit as PackageUnit) ?? 'carton',
-                  // Carried through because the server falls back to
-                  // `received_date or date.today()`. Dropping it meant editing a
-                  // draft silently re-dated every item to today — and the
-                  // tracking code is derived from customer + received date, so
-                  // the grouping moved with it. Worst on an imported list, where
-                  // that date is real rather than the day of entry.
                   received_date: it.received_date ?? undefined,
+                  loading_date: it.loading_date ?? undefined,
                   quantity: qty,
                   identical_confirmed: qty > 1,
                   batch_ref: it.batch_ref ?? null,
@@ -201,14 +202,26 @@ export function useCreatePackingListForm() {
   // The tab keeps the input until it is saved for real. An untouched form (the default warehouse pre-selected and
   // nothing else) stores nothing, so opening the wizard and leaving does not leave a "draft" behind.
   const defaultWarehouseId = warehouseQuery.data?.find((w) => w.is_default)?.id ?? ''
-  const current: WizardDraft = { step, customerId, containerId, arrivalWarehouseId, loadingDate, deliveryDate, items }
+  const current: WizardDraft = {
+    step,
+    customerId,
+    containerId,
+    arrivalWarehouseId,
+    deliveryDateMode,
+    loadingDate,
+    deliveryDate,
+    remarks,
+    items,
+  }
   const pristine: WizardDraft = {
     step,
     customerId: '',
     containerId: prefilledContainerId,
     arrivalWarehouseId: arrivalWarehouseId === defaultWarehouseId ? arrivalWarehouseId : '',
+    deliveryDateMode: 'same_day',
     loadingDate: '',
     deliveryDate: '',
+    remarks: '',
     items: [emptyItem()],
   }
   const tabDraft = useTabDraft<WizardDraft>(DRAFT_FORM, current, pristine, keepsTabDraft)
@@ -232,8 +245,10 @@ export function useCreatePackingListForm() {
     setCustomerId('')
     setContainerId('')
     setArrivalWarehouseId(defaultWarehouseId)
+    setDeliveryDateMode('same_day')
     setLoadingDate('')
     setDeliveryDate('')
+    setRemarks('')
     setItems([emptyItem()])
   }
 
@@ -326,24 +341,11 @@ export function useCreatePackingListForm() {
     return items.filter((item) => item.batch_ref === batchRef).length
   }
 
-  /** Ask before creating a lot of packages from one keystroke.
-   *
-   *  Only above BULK_CONFIRM_THRESHOLD: prompting on every "2" would train
-   *  people to dismiss it, which is worse than not asking. The dialog restates
-   *  the figures that actually matter — package count, CBM, weight — because
-   *  "500" in a narrow input looks much like "50", while the CBM it implies
-   *  does not.
-   */
   async function requestSave(submitForApproval: boolean): Promise<void> {
-    if (bulkLines.length > 0) {
-      setPendingSave({ submitForApproval })
-      return
-    }
     await handleSave(submitForApproval)
   }
 
   async function handleSave(submitForApproval: boolean): Promise<void> {
-    setPendingSave(null)
     setSubmitting(true)
     setError(null)
     try {
@@ -351,7 +353,9 @@ export function useCreatePackingListForm() {
       if (targetListId) {
         const updated = await packingListApi.update(targetListId, {
           loading_date: loadingDate || undefined,
-          delivery_date: deliveryDate || undefined,
+          delivery_date: deliveryDateMode === 'same_day' ? deliveryDate || undefined : undefined,
+          delivery_date_mode: deliveryDateMode,
+          remarks: remarks.trim() || undefined,
           arrival_warehouse_id: arrivalWarehouseId || undefined,
           items,
         })
@@ -363,7 +367,9 @@ export function useCreatePackingListForm() {
             container_id: containerId,
             customer_id: customerId,
             loading_date: loadingDate || undefined,
-            delivery_date: deliveryDate || undefined,
+            delivery_date: deliveryDateMode === 'same_day' ? deliveryDate || undefined : undefined,
+            delivery_date_mode: deliveryDateMode,
+            remarks: remarks.trim() || undefined,
             arrival_warehouse_id: arrivalWarehouseId || undefined,
             items,
           },
@@ -403,19 +409,35 @@ export function useCreatePackingListForm() {
   // ISO date strings (YYYY-MM-DD) compare correctly as plain strings, so no
   // Date parsing — and therefore no timezone shifting — is needed here.
   const deliveryDateError =
-    deliveryDate && deliveryDate > today
+    deliveryDateMode === 'same_day' && deliveryDate && deliveryDate > today
       ? 'Cannot be a future date — this is when the goods were received.'
       : undefined
   const loadingDateError =
-    loadingDate && deliveryDate && loadingDate < deliveryDate
+    deliveryDateMode === 'same_day' && loadingDate && deliveryDate && loadingDate < deliveryDate
       ? 'Cannot be before the delivery date — goods must be received before they are loaded.'
       : undefined
+
+  const itemDateErrors = items.map((item) => {
+    if (deliveryDateMode === 'multiple_days' && item.received_date && item.received_date > today) {
+      return 'Delivery date cannot be in the future.'
+    }
+    const effectiveDelivery =
+      deliveryDateMode === 'same_day' ? deliveryDate || item.received_date : item.received_date
+    const effectiveLoading = item.loading_date || loadingDate
+    if (effectiveDelivery && effectiveLoading && effectiveLoading < effectiveDelivery) {
+      return 'Loading date cannot be before delivery date.'
+    }
+    return undefined
+  })
 
   // A restored draft can name a container that has since been sealed; it is no longer offered, so it cannot be used.
   const canProceedFrom1 =
     Boolean(customerId && selectedContainer) && !deliveryDateError && !loadingDateError
   const canProceedFrom2 =
-    items.length > 0 && items.every((item) => item.description.trim() !== '') && !exceedsCapacity
+    items.length > 0 &&
+    items.every((item) => item.description.trim() !== '') &&
+    itemDateErrors.every((err) => !err) &&
+    !exceedsCapacity
 
   return {
     navigate,
@@ -433,14 +455,17 @@ export function useCreatePackingListForm() {
     setContainerId,
     arrivalWarehouseId,
     setArrivalWarehouseId,
+    deliveryDateMode,
+    setDeliveryDateMode,
     loadingDate,
     setLoadingDate,
     deliveryDate,
     setDeliveryDate,
+    remarks,
+    setRemarks,
+    itemDateErrors,
     items,
     setItems,
-    pendingSave,
-    setPendingSave,
     draftSeeded,
     setDraftSeeded,
     submitting,
@@ -475,7 +500,6 @@ export function useCreatePackingListForm() {
     remainingCapacityCbm,
     exceedsCapacity,
     totals,
-    bulkLines,
     cbmCharge,
     shippingUsd,
     shippingNgn,

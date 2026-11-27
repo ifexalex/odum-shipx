@@ -261,9 +261,9 @@ export async function apiRequestList<T>(opts: RequestOptions): Promise<ListRespo
   return (await response.json()) as ListResponse<T>
 }
 
-export type ExportFormat = 'xlsx' | 'csv' | 'pdf'
+export type ExportFormat = 'xlsx' | 'csv' | 'pdf' | 'png'
 /** The formats of a data export: spreadsheets only. A PDF is a document with its own route (FD-39). */
-export type DataExportFormat = Exclude<ExportFormat, 'pdf'>
+export type DataExportFormat = 'xlsx' | 'csv'
 
 interface ExportResultShape {
   filename: string
@@ -305,8 +305,13 @@ export async function apiDownloadFile(
   // returns, Safari and most mobile browsers treat it as a pop-up and block it, so the button looked dead. It shows
   // a holding line until the link arrives. Must run before the first await.
   const tab = format === 'pdf' ? openPendingTab() : null
+  const isDedicatedDocument = format === 'pdf' || format === 'png'
   try {
-    const response = await fetchWithAuth({ method: 'GET', path, query: format === 'pdf' ? query : { ...query, format } })
+    const response = await fetchWithAuth({
+      method: 'GET',
+      path,
+      query: isDedicatedDocument ? query : { ...query, format },
+    })
     if (!response.ok) {
       throw await parseError(response)
     }

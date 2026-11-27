@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { type JSX } from 'react'
-import { Banner, Button, Card, Combobox, DateField } from '../../../design/components'
+import { Banner, Button, Card, CellRadio, Combobox, DateField, Field } from '../../../design/components'
 import { SectionHead } from '../../../shell/SectionHead'
 import { useCanOpen } from '../../../shell/useCanOpen'
 import styles from '../CreatePackingList.module.css'
@@ -22,10 +22,14 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
     setContainerId,
     arrivalWarehouseId,
     setArrivalWarehouseId,
+    deliveryDateMode,
+    setDeliveryDateMode,
     loadingDate,
     setLoadingDate,
     deliveryDate,
     setDeliveryDate,
+    remarks,
+    setRemarks,
     warehouses,
     warehouseError,
     customers,
@@ -180,41 +184,96 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
       <div className={styles.spacerLg} />
       <SectionHead
         title="Goods dates"
-        sub="Delivery comes first — cargo has to reach the warehouse before it can be loaded."
+        sub="Choose whether all items were delivered on the same day or across multiple days. All items on this packing list still share one tracking code."
       />
       <div className={styles.spacerSm} />
+      <div className={styles.modeToggle} role="radiogroup" aria-label="Delivery date mode">
+        <label
+          className={[
+            styles.modeOption,
+            deliveryDateMode === 'same_day' ? styles.modeOptionActive : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <CellRadio
+            label="Same-day delivery items"
+            name="deliveryDateMode"
+            value="same_day"
+            checked={deliveryDateMode === 'same_day'}
+            onChange={() => setDeliveryDateMode('same_day')}
+            className={styles.srOnly}
+          />
+          <span className={styles.modeOptionTitle}>Same-day delivery items</span>
+          <span className={styles.modeOptionSub}>One delivery date applies to all items</span>
+        </label>
+        <label
+          className={[
+            styles.modeOption,
+            deliveryDateMode === 'multiple_days' ? styles.modeOptionActive : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <CellRadio
+            label="Multiple-day delivery items"
+            name="deliveryDateMode"
+            value="multiple_days"
+            checked={deliveryDateMode === 'multiple_days'}
+            onChange={() => setDeliveryDateMode('multiple_days')}
+            className={styles.srOnly}
+          />
+          <span className={styles.modeOptionTitle}>Multiple-day delivery items</span>
+          <span className={styles.modeOptionSub}>
+            Enter a delivery date per item in Step 2 (shared loading date)
+          </span>
+        </label>
+      </div>
+      <div className={styles.spacerSm} />
       <div className={styles.grid2}>
+        {deliveryDateMode === 'same_day' && (
+          <DateField
+            label="Delivery date"
+            name="deliveryDate"
+            optional
+            value={deliveryDate}
+            onChange={(e) => setDeliveryDate(e.target.value)}
+            max={today}
+            error={deliveryDateError}
+            helper={
+              deliveryDateError ? undefined : 'Received in the China warehouse. Not a future date.'
+            }
+          />
+        )}
         <DateField
-          label="Delivery date"
-          name="deliveryDate"
-          optional
-          value={deliveryDate}
-          onChange={(e) => setDeliveryDate(e.target.value)}
-          // Caps the native date picker at today, so the commonest mistake
-          // is unreachable rather than merely rejected after submitting.
-          max={today}
-          error={deliveryDateError}
-          helper={
-            deliveryDateError ? undefined : 'Received in the China warehouse. Not a future date.'
-          }
-        />
-        <DateField
-          label="Loading date"
+          label={deliveryDateMode === 'multiple_days' ? 'Loading date (shared default)' : 'Loading date'}
           name="loadingDate"
           optional
           value={loadingDate}
           onChange={(e) => setLoadingDate(e.target.value)}
-          // No max: a packing list is written against a container still
-          // loading, so a planned load date is legitimate.
-          min={deliveryDate || undefined}
+          min={deliveryDateMode === 'same_day' ? deliveryDate || undefined : undefined}
           error={loadingDateError}
           helper={
             loadingDateError
               ? undefined
-              : 'Loaded into the container. Same day as delivery or later.'
+              : deliveryDateMode === 'multiple_days'
+                ? 'Default loading date for the consolidated load — individual items can override it in Step 2.'
+                : 'Loaded into the container. Same day as delivery or later (items can override in Step 2).'
           }
         />
       </div>
+
+      <div className={styles.spacerLg} />
+      <Field
+        label="Remarks / packing instructions"
+        name="remarks"
+        optional
+        multiline
+        placeholder="e.g. Compression instructions, fragile handling notes…"
+        value={remarks}
+        onChange={(e) => setRemarks(e.target.value)}
+        helper="Printed on the Loading Receipt and Packing List."
+      />
 
       <div className={styles.spacerLg} />
       <Banner variant="info" title="What happens next">
