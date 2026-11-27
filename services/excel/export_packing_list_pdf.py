@@ -336,9 +336,6 @@ def generate_packing_list_pdf_with_meta(
         facts_pairs.append((s["loading_receipt"], str(pl["loading_receipt_number"])))
     if vessel_label:
         facts_pairs.append((s["vessel_line"], vessel_label))
-    if pl.get("supplier_name") or pl.get("supplier_phone"):
-        supplier_str = " · ".join(str(p).strip() for p in (pl.get("supplier_name"), pl.get("supplier_phone")) if p)
-        facts_pairs.append((s["supplier"], supplier_str))
 
     columns = _columns_for(norm_lang, show_delivered=show_delivered, show_loaded=show_loaded)
     totals: list[object] = [

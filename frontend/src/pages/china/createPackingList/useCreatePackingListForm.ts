@@ -33,8 +33,6 @@ interface WizardDraft {
   deliveryDateMode: DeliveryDateMode
   loadingDate: string
   deliveryDate: string
-  supplierName: string
-  supplierPhone: string
   remarks: string
   items: PackingListItemInput[]
 }
@@ -88,8 +86,6 @@ export function useCreatePackingListForm() {
   )
   const [loadingDate, setLoadingDate] = useState(seed?.loadingDate ?? '')
   const [deliveryDate, setDeliveryDate] = useState(seed?.deliveryDate ?? '')
-  const [supplierName, setSupplierName] = useState(seed?.supplierName ?? '')
-  const [supplierPhone, setSupplierPhone] = useState(seed?.supplierPhone ?? '')
   const [remarks, setRemarks] = useState(seed?.remarks ?? '')
   const [items, setItems] = useState<PackingListItemInput[]>(seed?.items ?? [emptyItem()])
   // CBM and dollar rates, totals and the live shipping estimate (usePackingListPricing).
@@ -158,8 +154,6 @@ export function useCreatePackingListForm() {
       setDeliveryDateMode(pl.delivery_date_mode ?? 'same_day')
       setLoadingDate(pl.loading_date ?? '')
       setDeliveryDate(pl.delivery_date ?? '')
-      setSupplierName(pl.supplier_name ?? '')
-      setSupplierPhone(pl.supplier_phone ?? '')
       setRemarks(pl.remarks ?? '')
       setItems(
         // collapseBatches folds an expanded bulk line back into the single
@@ -219,8 +213,6 @@ export function useCreatePackingListForm() {
     deliveryDateMode,
     loadingDate,
     deliveryDate,
-    supplierName,
-    supplierPhone,
     remarks,
     items,
   }
@@ -232,8 +224,6 @@ export function useCreatePackingListForm() {
     deliveryDateMode: 'same_day',
     loadingDate: '',
     deliveryDate: '',
-    supplierName: '',
-    supplierPhone: '',
     remarks: '',
     items: [emptyItem()],
   }
@@ -261,8 +251,6 @@ export function useCreatePackingListForm() {
     setDeliveryDateMode('same_day')
     setLoadingDate('')
     setDeliveryDate('')
-    setSupplierName('')
-    setSupplierPhone('')
     setRemarks('')
     setItems([emptyItem()])
   }
@@ -383,8 +371,6 @@ export function useCreatePackingListForm() {
           loading_date: loadingDate || undefined,
           delivery_date: deliveryDateMode === 'same_day' ? deliveryDate || undefined : undefined,
           delivery_date_mode: deliveryDateMode,
-          supplier_name: supplierName.trim() || undefined,
-          supplier_phone: supplierPhone.trim() || undefined,
           remarks: remarks.trim() || undefined,
           arrival_warehouse_id: arrivalWarehouseId || undefined,
           items,
@@ -399,8 +385,6 @@ export function useCreatePackingListForm() {
             loading_date: loadingDate || undefined,
             delivery_date: deliveryDateMode === 'same_day' ? deliveryDate || undefined : undefined,
             delivery_date_mode: deliveryDateMode,
-            supplier_name: supplierName.trim() || undefined,
-            supplier_phone: supplierPhone.trim() || undefined,
             remarks: remarks.trim() || undefined,
             arrival_warehouse_id: arrivalWarehouseId || undefined,
             items,
@@ -493,10 +477,6 @@ export function useCreatePackingListForm() {
     setLoadingDate,
     deliveryDate,
     setDeliveryDate,
-    supplierName,
-    setSupplierName,
-    supplierPhone,
-    setSupplierPhone,
     remarks,
     setRemarks,
     itemDateErrors,

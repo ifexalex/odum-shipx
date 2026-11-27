@@ -19,8 +19,6 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
     deliveryDateMode,
     loadingDate,
     deliveryDate,
-    supplierName,
-    supplierPhone,
     remarks,
     items,
     submitting,
@@ -124,14 +122,6 @@ export function Step3({ form }: { form: PackingListForm }): JSX.Element {
                       : deliveryDate || '—'}
                   </div>
                 </div>
-                {(supplierName || supplierPhone) && (
-                  <div>
-                    <div className={styles.previewMetaLabel}>Supplier</div>
-                    <div className={styles.previewMetaValue}>
-                      {[supplierName, supplierPhone].filter(Boolean).join(' · ')}
-                    </div>
-                  </div>
-                )}
                 {remarks && (
                   <div>
                     <div className={styles.previewMetaLabel}>Remarks</div>

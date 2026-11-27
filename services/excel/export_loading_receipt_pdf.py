@@ -31,7 +31,7 @@ _STRINGS: dict[Lang, dict[str, Any]] = {
         "receipt_no_prefix": "NO.",
         "subtitle_ref": "装箱单",
         "issued_at": "签发",
-        "party_heading": "客户与收货信息",
+        "party_heading": "客户信息",
         "route_heading": "目的港仓库与装柜",
         "customer": "客户名字",
         "phone": "客户电话",
@@ -80,7 +80,7 @@ _STRINGS: dict[Lang, dict[str, Any]] = {
         "receipt_no_prefix": "NO.",
         "subtitle_ref": "Packing list",
         "issued_at": "Issued",
-        "party_heading": "Consignee & Sender",
+        "party_heading": "Customer",
         "route_heading": "Destination Warehouse & Load",
         "customer": "Customer",
         "phone": "Phone",
@@ -316,16 +316,9 @@ def _build_voucher_parties_card(
         *_kv_row(s["customer"], str(pl.get("customer_name") or t.MISSING)),
         Spacer(1, 0.08 * cm),
         *_kv_row(s["phone"], str(pl.get("customer_phone") or t.MISSING), bold_value=False),
+        Spacer(1, 0.1 * cm),
+        *_kv_row(s["tracking_code"], tracking_label, bold_value=True, value_color=accent),
     ]
-    if pl.get("supplier_name") or pl.get("supplier_phone"):
-        supplier_str = " · ".join(str(p).strip() for p in (pl.get("supplier_name"), pl.get("supplier_phone")) if p)
-        left_flow.extend([Spacer(1, 0.08 * cm), *_kv_row(s["supplier"], supplier_str, bold_value=False)])
-    left_flow.extend(
-        [
-            Spacer(1, 0.1 * cm),
-            *_kv_row(s["tracking_code"], tracking_label, bold_value=True, value_color=accent),
-        ]
-    )
 
     delivery_str = _date_summary(pl.get("delivery_date"), [i.get("received_date") for i in items])
     loading_str = _date_summary(pl.get("loading_date"), [i.get("loading_date") or pl.get("loading_date") for i in items])

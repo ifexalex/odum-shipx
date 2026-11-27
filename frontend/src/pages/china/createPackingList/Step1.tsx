@@ -28,10 +28,6 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
     setLoadingDate,
     deliveryDate,
     setDeliveryDate,
-    supplierName,
-    setSupplierName,
-    supplierPhone,
-    setSupplierPhone,
     remarks,
     setRemarks,
     warehouses,
@@ -268,43 +264,16 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
       </div>
 
       <div className={styles.spacerLg} />
-      <details
-        className={styles.optionalDisclosure}
-        open={Boolean(supplierName || supplierPhone || remarks)}
-      >
-        <summary className={styles.optionalSummary}>
-          Supplier &amp; warehouse remarks (optional)
-        </summary>
-        <div className={styles.optionalBody}>
-          <div className={styles.grid2}>
-            <Field
-              label="Supplier name"
-              name="supplierName"
-              optional
-              placeholder="e.g. Guangzhou Fabrics Ltd"
-              value={supplierName}
-              onChange={(e) => setSupplierName(e.target.value)}
-            />
-            <Field
-              label="Supplier phone"
-              name="supplierPhone"
-              optional
-              placeholder="e.g. +86 138 0000 0000"
-              value={supplierPhone}
-              onChange={(e) => setSupplierPhone(e.target.value)}
-            />
-          </div>
-          <Field
-            label="Remarks / packing instructions"
-            name="remarks"
-            optional
-            multiline
-            placeholder="e.g. Compression instructions, fragile handling notes…"
-            value={remarks}
-            onChange={(e) => setRemarks(e.target.value)}
-          />
-        </div>
-      </details>
+      <Field
+        label="Remarks / packing instructions"
+        name="remarks"
+        optional
+        multiline
+        placeholder="e.g. Compression instructions, fragile handling notes…"
+        value={remarks}
+        onChange={(e) => setRemarks(e.target.value)}
+        helper="Printed on the Loading Receipt and Packing List."
+      />
 
       <div className={styles.spacerLg} />
       <Banner variant="info" title="What happens next">
