@@ -486,7 +486,7 @@ function CompanySettingsForm({
                 label="Chinese company name"
                 name="chinese_display_name"
                 optional
-                placeholder="e.g. 顺泰国际货运代理有限公司"
+                placeholder="e.g. 示例国际货运代理有限公司"
                 value={form.chinese_display_name}
                 onChange={set('chinese_display_name')}
                 helper="Shown alongside your English name on Chinese loading receipts and packing lists."
@@ -499,7 +499,7 @@ function CompanySettingsForm({
               multiline
               rows={2}
               optional
-              placeholder="e.g. 广州市白云区石沙路451号数字立方451科创园11号楼102"
+              placeholder="e.g. 广州市白云区XX路XX号XX园区XX号楼XX室"
               value={form.china_warehouse_address}
               onChange={set('china_warehouse_address')}
               helper="Printed at the top of loading receipts and packing lists."
@@ -509,7 +509,7 @@ function CompanySettingsForm({
               label="China warehouse phone"
               name="china_warehouse_phone"
               optional
-              placeholder="e.g. +86 177 2425 9177"
+              placeholder="e.g. +86 138 0000 0000"
               value={form.china_warehouse_phone}
               onChange={set('china_warehouse_phone')}
               helper="Delivery enquiry contact printed on loading receipts."

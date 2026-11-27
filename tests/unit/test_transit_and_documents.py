@@ -36,11 +36,11 @@ def _ctx(role: UserRole = UserRole.CHINA_OFFICE_STAFF, user_id: str = "user-1") 
 
 def _brand() -> pdf_theme.Brand:
     return pdf_theme.Brand(
-        name="Xperts Global Shipping",
-        chinese_name="顺泰国际货运",
-        china_warehouse_address="广州市白云区石沙路451号数字立方11号楼102",
-        china_warehouse_phone="+86 17724259177",
-        email="ops@xperts.test",
+        name="Acme Global Shipping",
+        chinese_name="示例国际货运代理有限公司",
+        china_warehouse_address="广州市白云区示例路100号物流园1号楼101",
+        china_warehouse_phone="+86 13800000000",
+        email="ops@acme-shipping.test",
         color="#1c7922",
     )
 
@@ -52,11 +52,11 @@ def _sample_pl(**overrides: object) -> dict[str, object]:
         "loading_receipt_number": "LR-20261127-001",
         "status": "approved",
         "customer_id": "cust-1",
-        "customer_name": "Nne Gold",
-        "customer_phone": "+2348084907055",
-        "customer_whatsapp": "+2348084907055",
+        "customer_name": "Adaeze Okafor",
+        "customer_phone": "+2348000000001",
+        "customer_whatsapp": "+2348000000001",
         "container_number": "MSKU1234567",
-        "container_parcel_number": "STL483",
+        "container_parcel_number": "PARCEL-101",
         "destination": "Lagos",
         "arrival_warehouse_name": "Lagos Main Warehouse",
         "shipping_line": "MSC",
@@ -67,8 +67,8 @@ def _sample_pl(**overrides: object) -> dict[str, object]:
         "loading_date": date(2026, 11, 6),
         "ship_date": date(2026, 11, 10),
         "estimated_arrival_date": date(2026, 12, 25),
-        "supplier_name": "Guangzhou Fabrics Ltd",
-        "supplier_phone": "+86 18922446177",
+        "supplier_name": "Example Fabrics Ltd",
+        "supplier_phone": "+86 13800000001",
         "remarks": "Compress bales tightly",
         "created_by_name": "Chidi Okoro",
         "approved_by_name": "Adaeze Obi",

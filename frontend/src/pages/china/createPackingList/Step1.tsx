@@ -289,7 +289,7 @@ export function Step1({ form }: { form: PackingListForm }): JSX.Element {
               label="Supplier phone"
               name="supplierPhone"
               optional
-              placeholder="e.g. +86 189 2244 6177"
+              placeholder="e.g. +86 138 0000 0000"
               value={supplierPhone}
               onChange={(e) => setSupplierPhone(e.target.value)}
             />
