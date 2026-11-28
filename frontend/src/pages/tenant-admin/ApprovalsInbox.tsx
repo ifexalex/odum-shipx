@@ -85,7 +85,7 @@ function DecisionDialog({ item, mode, onClose, onDone }: DecisionDialogProps): J
         if (mode === 'approve') {
           await refundsApi.approve(item.entity_id, {
             amount_approved_ngn: item.amount_ngn ?? '0',
-            approval_notes: trimmed || undefined,
+            approval_level: 'head_of_finance',
           })
           toast.success('Refund approved', item.customer_name ?? undefined)
         } else {
@@ -291,7 +291,7 @@ export function ApprovalsInbox(): JSX.Element {
               <EmptyState
                 compact
                 title="Nothing waiting for approval"
-                description="High-value refunds, claims above the staff limit, credit release requests, and staff announcements will appear here."
+                body="High-value refunds, claims above the staff limit, credit release requests, and staff announcements will appear here."
               />
             ) : undefined
           }

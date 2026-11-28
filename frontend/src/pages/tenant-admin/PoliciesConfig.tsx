@@ -162,7 +162,7 @@ export function PoliciesConfig(): JSX.Element {
     return (
       <div>
         <PageHeader title="Policies" meta="Storage fees, approval limits, default credit terms, escalation and reminders." />
-        <PageSkeleton />
+        <PageSkeleton kind="form" label="Loading policies" />
       </div>
     )
   }

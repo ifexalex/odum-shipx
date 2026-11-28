@@ -126,12 +126,12 @@ locals {
     "POST /v1/payments/{billing-id}/confirm"    = "payment_release"
     # Manual bank-transfer payment claims — customer's "I've made this
     # payment" submission with mandatory evidence, reviewed by staff.
-    "POST /v1/payments/claims/presigned-url"    = "payment_release"
-    "POST /v1/payments/{billing-id}/claims"     = "payment_release"
-    "GET /v1/payments/{billing-id}/claims"      = "payment_release"
-    "PATCH /v1/payments/claims/{id}/confirm"    = "payment_release"
-    "PATCH /v1/payments/claims/{id}/reject"     = "payment_release"
-    "GET /v1/payments/claims/{id}/evidence-url" = "payment_release"
+    "POST /v1/payments/claims/presigned-url"              = "payment_release"
+    "POST /v1/payments/{billing-id}/claims"               = "payment_release"
+    "GET /v1/payments/{billing-id}/claims"                = "payment_release"
+    "PATCH /v1/payments/claims/{id}/confirm"              = "payment_release"
+    "PATCH /v1/payments/claims/{id}/reject"               = "payment_release"
+    "GET /v1/payments/claims/{id}/evidence-url"           = "payment_release"
     "POST /v1/release-notes"                              = "payment_release"
     "GET /v1/release-notes"                               = "payment_release"
     "GET /v1/release-notes/stats"                         = "payment_release"
@@ -140,10 +140,10 @@ locals {
     "POST /v1/release-notes/credit-requests/{id}/approve" = "payment_release"
     "POST /v1/release-notes/credit-requests/{id}/reject"  = "payment_release"
     "GET /v1/release-notes/{id}"                          = "payment_release"
-    "PATCH /v1/release-notes/{id}/release"      = "payment_release"
-    "POST /v1/release-notes/{id}/split"         = "payment_release"
-    "POST /v1/release-notes/{id}/reissue"       = "payment_release"
-    "POST /v1/release-notes/{id}/pickup-code"   = "payment_release"
+    "PATCH /v1/release-notes/{id}/release"                = "payment_release"
+    "POST /v1/release-notes/{id}/split"                   = "payment_release"
+    "POST /v1/release-notes/{id}/reissue"                 = "payment_release"
+    "POST /v1/release-notes/{id}/pickup-code"             = "payment_release"
 
     # --- Refunds (6 routes) -------------------------------------------------
     "POST /v1/refunds"               = "refunds"

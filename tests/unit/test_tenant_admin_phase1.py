@@ -285,6 +285,114 @@ class TestTC03CreditReleaseRequests:
                 TENANT_ID, "cr-1", DecideCreditReleaseRequest(decision_notes="   "), ADMIN_ID, _ctx(UserRole.TENANT_ADMIN)
             )
 
+    def test_admin_approves_and_rejects_and_lists_credit_requests(self) -> None:
+        from services.payment_release import handler as pr_handler
+        from services.payment_release import service as pr_service
+        from services.payment_release.models import DecideCreditReleaseRequest
+
+        pending_row = {
+            "id": "cr-1",
+            "billing_id": BILLING_ID,
+            "customer_id": CUSTOMER_ID,
+            "customer_name": "Ibrahim Musa",
+            "invoice_number": "INV-001",
+            "carton_tags": ["TAG-001"],
+            "packages_released": None,
+            "package_unit": None,
+            "warehouse_id": None,
+            "physical_document_number": None,
+            "packing_list_invoice_numbers": [],
+            "due_date": None,
+            "amount_ngn": Decimal("150000"),
+            "customer_credit_limit_ngn": Decimal("100000"),
+            "customer_current_exposure_ngn": Decimal("150000"),
+            "exceeds_credit_limit": True,
+            "reason": "Paying Friday",
+            "requested_by": STAFF_ID,
+            "status": "pending",
+        }
+        approved_row = {**pending_row, "status": "approved", "decided_by": ADMIN_ID, "release_note_id": "rn-1"}
+        rejected_row = {**pending_row, "status": "rejected", "decided_by": ADMIN_ID, "decision_notes": "Overdue balance"}
+
+        with (
+            patch.object(pr_service.repo, "get_credit_release_request_by_id", side_effect=[pending_row, approved_row]),
+            patch.object(
+                pr_service,
+                "generate_release_note",
+                return_value={"id": "rn-1", "reference_number": "RN-001"},
+            ) as mock_gen,
+            patch.object(pr_service.repo, "decide_credit_release_request", return_value=approved_row),
+            patch("services.payment_release.service.log_audit"),
+            patch("shared.staff_notifications.notify_staff"),
+        ):
+            approved = pr_service.approve_credit_release_request(
+                TENANT_ID, "cr-1", DecideCreditReleaseRequest(decision_notes="Approved"), ADMIN_ID, _ctx(UserRole.TENANT_ADMIN)
+            )
+        assert approved["release_note"]["id"] == "rn-1"
+        assert approved["credit_request"]["status"] == "approved"
+        mock_gen.assert_called_once()
+
+        with (
+            patch.object(pr_service.repo, "get_credit_release_request_by_id", side_effect=[pending_row, rejected_row]),
+            patch.object(pr_service.repo, "decide_credit_release_request", return_value=rejected_row),
+            patch("services.payment_release.service.log_audit"),
+            patch("shared.staff_notifications.notify_staff"),
+        ):
+            rejected = pr_service.reject_credit_release_request(
+                TENANT_ID,
+                "cr-1",
+                DecideCreditReleaseRequest(decision_notes="Overdue balance"),
+                ADMIN_ID,
+                _ctx(UserRole.TENANT_ADMIN),
+            )
+        assert rejected["status"] == "rejected"
+
+        with patch.object(pr_service.repo, "list_credit_release_requests", return_value=[pending_row]):
+            listed = pr_service.list_credit_release_requests(TENANT_ID, status="pending")
+        assert len(listed) == 1 and listed[0]["id"] == "cr-1"
+
+        # Handler dispatch for GET/POST credit-requests and approve/reject
+        admin_ctx = _ctx(UserRole.TENANT_ADMIN)
+        with (
+            patch("services.payment_release.handler.get_tenant_context", return_value=admin_ctx),
+            patch("services.payment_release.handler.check_idempotency", return_value=None),
+            patch("services.payment_release.handler.store_idempotency"),
+            patch("services.payment_release.handler.record_usage"),
+            patch.object(pr_service, "list_credit_release_requests", return_value=[]),
+            patch.object(pr_service, "create_credit_release_request", return_value={"id": "cr-2"}),
+            patch.object(pr_service, "approve_credit_release_request", return_value={"credit_request": {"id": "cr-2"}}),
+            patch.object(pr_service, "reject_credit_release_request", return_value={"id": "cr-2", "status": "rejected"}),
+        ):
+            r_get = pr_handler.lambda_handler(
+                {"requestContext": {"http": {"method": "GET", "path": "/v1/release-notes/credit-requests"}}},
+                {},
+            )
+            r_post = pr_handler.lambda_handler(
+                {
+                    "requestContext": {"http": {"method": "POST", "path": "/v1/release-notes/credit-requests"}},
+                    "body": '{"billing_id":"b1","carton_tags":["T1"],"reason":"Trusted customer"}',
+                },
+                {},
+            )
+            r_app = pr_handler.lambda_handler(
+                {
+                    "requestContext": {"http": {"method": "POST", "path": "/v1/release-notes/credit-requests/cr-2/approve"}},
+                    "body": '{"decision_notes":"ok"}',
+                },
+                {},
+            )
+            r_rej = pr_handler.lambda_handler(
+                {
+                    "requestContext": {"http": {"method": "POST", "path": "/v1/release-notes/credit-requests/cr-2/reject"}},
+                    "body": '{"decision_notes":"nope"}',
+                },
+                {},
+            )
+        assert r_get["statusCode"] == 200
+        assert r_post["statusCode"] == 201
+        assert r_app["statusCode"] == 200
+        assert r_rej["statusCode"] == 200
+
 
 class TestTC04CustomerCreditLimits:
     def test_credit_summary_falls_back_to_tenant_default_when_customer_limit_null(self) -> None:
