@@ -182,6 +182,8 @@ const RULES: Rule[] = [
     test: /^\/v1\/platform\/(settings|plans)(\/|$)/,
     roots: [platformSettingsKeys.all, platformTenantKeys.all, platformAuditKeys.all],
   },
+  // Ending an impersonation session appends to the platform audit log.
+  { test: /^\/v1\/platform\/impersonation(\/|$)/, roots: [platformAuditKeys.all] },
 ]
 
 /** The rule for a path, or undefined when nothing matches. */
