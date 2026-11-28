@@ -16,6 +16,7 @@ export interface CognitoTokens {
    *  custom:tenant_id / cognito:groups directly. */
   tenantId?: string | null
   role?: string | null
+  roles?: string[] | null
 }
 
 function readEnv(name: string): string {

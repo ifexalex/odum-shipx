@@ -379,7 +379,8 @@ def _handle_whatsapp_delivery_status(event: dict[str, Any]) -> dict[str, Any]:
     else:
         raw_bytes = raw_body_str.encode("utf-8") if isinstance(raw_body_str, str) else raw_body_str
 
-    if app_secret or service._is_production():
+    env = os.environ.get("ENVIRONMENT", "").strip().lower()
+    if app_secret or env not in ("", "local", "test"):
         if not app_secret or not sig_header.startswith("sha256="):
             logger.warning("WhatsApp webhook missing secret or X-Hub-Signature-256 header")
             return {"statusCode": 401, "body": "Unauthorized"}

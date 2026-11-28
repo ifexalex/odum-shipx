@@ -68,6 +68,12 @@ variable "oidc_audience" {
   default     = ""
 }
 
+variable "oidc_issuer" {
+  description = "OIDC token issuer (`iss` claim) verified on every incoming OIDC JWT."
+  type        = string
+  default     = ""
+}
+
 variable "entra_user_domain" {
   description = "Entra verified/managed domain for UPNs (e.g. yourtenant.onmicrosoft.com). Empty until Entra is set up."
   type        = string

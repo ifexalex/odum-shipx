@@ -29,6 +29,7 @@ See docs/project docs/frontend/04_auth_and_session.md and
 """
 
 import base64
+import hashlib
 import hmac
 import json
 import logging
@@ -200,13 +201,43 @@ def _read_cookie(event: dict[str, Any], name: str) -> str | None:
     return None
 
 
+def _tx_signing_key() -> bytes:
+    """Derive an HMAC key for signing the short-lived OAuth transaction cookie."""
+    seed = (
+        os.environ.get("AUTH_TX_SECRET")
+        or os.environ.get("IMPERSONATION_SECRET")
+        or os.environ.get("ENTRA_CLIENT_ID")
+        or "shipx-dev-tx-cookie"
+    )
+    return hashlib.sha256(f"shipx_auth_tx:{seed}".encode()).digest()
+
+
+def _sign_tx(payload: dict[str, str]) -> str:
+    body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode()
+    sig = base64.urlsafe_b64encode(hmac.new(_tx_signing_key(), body.encode(), hashlib.sha256).digest()).decode()
+    return f"{body}.{sig}"
+
+
+def _verify_tx(raw_tx: str) -> dict[str, Any]:
+    body, sep, sig = raw_tx.partition(".")
+    if not sep or not body or not sig:
+        raise AuthenticationRequiredError()
+    expected = base64.urlsafe_b64encode(hmac.new(_tx_signing_key(), body.encode(), hashlib.sha256).digest()).decode()
+    if not hmac.compare_digest(expected, sig):
+        raise AuthenticationRequiredError()
+    try:
+        tx: dict[str, Any] = json.loads(base64.urlsafe_b64decode(body))
+        return tx
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise AuthenticationRequiredError() from exc
+
+
 def _authorize_url(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     """Begin the interactive Entra login (BFF auth-code + PKCE).
 
     Generates the PKCE verifier, state, and nonce server-side, stashes them in a
-    short-lived httpOnly transaction cookie, and returns the Entra authorize URL
-    for the SPA to redirect to. Nothing sensitive reaches JS. Entra-only — the
-    Cognito SPA uses its own hosted/SRP flow and never calls this.
+    short-lived HMAC-signed httpOnly transaction cookie, and returns the Entra
+    authorize URL for the SPA to redirect to. Nothing sensitive reaches JS.
     """
     from . import entra_oauth
 
@@ -218,11 +249,7 @@ def _authorize_url(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     except ValueError as exc:
         raise LogisticsBaseError(str(exc), "ENTRA_NOT_CONFIGURED", 503) from exc
 
-    # base64url-encode the JSON so the cookie VALUE is a valid cookie-octet
-    # string. Raw JSON contains spaces/commas/quotes/braces, which browsers
-    # reject or truncate in a Set-Cookie value — dropping the transaction and
-    # 401ing the callback.
-    tx = base64.urlsafe_b64encode(json.dumps({"v": verifier, "s": state, "n": nonce}).encode()).decode()
+    tx = _sign_tx({"v": verifier, "s": state, "n": nonce})
     return {
         "statusCode": 200,
         "cookies": [_cookie_header(tx, _TX_COOKIE_MAX_AGE_SECONDS, name=_TX_COOKIE_NAME)],
@@ -242,15 +269,12 @@ def _decode_claims(id_token: str) -> dict[str, Any]:
     return claims
 
 
-def _session_context(id_token: str) -> dict[str, str]:
-    """Resolve the ShipX tenant/role for a freshly issued token, for the SPA.
+def _session_context(id_token: str) -> dict[str, Any]:
+    """Resolve the ShipX tenant, primary role, and full roles list for a freshly issued token.
 
     Entra External ID does not emit the custom-claims provider's `tenant_id`/
-    `role` into the token (its app-registration `optionalClaims` route is
-    silently ignored), so the SPA cannot read them from the token at all. The
-    authoritative source is the user's `tenant_user` row, keyed by the IdP
-    subject — which IS in the token as `oid`. Resolve it here and hand it back
-    alongside the token so the SPA can build a session.
+    `role` into the token, so the authoritative source is the user's
+    `tenant_user` + `tenant_user_role` rows, keyed by the IdP subject (`oid`).
 
     Returns {} when nothing resolves — notably a platform admin, which has no
     `tenant_user` row by design and derives PLATFORM from its group claim.
@@ -260,13 +284,13 @@ def _session_context(id_token: str) -> dict[str, str]:
         subject = str(claims.get("oid") or claims.get("sub") or "")
         if not subject:
             return {}
-        from shared.auth import resolve_identity_from_db
+        from shared.auth import resolve_identity_roles_from_db
 
-        resolved = resolve_identity_from_db(subject)
+        resolved = resolve_identity_roles_from_db(subject)
         if resolved is None:
             return {}
-        tenant_id, role = resolved
-        return {"tenant_id": tenant_id, "role": role}
+        tenant_id, role, roles = resolved
+        return {"tenant_id": tenant_id, "role": role, "roles": roles}
     except Exception as exc:  # noqa: BLE001 - never fail a login over an enrichment
         logger.warning("Could not resolve the session context for the issued token: %s", exc)
         return {}
@@ -320,14 +344,16 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     raw_tx = _read_cookie(event, _TX_COOKIE_NAME)
     if not raw_tx:
         raise AuthenticationRequiredError()
-    try:
-        tx = json.loads(base64.urlsafe_b64decode(raw_tx))
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise AuthenticationRequiredError() from exc
-    # Constant-time state check — the transaction cookie is httpOnly, so this
-    # guards against a forged/replayed callback.
+    tx = _verify_tx(raw_tx)
+    # Constant-time state check — the transaction cookie is httpOnly + HMAC-signed,
+    # guarding against forged/replayed callbacks.
     expected_state = str(tx.get("s") or "")
     if not expected_state or not hmac.compare_digest(expected_state, req.state):
+        raise AuthenticationRequiredError()
+
+    # Nonce MUST be present (fail-closed against token substitution).
+    expected_nonce = str(tx.get("n") or "")
+    if not expected_nonce:
         raise AuthenticationRequiredError()
 
     tokens = entra_refresh.authorization_code_grant(
@@ -336,15 +362,13 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
         redirect_uri=entra_oauth.redirect_uri(),
     )
     # Verify OIDC nonce matches the transaction cookie to block token substitution.
-    expected_nonce = str(tx.get("n") or "")
-    if expected_nonce:
-        try:
-            id_claims = _decode_claims(tokens["id_token"])
-        except Exception as exc:
-            raise AuthenticationRequiredError() from exc
-        actual_nonce = str(id_claims.get("nonce") or "")
-        if not actual_nonce or not hmac.compare_digest(expected_nonce, actual_nonce):
-            raise AuthenticationRequiredError()
+    try:
+        id_claims = _decode_claims(tokens["id_token"])
+    except Exception as exc:
+        raise AuthenticationRequiredError() from exc
+    actual_nonce = str(id_claims.get("nonce") or "")
+    if not actual_nonce or not hmac.compare_digest(expected_nonce, actual_nonce):
+        raise AuthenticationRequiredError()
     _log_id_token_shape(tokens["id_token"], request_id)
     body = json.dumps(
         {
@@ -370,13 +394,12 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
 def _login(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     """Entra ROPC login proxy — the server-side half of EntraClient.signIn.
 
-    Entra's token endpoint sends no CORS headers for the password grant, so the
-    SPA cannot call it directly; it POSTs here instead. We run the exchange
-    server-side and return the tokens so SessionProvider.login() can proceed
-    exactly as it does on Cognito (set the in-memory ID token, then persist the
-    refresh token via POST /v1/auth/session). On Cognito this route 404s — that
-    SPA signs in client-side and never calls it.
+    Disabled in production unless ENABLE_ROPC_LOGIN=true (interactive PKCE is
+    the production auth flow and supports MFA/Conditional Access).
     """
+    env = os.environ.get("ENVIRONMENT", "").strip().lower()
+    if env in ("prod", "production") and os.environ.get("ENABLE_ROPC_LOGIN", "").strip().lower() != "true":
+        raise ResourceNotFoundError("route", "/v1/auth/login")
     rate_limit.hit_for_client(rate_limit.LOGIN_IP, event)
     req = parse_validated(LoginRequest, _parse_body(event))
     # Wrong passwords are counted per canonical username (normalizing raw email
@@ -452,7 +475,22 @@ def _refresh(event: dict[str, Any], request_id: str) -> dict[str, Any]:
 def _logout(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     refresh_token = _read_refresh_cookie(event)
     if refresh_token:
-        _refresher().revoke_refresh_token(refresh_token)
+        # On Entra, pass the caller's subject (if an Authorization Bearer token was
+        # sent) so revoke_refresh_token can trigger server-side Graph session revocation.
+        subject = ""
+        headers = {str(k).lower(): str(v) for k, v in (event.get("headers") or {}).items()}
+        auth_header = headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            try:
+                claims = _decode_claims(auth_header[7:].strip())
+                subject = str(claims.get("oid") or claims.get("sub") or "")
+            except Exception:  # noqa: BLE001
+                subject = ""
+        refresher = _refresher()
+        if subject and providers.AUTH_PROVIDER == "azure":
+            refresher.revoke_refresh_token(refresh_token, subject=subject)
+        else:
+            refresher.revoke_refresh_token(refresh_token)
 
     return {
         "statusCode": 204,

@@ -63,8 +63,9 @@ def verify_oidc_jwt(token: str) -> dict[str, Any] | None:
     """Return decoded claims if ``token`` is a valid OIDC RS256 JWT, else None.
 
     Verifies signature, expiry, audience (fail-closed: requires OIDC_AUDIENCE /
-    COGNITO_AUDIENCE), optional issuer (`OIDC_ISSUER`), and rejects Cognito access
-    tokens (`token_use != "id"`).
+    COGNITO_AUDIENCE), issuer (fail-closed outside local/test when OIDC_ISSUER /
+    COGNITO_ISSUER is absent), and rejects both Cognito access tokens
+    (`token_use != "id"`) and Entra access tokens (`scp` claim present).
     """
     try:
         import jwt
@@ -72,7 +73,11 @@ def verify_oidc_jwt(token: str) -> dict[str, Any] | None:
         jwks_url = _jwks_url()
         audience = _audience()
         issuer = _issuer()
+        env = os.environ.get("ENVIRONMENT", "").strip().lower()
         if not jwks_url or not audience:
+            return None
+        if not issuer and env not in ("", "local", "test"):
+            logger.warning("OIDC_ISSUER / COGNITO_ISSUER is not configured in environment=%s — rejecting token", env)
             return None
         jwks_client = _get_jwks_client(jwks_url)
         signing_key = jwks_client.get_signing_key_from_jwt(token)
@@ -87,6 +92,9 @@ def verify_oidc_jwt(token: str) -> dict[str, Any] | None:
         # Reject Cognito access tokens (only ID tokens carry tenant/role claims).
         if claims.get("token_use") is not None and claims.get("token_use") != "id":
             return None
+        # Reject Entra access tokens (ID tokens never carry delegated OAuth scopes).
+        if claims.get("scp") is not None:
+            return None
         return dict(claims)
     except Exception as exc:  # noqa: BLE001 - any failure means "not a valid OIDC JWT"
         logger.debug("OIDC JWT verification failed: %s", exc)
@@ -97,8 +105,9 @@ def verify_impersonation(token: str) -> dict[str, Any] | None:
     """Return claims if ``token`` is a valid, still-active ShipX impersonation
     token, else None.
 
-    Validates the HS256 signature and confirms the impersonation session has not
-    been ended or expired in the DB.
+    Validates the HS256 signature, confirms the impersonation session has not
+    been ended or expired in the DB, and verifies that the token's tenant, user,
+    role, and platform_admin claims match the authoritative DB session row.
     """
     try:
         from services.tenant_management.impersonation import (
@@ -113,6 +122,15 @@ def verify_impersonation(token: str) -> dict[str, Any] | None:
         session = get_active_session(claims["session_id"])
         if not session:
             logger.warning("Impersonation session %s is not active", claims["session_id"])
+            return None
+        if (
+            str(session.get("target_tenant_id") or "") != str(claims.get("tenant_id") or "")
+            or str(session.get("target_user_id") or "") != str(claims.get("sub") or "")
+            or str(session.get("platform_admin_id") or "") != str(claims.get("impersonated_by") or "")
+            or str(session.get("target_role") or "tenant_admin") != str(claims.get("role") or "")
+            or not bool(session.get("read_only", True))
+        ):
+            logger.warning("Impersonation session %s claim mismatch — rejecting token", claims["session_id"])
             return None
         return claims
     except Exception as exc:  # noqa: BLE001 - any failure means "not a valid impersonation token"

@@ -9,7 +9,7 @@
  */
 import type { JSX } from 'react'
 import { useSession } from '../auth/useSession'
-import { useTenantBlocked, type TenantBlockedKind } from '../auth/tenantGate'
+import { clearTenantBlocked, useTenantBlocked, type TenantBlockedKind } from '../auth/tenantGate'
 import { Button, Icon, KolaMark } from '../design/components'
 import styles from './TenantBlockedScreen.module.css'
 
@@ -29,8 +29,9 @@ const COPY: Record<TenantBlockedKind, { title: string; body: string; hint: strin
 }
 
 export function TenantBlockedScreen({ kind }: { kind: TenantBlockedKind }): JSX.Element {
-  const { logout } = useSession()
+  const { session, logout, exitImpersonation } = useSession()
   const copy = COPY[kind]
+  const isImpersonating = Boolean(session?.readOnly)
 
   return (
     <div className={styles.page}>
@@ -45,13 +46,33 @@ export function TenantBlockedScreen({ kind }: { kind: TenantBlockedKind }): JSX.
         <p className={styles.body}>{copy.body}</p>
         <p className={styles.hint}>{copy.hint}</p>
         <div className={styles.actions}>
-          <a href="mailto:support@shipx.co" className={styles.supportLink}>
-            <Icon name="mail" size={16} />
-            Contact support
-          </a>
-          <Button variant="ghost" size="lg" icon="logout" onClick={logout} className={styles.signOut}>
-            Sign out
-          </Button>
+          {isImpersonating ? (
+            <Button variant="primary" size="lg" icon="logout" onClick={exitImpersonation}>
+              Exit impersonation
+            </Button>
+          ) : (
+            <>
+              <a href="mailto:support@shipx.co" className={styles.supportLink}>
+                <Icon name="mail" size={16} />
+                Contact support
+              </a>
+              {kind === 'suspended' && (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  onClick={() => {
+                    clearTenantBlocked()
+                    window.location.reload()
+                  }}
+                >
+                  Try again
+                </Button>
+              )}
+              <Button variant="ghost" size="lg" icon="logout" onClick={logout} className={styles.signOut}>
+                Sign out
+              </Button>
+            </>
+          )}
         </div>
         <div className={styles.code}>{copy.code}</div>
       </div>
@@ -61,10 +82,14 @@ export function TenantBlockedScreen({ kind }: { kind: TenantBlockedKind }): JSX.
 
 /**
  * Wraps a layout's routed content: renders the full-page blocked state when
- * the gate is tripped, the children otherwise.
+ * the gate is tripped, the children otherwise. Bare platform admins are never
+ * locked out of the platform console.
  */
 export function TenantBlockedGate({ children }: { children: React.ReactNode }): JSX.Element {
+  const { session } = useSession()
   const blocked = useTenantBlocked()
-  if (blocked) return <TenantBlockedScreen kind={blocked} />
+  if (blocked && !(session?.isPlatformAdmin && !session?.readOnly)) {
+    return <TenantBlockedScreen kind={blocked} />
+  }
   return <>{children}</>
 }

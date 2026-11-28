@@ -172,11 +172,18 @@ def refresh_id_token(refresh_token: str) -> RefreshResult:
     return result  # type: ignore[return-value]
 
 
-def revoke_refresh_token(refresh_token: str) -> None:
-    """Logout hook. Entra has no revoke-by-token-value endpoint (revocation is
-    per-user via Graph revokeSignInSessions, which needs the user id, not the
-    token), so this is a no-op: the cookie is cleared client-side and the token
-    lapses on its own. Full server-side revocation is an identity-provider
-    concern handled by global_sign_out in the EntraIdentityProvider.
+def revoke_refresh_token(refresh_token: str, *, subject: str = "") -> None:
+    """Logout hook. Entra has no revoke-by-token-value endpoint; when ``subject``
+    (Entra user object ID) is available, invokes Graph ``revokeSignInSessions``
+    via ``EntraIdentityProvider.global_sign_out`` best-effort so stolen refresh
+    tokens cannot outlive logout. Never raises on logout.
     """
-    logger.debug("Entra refresh-token revoke is a no-op (cookie cleared client-side)")
+    if not subject:
+        logger.debug("Entra refresh-token revoke skipped (no subject; cookie cleared client-side)")
+        return
+    try:
+        from shared.providers import get_identity_provider
+
+        get_identity_provider().global_sign_out(subject)
+    except Exception as exc:  # noqa: BLE001 - best-effort on logout
+        logger.warning("Best-effort Entra global_sign_out failed during logout: %s", exc)

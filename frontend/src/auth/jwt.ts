@@ -168,6 +168,7 @@ function parsePrimaryRole(claims: Record<string, unknown>, roles: UserRole[]): U
 export interface ServerContext {
   tenantId?: string | null
   role?: string | null
+  roles?: string[] | null
 }
 
 export function buildSession(claims: Record<string, unknown>, server?: ServerContext): Session {
@@ -189,23 +190,33 @@ export function buildSession(claims: Record<string, unknown>, server?: ServerCon
     throw new Error('JWT is missing required claims (sub|oid / tenant id)')
   }
 
+  const impersonatedBy = (claims.impersonated_by as string | undefined) || null
+  const sessionId = (claims.session_id as string | undefined) || null
+  // Fail closed: any impersonation token is strictly read-only in the SPA.
+  const readOnly = impersonatedBy != null
+
   // Role groups in canonical `{tenant_id}:{role}` / `platform_admin` form:
   // Cognito `cognito:groups`; Entra normalized above. Impersonation tokens have
   // neither — they carry the target role directly in a `role` claim (single role).
   let groups = entra ? entra.groups : parseGroups(claims['cognito:groups'] ?? claims.groups)
-  // Same for the role: with no role claim, the group-derived default ('customer')
-  // would be wrong, so synthesize the canonical group from the server's answer.
+  const serverRoles = Array.isArray(server?.roles)
+    ? server.roles.filter((r): r is UserRole => VALID_ROLES.has(r))
+    : []
   if (groups.length === 0 && server?.role && tenantId) {
     groups = [server.role === 'platform_admin' ? 'platform_admin' : `${tenantId}:${server.role}`]
   }
   const directRole = typeof claims.role === 'string' && VALID_ROLES.has(claims.role) ? (claims.role as UserRole) : null
-  const roles: UserRole[] = groups.length > 0 ? parseRoles(groups, tenantId) : [directRole ?? 'customer']
-  const role = parsePrimaryRole(claims, roles)
-
-  const impersonatedBy = (claims.impersonated_by as string | undefined) || null
-  const sessionId = (claims.session_id as string | undefined) || null
-  const readOnlyRaw = String(claims.read_only ?? 'false').toLowerCase()
-  const readOnly = readOnlyRaw === 'true' && impersonatedBy != null
+  const roles: UserRole[] =
+    !impersonatedBy && serverRoles.length > 0
+      ? serverRoles
+      : groups.length > 0
+        ? parseRoles(groups, tenantId)
+        : [directRole ?? 'customer']
+  const primaryClaims =
+    !impersonatedBy && server?.role && VALID_ROLES.has(server.role)
+      ? { ...claims, role: claims.role ?? server.role }
+      : claims
+  const role = parsePrimaryRole(primaryClaims, roles)
 
   const expSeconds = Number(claims.exp ?? 0)
 
@@ -220,7 +231,7 @@ export function buildSession(claims: Record<string, unknown>, server?: ServerCon
     email,
     role,
     roles,
-    isPlatformAdmin: tenantId === PLATFORM_TENANT_ID,
+    isPlatformAdmin: tenantId === PLATFORM_TENANT_ID && roles.includes('platform_admin') && impersonatedBy == null,
     impersonatedBy,
     sessionId,
     readOnly,

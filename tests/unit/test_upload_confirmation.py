@@ -62,7 +62,7 @@ class TestClaimEvidence:
         p = self._patches(storage, _evidence())
         with p[0], p[1], p[2], p[3], p[4] as confirm, p[5] as delete, p[6] as audit:
             result = service.confirm_evidence(TENANT, "c1", "e1", CUSTOMER)
-        confirm.assert_called_once_with("c1", "e1", 2048)
+        confirm.assert_called_once_with("c1", "e1", 2048, tenant_id=TENANT)
         delete.assert_not_called()
         audit.assert_called_once()
         assert result["file_size_bytes"] == 2048
@@ -76,7 +76,7 @@ class TestClaimEvidence:
             service.confirm_evidence(TENANT, "c1", "e1", STAFF)
         assert caught.value.rule_id == "FILE_TOO_LARGE"
         storage.delete_object.assert_called_once_with(_evidence()["file_key"])
-        delete.assert_called_once_with("c1", "e1")
+        delete.assert_called_once_with("c1", "e1", tenant_id=TENANT)
         confirm.assert_not_called()
 
     def test_a_missing_upload_keeps_the_row_hidden(self):

@@ -24,10 +24,11 @@ function authUrl(path: string): string {
 export interface RefreshedTokens {
   idToken: string
   expiresIn: number
-  /** Backend-resolved tenant/role — present when the token itself carries none
+  /** Backend-resolved tenant/role/roles — present when the token itself carries none
    *  (Entra External ID does not emit the claims provider's output). */
   tenantId?: string | null
   role?: string | null
+  roles?: string[] | null
 }
 
 /**
@@ -62,13 +63,14 @@ export async function silentRefresh(): Promise<RefreshedTokens | null> {
     })
     if (!response.ok) return null
     const envelope = (await response.json()) as {
-      data: { id_token: string; expires_in: number; tenant_id?: string; role?: string }
+      data: { id_token: string; expires_in: number; tenant_id?: string; role?: string; roles?: string[] }
     }
     return {
       idToken: envelope.data.id_token,
       expiresIn: envelope.data.expires_in,
       tenantId: envelope.data.tenant_id ?? null,
       role: envelope.data.role ?? null,
+      roles: Array.isArray(envelope.data.roles) ? envelope.data.roles : null,
     }
   } catch {
     return null
@@ -80,9 +82,11 @@ export async function silentRefresh(): Promise<RefreshedTokens | null> {
  * logout must complete client-side (SessionProvider already clears the
  * in-memory session before calling this) even if this request fails.
  */
-export async function revokeServerSession(): Promise<void> {
+export async function revokeServerSession(idToken?: string | null): Promise<void> {
   try {
-    await fetch(authUrl('/v1/auth/logout'), { method: 'POST', credentials: 'include' })
+    const headers: Record<string, string> = {}
+    if (idToken) headers.Authorization = `Bearer ${idToken}`
+    await fetch(authUrl('/v1/auth/logout'), { method: 'POST', credentials: 'include', headers })
   } catch {
     // Network failure on logout is not actionable — the client-side session
     // is already cleared regardless.

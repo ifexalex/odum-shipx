@@ -119,21 +119,12 @@ locals {
     {
       DATABASE_HOST = var.rds_proxy_endpoint
       DATABASE_NAME = var.db_name
-      # PHASE 1 of the RLS credential switchover: still the master user.
-      #
-      # Flipping these two to logistics_app / db_app_secret_arn is phase 2, and
-      # must not be bundled with phase 1. On AWS the env flip and the migration
-      # live in SEPARATE pipelines — terraform.yml applies infrastructure,
-      # deploy.yml runs migrations and then deploys code — so a Terraform apply
-      # on its own would repoint every Lambda at a role migration 060 has not
-      # yet given a password to, with no migration anywhere in that pipeline to
-      # fix it.
-      #
-      # Phase 1 provisions the credential: the migrate Lambda below receives
-      # APP_DB_SECRET_ARN, so 060 sets the role's password on the next deploy.
-      # Phase 2 then flips these two lines against a role that already works.
-      DATABASE_USER = "postgres"
-      DB_SECRET_ARN = var.db_secret_arn
+      # PHASE 2 of the RLS credential switchover: application Lambdas connect as
+      # `logistics_app` (DML-only, NOBYPASSRLS) so PostgreSQL RLS policies are
+      # enforced at the database layer. The `migrate` Lambda overrides both with
+      # the owner credentials below.
+      DATABASE_USER = "logistics_app"
+      DB_SECRET_ARN = var.db_app_secret_arn
       # The name shared/providers reads (`get_storage_provider`). This was `S3_BUCKET`, which nothing reads, so every
       # Lambda fell back to the default "logistics-assets": not this deployment's bucket (2026-11-17).
       S3_BUCKET_NAME        = var.bucket_name

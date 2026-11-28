@@ -286,6 +286,7 @@ module "container_app" {
   auth_provider                 = var.auth_provider
   oidc_jwks_url                 = var.oidc_jwks_url
   oidc_audience                 = var.oidc_audience
+  oidc_issuer                   = var.oidc_issuer
   entra_user_domain             = var.entra_user_domain
   entra_local_accounts          = var.entra_local_accounts
   entra_platform_admin_group_id = var.entra_platform_admin_group_id

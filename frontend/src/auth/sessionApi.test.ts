@@ -54,6 +54,7 @@ describe('sessionApi', () => {
         expiresIn: 3600,
         tenantId: null,
         role: null,
+        roles: null,
       })
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
       expect(url).toBe('https://api.test.shipx.co/v1/auth/refresh')

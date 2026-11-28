@@ -570,12 +570,9 @@ def insert_container_event(
     actor_id: str | None,
     notes: str | None = None,
 ) -> None:
-    """Append an audit event for a container status change.
-
-    container_event has no RLS — use PLATFORM_TENANT_ID scope.
-    """
+    """Append an audit event for a container status change (tenant RLS enforced)."""
     execute_write_with_tenant(
-        PLATFORM_TENANT_ID,
+        tenant_id,
         """
         INSERT INTO container_event (tenant_id, container_id, from_status, to_status, actor_id, notes)
         VALUES (%(tenant_id)s, %(container_id)s, %(from_status)s, %(to_status)s, %(actor_id)s, %(notes)s)
@@ -595,11 +592,11 @@ def insert_container_event(
 def get_container_events(tenant_id: str, container_id: str) -> list[dict[str, Any]]:
     """Return ordered container_event history with actor display name and role.
 
-    No RLS on container_event — query scoped via WHERE clause instead.
-    LEFT JOIN tenant_user so events survive if the actor account is deleted.
+    Tenant RLS enforced (migration 074). LEFT JOIN tenant_user so events survive
+    if the actor account is deleted.
     """
     return execute_with_tenant(
-        PLATFORM_TENANT_ID,
+        tenant_id,
         """
         SELECT
             ce.*,

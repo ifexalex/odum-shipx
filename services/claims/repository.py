@@ -399,26 +399,52 @@ def create_refund_request_for_claim(tenant_id: str, data: dict[str, Any]) -> dic
     )
 
 
-def count_claim_evidence(claim_id: str) -> int:
+def count_claim_evidence(claim_id: str, tenant_id: str | None = None) -> int:
     """Count evidence rows (confirmed or pending) attached to a claim."""
-    rows = execute_with_tenant(
-        PLATFORM_TENANT_ID,
-        "SELECT COUNT(*) AS cnt FROM claim_evidence WHERE damage_claim_id = %s",
-        (claim_id,),
-    )
+    if tenant_id:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT COUNT(*) AS cnt
+            FROM claim_evidence ce
+            JOIN damage_claim dc ON dc.id = ce.damage_claim_id AND dc.tenant_id = %s
+            WHERE ce.damage_claim_id = %s
+            """,
+            (tenant_id, claim_id),
+        )
+    else:
+        rows = execute_with_tenant(
+            PLATFORM_TENANT_ID,
+            "SELECT COUNT(*) AS cnt FROM claim_evidence WHERE damage_claim_id = %s",
+            (claim_id,),
+        )
     return int(rows[0]["cnt"]) if rows else 0
 
 
 # ---------------------------------------------------------------------------
-# Claim evidence — NO RLS; scoped via damage_claim_id FK
+# Claim evidence — scoped via damage_claim_id FK (tenant-scoped when tenant_id supplied)
 # ---------------------------------------------------------------------------
 
 
-def create_claim_evidence(data: dict[str, Any]) -> dict[str, Any] | None:
-    """Insert a claim_evidence record.
-
-    claim_evidence has no RLS — use PLATFORM_TENANT_ID scope.
-    """
+def create_claim_evidence(data: dict[str, Any], tenant_id: str | None = None) -> dict[str, Any] | None:
+    """Insert a claim_evidence record."""
+    if tenant_id:
+        return execute_write_with_tenant(
+            tenant_id,
+            """
+            INSERT INTO claim_evidence (
+                damage_claim_id, file_key, file_name,
+                file_type, file_size_bytes, uploaded_by
+            )
+            SELECT
+                dc.id, %(file_key)s, %(file_name)s,
+                %(file_type)s, %(file_size_bytes)s, %(uploaded_by)s
+            FROM damage_claim dc
+            WHERE dc.id = %(damage_claim_id)s AND dc.tenant_id = %(tenant_id)s
+            RETURNING *
+            """,
+            {**data, "tenant_id": tenant_id},
+        )
     return execute_write_with_tenant(
         PLATFORM_TENANT_ID,
         """
@@ -434,12 +460,20 @@ def create_claim_evidence(data: dict[str, Any]) -> dict[str, Any] | None:
     )
 
 
-def list_claim_evidence(claim_id: str) -> list[dict[str, Any]]:
-    """The confirmed evidence files recorded against a claim, oldest first (an unconfirmed upload is not listed).
-
-    claim_evidence has no RLS: the caller must already have established that the claim belongs to its tenant (it
-    loads the claim through `get_damage_claim_by_id`, which is tenant-scoped) before asking for its evidence.
-    """
+def list_claim_evidence(claim_id: str, tenant_id: str | None = None) -> list[dict[str, Any]]:
+    """The confirmed evidence files recorded against a claim, oldest first (an unconfirmed upload is not listed)."""
+    if tenant_id:
+        return execute_with_tenant(
+            tenant_id,
+            """
+            SELECT ce.id, ce.file_key, ce.file_name, ce.file_type, ce.file_size_bytes, ce.created_at
+            FROM claim_evidence ce
+            JOIN damage_claim dc ON dc.id = ce.damage_claim_id AND dc.tenant_id = %s
+            WHERE ce.damage_claim_id = %s AND ce.confirmed_at IS NOT NULL
+            ORDER BY ce.created_at ASC
+            """,
+            (tenant_id, claim_id),
+        )
     return execute_with_tenant(
         PLATFORM_TENANT_ID,
         """
@@ -452,8 +486,20 @@ def list_claim_evidence(claim_id: str) -> list[dict[str, Any]]:
     )
 
 
-def get_claim_evidence(claim_id: str, evidence_id: str) -> dict[str, Any] | None:
-    """One evidence row of a claim, confirmed or not. The caller has checked the claim belongs to its tenant."""
+def get_claim_evidence(claim_id: str, evidence_id: str, tenant_id: str | None = None) -> dict[str, Any] | None:
+    """One evidence row of a claim, confirmed or not."""
+    if tenant_id:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT ce.*
+            FROM claim_evidence ce
+            JOIN damage_claim dc ON dc.id = ce.damage_claim_id AND dc.tenant_id = %s
+            WHERE ce.damage_claim_id = %s AND ce.id = %s
+            """,
+            (tenant_id, claim_id, evidence_id),
+        )
+        return rows[0] if rows else None
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT * FROM claim_evidence WHERE damage_claim_id = %s AND id = %s",
@@ -462,8 +508,26 @@ def get_claim_evidence(claim_id: str, evidence_id: str) -> dict[str, Any] | None
     return rows[0] if rows else None
 
 
-def confirm_claim_evidence(claim_id: str, evidence_id: str, size_bytes: int) -> dict[str, Any] | None:
+def confirm_claim_evidence(
+    claim_id: str,
+    evidence_id: str,
+    size_bytes: int,
+    tenant_id: str | None = None,
+) -> dict[str, Any] | None:
     """Record the checked size and list the file. Confirming twice keeps the first time."""
+    if tenant_id:
+        return execute_write_with_tenant(
+            tenant_id,
+            """
+            UPDATE claim_evidence ce
+            SET file_size_bytes = %s, confirmed_at = COALESCE(ce.confirmed_at, NOW())
+            FROM damage_claim dc
+            WHERE dc.id = ce.damage_claim_id AND dc.tenant_id = %s
+              AND ce.damage_claim_id = %s AND ce.id = %s
+            RETURNING ce.*
+            """,
+            (size_bytes, tenant_id, claim_id, evidence_id),
+        )
     return execute_write_with_tenant(
         PLATFORM_TENANT_ID,
         """
@@ -476,8 +540,24 @@ def confirm_claim_evidence(claim_id: str, evidence_id: str, size_bytes: int) -> 
     )
 
 
-def delete_unconfirmed_claim_evidence(claim_id: str, evidence_id: str) -> dict[str, Any] | None:
+def delete_unconfirmed_claim_evidence(
+    claim_id: str,
+    evidence_id: str,
+    tenant_id: str | None = None,
+) -> dict[str, Any] | None:
     """Drop the row of an upload that was refused at confirmation. A confirmed row is never deleted here."""
+    if tenant_id:
+        return execute_write_with_tenant(
+            tenant_id,
+            """
+            DELETE FROM claim_evidence ce
+            USING damage_claim dc
+            WHERE dc.id = ce.damage_claim_id AND dc.tenant_id = %s
+              AND ce.damage_claim_id = %s AND ce.id = %s AND ce.confirmed_at IS NULL
+            RETURNING ce.id
+            """,
+            (tenant_id, claim_id, evidence_id),
+        )
     return execute_write_with_tenant(
         PLATFORM_TENANT_ID,
         """
