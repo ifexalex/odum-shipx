@@ -64,7 +64,18 @@ describe('AppSidebar', () => {
   it('shows the platform admin onboarding-requests nav entry', () => {
     renderAt(makeContextValue({ session: makeSession('platform_admin'), status: 'authenticated' }), '/platform/dashboard')
     expect(screen.getByText('Onboarding requests')).toBeInTheDocument()
-    expect(screen.getByText('Tenants')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tenants' })).toBeInTheDocument()
+  })
+
+  it('groups the platform console into its areas and hides the ones not built yet (Phase 1c)', () => {
+    renderAt(makeContextValue({ session: makeSession('platform_admin'), status: 'authenticated' }), '/platform/settings/plans')
+    for (const area of ['Overview', 'Plans', 'Security', 'Settings']) {
+      expect(screen.getAllByText(area).length).toBeGreaterThanOrEqual(1)
+    }
+    for (const unbuilt of ['Revenue', 'Operations', 'Support']) expect(screen.queryByText(unbuilt)).toBeNull()
+    // Plans and limits lights for its own page, not Settings beside it.
+    expect(screen.getByRole('button', { name: 'Plans and limits' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'Settings' })).not.toHaveAttribute('aria-current')
   })
 
   it('shows china_office_staff Operations/Coordination nav groups, not admin nav', () => {

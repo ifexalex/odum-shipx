@@ -1205,3 +1205,9 @@ AWS, in this order, so nobody is locked out:
 **An admin lost their authenticator.** In the platform pool: `aws cognito-idp admin-set-user-mfa-preference --user-pool-id <platform pool> --username <email> --software-token-mfa-settings Enabled=false,PreferredMfa=false`, then `admin-reset-user-password`. Their next sign-in sets up a new authenticator (the pool requires MFA, so it asks again). Record why in the platform audit trail by hand.
 
 **Entra.** Create the Conditional Access policy first (`infrastructure/azure/SETUP.md` §6), sign in once as a platform admin and check the ID token carries `amr` with `mfa` (or set `entra_platform_mfa_acr` to the authentication context id it carries in `acrs`), then set `platform_mfa_required = true`. Turning it on before the policy locks every platform admin out with 403 `PLATFORM_MFA_REQUIRED`; set it back to `false` to recover.
+
+### Daily tenant metrics and job history (platform audit Phase 1c)
+
+**After deploying migration 078**, fill history once: `python3 scripts/backfill_tenant_metrics.py --days 90` (where the database is reachable). The hourly usage job keeps yesterday and today current after that.
+
+**Did a job run, and how did it go?** `SELECT job, started_at, finished_at - started_at AS took, status, items_processed, failures, error_summary FROM job_run WHERE job = 'data_cleanup' ORDER BY started_at DESC LIMIT 10;` (PLATFORM scope). A row stuck at `running` means the process died mid-run; the next run opens its own row. `error_summary` is only the exception class: the message is in the job's logs at the same time.

@@ -13,6 +13,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.job_runs import tracked_job
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.notifications import enqueue_notification
 from shared.observability import init_tracing, record_failure
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+@tracked_job("release_expiry")
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     clear_log_context()
     bind_log_context(request_id=getattr(context, "aws_request_id", None))

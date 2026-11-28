@@ -18,6 +18,7 @@ from typing import Any
 from shared.billing_money import adjust_billing
 from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
 from shared.events import publish_event
+from shared.job_runs import tracked_job
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing, record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
@@ -36,6 +37,7 @@ _DEFAULT_DAILY_RATE_NGN = Decimal("500")
 # ---------------------------------------------------------------------------
 
 
+@tracked_job("storage_fee")
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     clear_log_context()
     bind_log_context(request_id=getattr(context, "aws_request_id", None))
