@@ -41,6 +41,7 @@ from .customers import (
     self_register_customer,
     set_self_registration_enabled,
     update_customer,
+    update_customer_credit,
 )
 from .offboarding_export import (
     EXPORT_LINK_SECONDS,
@@ -59,6 +60,10 @@ from .platform import (
     update_plan,
     update_platform_settings,
 )
+from .policies import (
+    get_tenant_policies,
+    update_tenant_policy,
+)
 from .rates import (
     DEFAULT_CONTAINER_CAPACITIES,
     create_charge_type,
@@ -74,6 +79,9 @@ from .rates import (
     update_charge_type,
     update_container_capacity,
     update_dollar_rate,
+)
+from .tenant_approvals import (
+    get_tenant_approvals,
 )
 from .tenant_config import (
     delete_paystack_config,
@@ -156,7 +164,9 @@ __all__ = [
     "get_platform_dashboard",
     "get_platform_settings",
     "get_tenant",
+    "get_tenant_approvals",
     "get_tenant_config",
+    "get_tenant_policies",
     "get_tenant_quota",
     "get_tenant_report",
     "get_user",
@@ -194,6 +204,7 @@ __all__ = [
     "update_charge_type",
     "update_container_capacity",
     "update_customer",
+    "update_customer_credit",
     "update_dollar_rate",
     "update_gateway_settings",
     "update_onboarding_request_status",
@@ -202,6 +213,7 @@ __all__ = [
     "update_platform_settings",
     "update_tenant",
     "update_tenant_config",
+    "update_tenant_policy",
     "update_user",
     "upsert_notification_template",
 ]

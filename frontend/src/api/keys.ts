@@ -182,6 +182,16 @@ export const configKeys = {
   // GET /v1/tenant/activity — the shared ActivityFeed widget; `actorId`
   // narrows it to one staff member, so it is part of the key.
   activity: (params?: Record<string, unknown>) => [...configKeys.all, 'activity', params ?? {}] as const,
+  // GET /v1/tenant/policies & GET /v1/tenant/permissions (Tenant Admin Phase 1)
+  policies: () => [...configKeys.all, 'policies'] as const,
+  permissions: () => [...configKeys.all, 'permissions'] as const,
+}
+
+// ─── Tenant approvals inbox (Tenant Admin Phase 1, TC-02) ────────────────────
+export const tenantApprovalKeys = {
+  all: ['tenant-approvals'] as const,
+  list: (type?: string) => [...tenantApprovalKeys.all, 'list', type ?? 'all'] as const,
+  count: () => [...tenantApprovalKeys.all, 'count'] as const,
 }
 
 // ─── Notifications log ────────────────────────────────────────────────────────

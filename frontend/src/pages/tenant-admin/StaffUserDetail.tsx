@@ -2,8 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { usersApi, type TenantUser, type TenantUserRole } from '../../api/tenantManagement'
-import { staffKeys } from '../../api/keys'
+import { configApi, usersApi, type TenantUser, type TenantUserRole } from '../../api/tenantManagement'
+import { configKeys, staffKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
 import { Action, Banner, Button, Kvp, LocaleCard, type StaffLocale, RoleBadge, StatusBadge, PageSkeleton, ConfirmDialog } from '../../design/components'
@@ -23,43 +23,6 @@ const ROLE_OPTIONS: TenantUserRole[] = [
   'tenant_admin', 'china_office_staff', 'nigeria_office_staff', 'warehouse_attendant',
 ]
 
-// Prototype 3.4 — per-role capability summary. Mirrors the backend role
-// gates (handlers' assert_role lists); purely informational here.
-const ROLE_PERMISSIONS: Record<string, { label: string; allowed: boolean }[]> = {
-  tenant_admin: [
-    { label: 'Manage staff users and roles', allowed: true },
-    { label: 'Edit rates, charge types, and notification templates', allowed: true },
-    { label: 'Approve refunds above the staff threshold', allowed: true },
-    { label: 'Cancel billing and exempt carryovers', allowed: true },
-    { label: 'GDPR erasure of customer records', allowed: true },
-  ],
-  china_office_staff: [
-    { label: 'Create containers and packing lists', allowed: true },
-    { label: 'Update China-side container stages', allowed: true },
-    { label: 'View manifests and CBM disputes', allowed: true },
-    { label: 'Record payments or issue release notes', allowed: false },
-    { label: 'Manage staff users or tenant config', allowed: false },
-  ],
-  nigeria_office_staff: [
-    { label: 'Verify manifests and update Nigeria-side stages', allowed: true },
-    { label: 'Record payments and issue release notes', allowed: true },
-    { label: 'Handle claims, disputes, and refunds (within threshold)', allowed: true },
-    { label: 'Approve refunds above the configured threshold', allowed: false },
-    { label: 'Manage staff users or tenant config', allowed: false },
-  ],
-  warehouse_attendant: [
-    { label: 'View active release notes', allowed: true },
-    { label: 'Record cartons picked up (incl. delegates)', allowed: true },
-    { label: 'Create or edit billing, claims, or refunds', allowed: false },
-    { label: 'Manage users or configuration', allowed: false },
-  ],
-  customer: [
-    { label: 'Track own shipments and billing', allowed: true },
-    { label: 'File CBM disputes and damage claims', allowed: true },
-    { label: 'See other customers\' data', allowed: false },
-  ],
-}
-
 export function StaffUserDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const { session } = useSession()
@@ -74,6 +37,12 @@ export function StaffUserDetail(): JSX.Element {
     queryFn: () => usersApi.get(id!),
     enabled: !!id,
     ...(stateUser ? { initialData: stateUser } : {}),
+    staleTime: STALE_30S,
+  })
+  // Server-served role-to-action map (TC-05) — keeps this screen aligned with backend handler role tuples.
+  const { data: permissionsData } = useQuery({
+    queryKey: configKeys.permissions(),
+    queryFn: () => configApi.getPermissions(),
     staleTime: STALE_30S,
   })
   // Names this record in the breadcrumb once loaded (FD-46).
@@ -314,9 +283,9 @@ export function StaffUserDetail(): JSX.Element {
                   <RoleBadge role={r} />
                 </div>
               )}
-              {ROLE_PERMISSIONS[r]?.map((p, i, arr) => (
+              {(permissionsData?.roles[r] ?? []).map((p, i, arr) => (
                 <div
-                  key={`${r}-${p.label}`}
+                  key={`${r}-${p.key}`}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

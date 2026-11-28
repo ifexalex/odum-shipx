@@ -68,6 +68,7 @@ import {
   seizedItemKeys,
   staffKeys,
   staffNotifKeys,
+  tenantApprovalKeys,
   warehouseKeys,
 } from './keys'
 
@@ -94,7 +95,7 @@ const RULES: Rule[] = [
   { test: /^\/v1\/claims\/seized-items\//, roots: [seizedItemKeys.all, claimKeys.all] },
   { test: /^\/v1\/claims\/missing-items\//, roots: [missingItemKeys.all, claimKeys.all] },
   // Resolving a claim can trigger a refund, and a claim is raised against a billing record.
-  { test: /^\/v1\/claims(\/|$)/, roots: [claimKeys.all, refundKeys.all, billingKeys.all] },
+  { test: /^\/v1\/claims(\/|$)/, roots: [claimKeys.all, refundKeys.all, billingKeys.all, tenantApprovalKeys.all] },
 
   // ── Billing: disputes and carryovers before the generic billing rule ────
   { test: /^\/v1\/billing\/disputes\//, roots: [disputeKeys.all, billingKeys.all] },
@@ -129,11 +130,11 @@ const RULES: Rule[] = [
   // Recording a pickup updates the shipment the container list reports on.
   {
     test: /^\/v1\/release-notes(\/|$)/,
-    roots: [releaseNoteKeys.all, billingKeys.all, containerKeys.all],
+    roots: [releaseNoteKeys.all, billingKeys.all, containerKeys.all, tenantApprovalKeys.all],
   },
 
   // ── Refunds ─────────────────────────────────────────────────────────────
-  { test: /^\/v1\/refunds(\/|$)/, roots: [refundKeys.all, billingKeys.all] },
+  { test: /^\/v1\/refunds(\/|$)/, roots: [refundKeys.all, billingKeys.all, tenantApprovalKeys.all] },
 
   // ── Warehouses ──────────────────────────────────────────────────────────
   // The picker on the packing-list form and the release-note letterhead both
@@ -152,8 +153,8 @@ const RULES: Rule[] = [
   },
 
   // ── Notifications: specific buckets before the generic rule ─────────────
-  { test: /^\/v1\/notifications\/announcements(\/|$)/, roots: [announcementKeys.all] },
-  { test: /^\/v1\/notifications\/announce$/, roots: [announcementKeys.all] },
+  { test: /^\/v1\/notifications\/announcements(\/|$)/, roots: [announcementKeys.all, tenantApprovalKeys.all] },
+  { test: /^\/v1\/notifications\/announce$/, roots: [announcementKeys.all, tenantApprovalKeys.all] },
   { test: /^\/v1\/notifications\/customer(\/|$)/, roots: [customerNotifKeys.all] },
   { test: /^\/v1\/notifications\/staff(\/|$)/, roots: [staffNotifKeys.all] },
   { test: /^\/v1\/notifications\/log(\/|$)/, roots: [notifLogKeys.all] },
@@ -164,6 +165,7 @@ const RULES: Rule[] = [
   { test: /^\/v1\/tenant\/charge-types(\/|$)/, roots: [configKeys.all, billingKeys.all] },
   { test: /^\/v1\/tenant\/(cbm-rate|dollar-rate)$/, roots: [configKeys.all, billingKeys.all] },
   { test: /^\/v1\/tenant\/notification-templates(\/|$)/, roots: [configKeys.all] },
+  { test: /^\/v1\/tenant\/policies(\/|$)/, roots: [configKeys.all, tenantApprovalKeys.all] },
   { test: /^\/v1\/tenant\/config(\/|$)/, roots: [configKeys.all] },
   // Toggling the public signup link is tenant configuration; the card
   // showing it reads through the same config root.

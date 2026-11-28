@@ -206,30 +206,16 @@ def _get_active_tenants() -> list[dict[str, Any]]:
     )
 
 
-def _get_storage_fee_config(tenant_id: str) -> dict[str, Any]:
-    rows = execute_with_tenant(
-        tenant_id,
-        """
-        SELECT config_value FROM tenant_config
-        WHERE tenant_id = %s AND config_key = 'storage_fee'
-        LIMIT 1
-        """,
-        (tenant_id,),
-    )
-    return rows[0]["config_value"] if rows else {}
+def _get_storage_fee_config(tenant_id: str, as_of_date: date | None = None) -> dict[str, Any]:
+    from shared.tenant_policies import resolve_policy_for_date
+
+    return resolve_policy_for_date(tenant_id, "storage_fee", as_of_date=as_of_date)
 
 
-def _get_reminder_config(tenant_id: str) -> dict[str, Any]:
-    rows = execute_with_tenant(
-        tenant_id,
-        """
-        SELECT config_value FROM tenant_config
-        WHERE tenant_id = %s AND config_key = 'reminder_days'
-        LIMIT 1
-        """,
-        (tenant_id,),
-    )
-    return rows[0]["config_value"] if rows else {}
+def _get_reminder_config(tenant_id: str, as_of_date: date | None = None) -> dict[str, Any]:
+    from shared.tenant_policies import resolve_policy_for_date
+
+    return resolve_policy_for_date(tenant_id, "reminder_days", as_of_date=as_of_date)
 
 
 def _get_active_release_notes(tenant_id: str) -> list[dict[str, Any]]:

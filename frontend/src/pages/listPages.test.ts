@@ -28,6 +28,7 @@ const LIST_PAGES = [
   './platform/PlatformTenantList.tsx',
   './tenant-admin/ActivityLog.tsx',
   './tenant-admin/AdminCustomerList.tsx',
+  './tenant-admin/ApprovalsInbox.tsx',
   './tenant-admin/NotificationLog.tsx',
   './tenant-admin/StaffUserList.tsx',
 ]

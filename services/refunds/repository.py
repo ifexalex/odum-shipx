@@ -337,25 +337,14 @@ def get_unpaid_billing_totals_for_customer(tenant_id: str, customer_id: str) -> 
 
 
 def get_refund_threshold_config(tenant_id: str) -> dict[str, Any]:
-    """Return the refund threshold config from tenant_config.
+    """Return the effective refund threshold policy for today.
 
-    Reads the `refund_threshold_usd` config key. Returns a dict with key
-    `staff_limit` (float, default 50). The dollar rate used to convert this
-    into a NGN threshold is no longer tenant_config data — see
-    shared.fx_rate.get_effective_dollar_rate, called separately by
-    services/refunds/service.py.
+    Resolves ``refund_threshold_usd`` through ``shared.tenant_policies`` so
+    effective-dated changes in ``tenant_policy_history`` apply automatically.
     """
-    rows = execute_with_tenant(
-        tenant_id,
-        """
-        SELECT config_value
-        FROM tenant_config
-        WHERE tenant_id = %s AND config_key = 'refund_threshold_usd'
-        LIMIT 1
-        """,
-        (tenant_id,),
-    )
-    threshold_cfg = rows[0]["config_value"] if rows else {}
+    from shared.tenant_policies import resolve_policy_for_date
+
+    threshold_cfg = resolve_policy_for_date(tenant_id, "refund_threshold_usd")
     staff_limit = threshold_cfg.get("staff_limit", 50) if isinstance(threshold_cfg, dict) else 50
     return {"staff_limit": staff_limit}
 

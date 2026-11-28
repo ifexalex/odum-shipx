@@ -771,6 +771,63 @@ def customer_has_unpaid_balance(tenant_id: str, customer_id: str) -> bool:
     return bool(rows)
 
 
+def get_customer_credit_exposure(tenant_id: str, customer_id: str) -> dict[str, Any]:
+    """Return open unpaid invoice balance and open carryover balance for a customer."""
+    billing_rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COALESCE(SUM(GREATEST(balance_ngn, 0)), 0) AS unpaid_billing_ngn
+        FROM billing
+        WHERE tenant_id = %s
+          AND customer_id = %s
+          AND status NOT IN ('cancelled', 'waived', 'paid', 'overpaid')
+        """,
+        (tenant_id, customer_id),
+    )
+    carryover_rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COALESCE(SUM(carryover_amount_ngn), 0) AS active_carryover_ngn
+        FROM carryover_ledger
+        WHERE tenant_id = %s
+          AND customer_id = %s
+          AND status = 'outstanding'
+        """,
+        (tenant_id, customer_id),
+    )
+    return {
+        "unpaid_billing_ngn": (billing_rows[0]["unpaid_billing_ngn"] if billing_rows else 0) or 0,
+        "active_carryover_ngn": (carryover_rows[0]["active_carryover_ngn"] if carryover_rows else 0) or 0,
+    }
+
+
+def update_customer_credit_terms(
+    tenant_id: str,
+    customer_id: str,
+    *,
+    credit_limit_ngn: Any,
+    credit_terms_days: int | None,
+) -> dict[str, Any] | None:
+    """Update a customer's per-customer credit limit and payment terms (nullable to reset to tenant defaults)."""
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE customer
+        SET credit_limit_ngn  = %(credit_limit_ngn)s,
+            credit_terms_days = %(credit_terms_days)s,
+            updated_at        = NOW()
+        WHERE tenant_id = %(tenant_id)s AND id = %(id)s
+        RETURNING *
+        """,
+        {
+            "tenant_id": tenant_id,
+            "id": customer_id,
+            "credit_limit_ngn": credit_limit_ngn,
+            "credit_terms_days": credit_terms_days,
+        },
+    )
+
+
 def delete_unconsumed_invites_for_customer(tenant_id: str, customer_id: str) -> None:
     """Remove any pending customer_invite rows so an anonymised customer can never be resurrected."""
     execute_write_with_tenant(

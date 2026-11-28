@@ -2287,3 +2287,365 @@ def confirm_online_payment(
         }
 
     return {"gateway_status": "success", **result}
+
+
+# ---------------------------------------------------------------------------
+# Credit release requests (Phase 1, TC-03, D2 / D3)
+# ---------------------------------------------------------------------------
+
+
+def _fmt_credit_request(row: dict[str, Any]) -> dict[str, Any]:
+    def _iso(v: Any) -> str | None:
+        if v is None:
+            return None
+        return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+    return {
+        "id": str(row["id"]),
+        "billing_id": str(row["billing_id"]),
+        "customer_id": str(row["customer_id"]),
+        "customer_name": row.get("customer_name"),
+        "invoice_number": row.get("invoice_number"),
+        "carton_tags": list(row.get("carton_tags") or []),
+        "packages_released": row.get("packages_released"),
+        "package_unit": row.get("package_unit"),
+        "warehouse_id": str(row["warehouse_id"]) if row.get("warehouse_id") else None,
+        "physical_document_number": row.get("physical_document_number"),
+        "packing_list_invoice_numbers": list(row.get("packing_list_invoice_numbers") or []),
+        "due_date": _iso(row.get("due_date")),
+        "amount_ngn": str(row.get("amount_ngn") or "0"),
+        "customer_credit_limit_ngn": (
+            str(row["customer_credit_limit_ngn"]) if row.get("customer_credit_limit_ngn") is not None else None
+        ),
+        "customer_current_exposure_ngn": str(row.get("customer_current_exposure_ngn") or "0"),
+        "exceeds_credit_limit": bool(row.get("exceeds_credit_limit")),
+        "reason": row.get("reason") or "",
+        "requested_by": str(row["requested_by"]) if row.get("requested_by") else None,
+        "requested_by_name": row.get("requested_by_name"),
+        "status": row.get("status"),
+        "decided_by": str(row["decided_by"]) if row.get("decided_by") else None,
+        "decided_by_name": row.get("decided_by_name"),
+        "decided_at": _iso(row.get("decided_at")),
+        "decision_notes": row.get("decision_notes"),
+        "release_note_id": str(row["release_note_id"]) if row.get("release_note_id") else None,
+        "created_at": _iso(row.get("created_at")),
+        "updated_at": _iso(row.get("updated_at")),
+    }
+
+
+def create_credit_release_request(
+    tenant_id: str,
+    req: Any,
+    actor_id: str,
+    ctx: Any,
+    request_id: str = "",
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Staff request to release goods on credit; waits in the tenant admin Approvals inbox."""
+    from datetime import timedelta
+
+    from shared.staff_notifications import notify_staff
+    from shared.tenant_policies import resolve_policy_for_date
+
+    billing = repo.get_billing_by_id(tenant_id, req.billing_id)
+    if not billing:
+        raise ResourceNotFoundError("billing", req.billing_id)
+    if billing.get("status") == "cancelled":
+        raise BusinessRuleViolationError(
+            "Cannot request a credit release for a cancelled invoice.",
+            rule_id="BILLING_CANCELLED",
+        )
+
+    outstanding = Decimal(str(billing.get("balance_ngn") or "0"))
+    if outstanding <= Decimal("0.01"):
+        raise BusinessRuleViolationError(
+            "Invoice has no unpaid balance — generate a standard release note instead.",
+            rule_id="NO_OUTSTANDING_BALANCE",
+        )
+
+    carton_tags = list(dict.fromkeys(req.carton_tags))
+    is_count_based = not carton_tags and req.packages_released is not None
+    if not is_count_based:
+        approved_tags = repo.get_approved_carton_tags_for_billing(
+            tenant_id, str(billing["customer_id"]), str(billing["container_id"])
+        )
+        if approved_tags:
+            unknown_tags = set(carton_tags) - set(approved_tags)
+            if unknown_tags:
+                raise BusinessRuleViolationError(
+                    f"Carton tags not found on approved packing lists for this invoice: {', '.join(sorted(unknown_tags))}",
+                    rule_id="INVALID_CARTON_TAGS",
+                )
+
+    customer_id = str(billing["customer_id"])
+    snap = repo.get_customer_credit_snapshot(tenant_id, customer_id)
+    defaults = resolve_policy_for_date(tenant_id, "credit_defaults")
+    default_limit = Decimal(str(defaults.get("default_credit_limit_ngn", 0)))
+    default_terms = int(defaults.get("default_credit_terms_days", 14))
+
+    effective_limit = Decimal(str(snap["credit_limit_ngn"])) if snap.get("credit_limit_ngn") is not None else default_limit
+    effective_terms = int(snap["credit_terms_days"]) if snap.get("credit_terms_days") is not None else default_terms
+    current_exposure = Decimal(str(snap.get("unpaid_billing_ngn") or "0")) + Decimal(str(snap.get("active_carryover_ngn") or "0"))
+    exceeds_limit = current_exposure > effective_limit
+
+    due_date = req.due_date
+    if due_date is None and effective_terms > 0:
+        due_date = datetime.now(UTC).date() + timedelta(days=effective_terms)
+
+    created_row = repo.create_credit_release_request(
+        tenant_id,
+        {
+            "tenant_id": tenant_id,
+            "billing_id": req.billing_id,
+            "customer_id": customer_id,
+            "carton_tags": carton_tags,
+            "packages_released": req.packages_released if is_count_based else None,
+            "package_unit": req.package_unit if is_count_based else None,
+            "warehouse_id": req.warehouse_id,
+            "physical_document_number": req.physical_document_number,
+            "packing_list_invoice_numbers": list(req.packing_list_invoice_numbers or []),
+            "due_date": due_date,
+            "amount_ngn": outstanding,
+            "customer_credit_limit_ngn": effective_limit,
+            "customer_current_exposure_ngn": current_exposure,
+            "exceeds_credit_limit": exceeds_limit,
+            "reason": req.reason.strip(),
+            "requested_by": actor_id,
+        },
+    )
+    if created_row is None:
+        raise RuntimeError("create_credit_release_request returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="credit_release_request",
+        entity_id=str(created_row["id"]),
+        action="CREATE",
+        actor_id=actor_id,
+        actor_role=str(ctx.role) if ctx else "nigeria_office_staff",
+        after_state={
+            "billing_id": req.billing_id,
+            "customer_id": customer_id,
+            "amount_ngn": str(outstanding),
+            "customer_credit_limit_ngn": str(effective_limit),
+            "customer_current_exposure_ngn": str(current_exposure),
+            "exceeds_credit_limit": exceeds_limit,
+            "reason": req.reason.strip(),
+        },
+        ip_address=ip_address,
+    )
+
+    try:
+        notify_staff(
+            tenant_id=tenant_id,
+            event_type="credit_release_requested",
+            entity_type="credit_release_request",
+            entity_id=str(created_row["id"]),
+            title="Credit release approval requested",
+            body=(
+                f"{snap.get('customer_name') or 'Customer'} — ₦{outstanding:,.2f} unpaid"
+                + (" (exceeds credit limit)" if exceeds_limit else "")
+            ),
+            target_role="tenant_admin",
+        )
+    except Exception as exc:
+        logger.warning("Failed to notify tenant_admin of credit release request %s: %s", created_row["id"], exc)
+
+    hydrated = repo.get_credit_release_request_by_id(tenant_id, str(created_row["id"])) or created_row
+    return _fmt_credit_request(hydrated)
+
+
+def list_credit_release_requests(
+    tenant_id: str,
+    *,
+    status: str | None = None,
+    billing_id: str | None = None,
+) -> list[dict[str, Any]]:
+    rows = repo.list_credit_release_requests(tenant_id, status=status, billing_id=billing_id)
+    return [_fmt_credit_request(r) for r in rows]
+
+
+def approve_credit_release_request(
+    tenant_id: str,
+    credit_request_id: str,
+    req: Any,
+    actor_id: str,
+    ctx: Any,
+    request_id: str = "",
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Approve a pending credit release request (tenant_admin only) and create the release note."""
+    from shared.staff_notifications import notify_staff
+
+    from .models import GenerateReleaseNoteRequest
+
+    if ctx is not None and not ctx.has_role(UserRole.TENANT_ADMIN):
+        raise InsufficientPermissionsError(action="approve_credit_release", required_role="tenant_admin")
+
+    existing = repo.get_credit_release_request_by_id(tenant_id, credit_request_id)
+    if not existing:
+        raise ResourceNotFoundError("credit_release_request", credit_request_id)
+    if existing.get("status") != "pending":
+        raise IllegalTransitionError(
+            entity="credit_release_request",
+            current_state=str(existing.get("status")),
+            requested_state="approved",
+            allowed=["pending"],
+        )
+
+    notes = (req.decision_notes or "").strip() or existing.get("reason") or "Approved via Approvals inbox"
+    self_approved = bool(existing.get("requested_by") and str(existing["requested_by"]) == str(actor_id))
+
+    gen_req = GenerateReleaseNoteRequest(
+        billing_id=str(existing["billing_id"]),
+        carton_tags=list(existing.get("carton_tags") or []),
+        packages_released=existing.get("packages_released"),
+        package_unit=existing.get("package_unit"),
+        release_with_outstanding=True,
+        approval_notes=notes,
+        warehouse_id=str(existing["warehouse_id"]) if existing.get("warehouse_id") else None,
+        physical_document_number=existing.get("physical_document_number"),
+        due_date=existing.get("due_date"),
+        packing_list_invoice_numbers=list(existing.get("packing_list_invoice_numbers") or []),
+    )
+
+    # Run generate_release_note first: it does PLATFORM-scoped tenant lookup before
+    # opening its own tenant_transaction and locks the billing row FOR UPDATE,
+    # preventing duplicate tags or over-release if two admins click concurrently.
+    release_note = generate_release_note(
+        tenant_id,
+        gen_req,
+        actor_id=actor_id,
+        ctx=ctx,
+        request_id=request_id,
+        ip_address=ip_address,
+    )
+    decided = repo.decide_credit_release_request(
+        tenant_id,
+        credit_request_id,
+        new_status="approved",
+        decided_by=actor_id,
+        decision_notes=notes,
+        release_note_id=str(release_note["id"]),
+    )
+    if decided is None:
+        raise IllegalTransitionError(
+            entity="credit_release_request",
+            current_state="already decided",
+            requested_state="approved",
+            allowed=["pending"],
+        )
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="credit_release_request",
+        entity_id=credit_request_id,
+        action="STATUS_CHANGE",
+        actor_id=actor_id,
+        actor_role="tenant_admin",
+        before_state={"status": "pending"},
+        after_state={
+            "status": "approved",
+            "release_note_id": str(release_note["id"]),
+            "decision_notes": notes,
+            "self_approved": self_approved,
+            "exceeds_credit_limit": bool(existing.get("exceeds_credit_limit")),
+        },
+        ip_address=ip_address,
+    )
+
+    try:
+        notify_staff(
+            tenant_id=tenant_id,
+            event_type="credit_release_approved",
+            entity_type="release_note",
+            entity_id=str(release_note["id"]),
+            title="Credit release approved",
+            body=f"Release note {release_note.get('reference_number') or release_note['id']} has been issued.",
+            target_role="nigeria_office_staff",
+        )
+    except Exception as exc:
+        logger.warning("Failed to notify staff of credit release approval %s: %s", credit_request_id, exc)
+
+    hydrated = repo.get_credit_release_request_by_id(tenant_id, credit_request_id) or decided
+    return {
+        "credit_request": _fmt_credit_request(hydrated),
+        "release_note": release_note,
+    }
+
+
+def reject_credit_release_request(
+    tenant_id: str,
+    credit_request_id: str,
+    req: Any,
+    actor_id: str,
+    ctx: Any,
+    request_id: str = "",
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Reject a pending credit release request (tenant_admin only) with a required reason."""
+    from shared.staff_notifications import notify_staff
+
+    if ctx is not None and not ctx.has_role(UserRole.TENANT_ADMIN):
+        raise InsufficientPermissionsError(action="reject_credit_release", required_role="tenant_admin")
+
+    notes = (req.decision_notes or "").strip()
+    if not notes:
+        raise BusinessRuleViolationError(
+            "A rejection reason (decision_notes) is required.",
+            rule_id="REJECTION_REASON_REQUIRED",
+        )
+
+    existing = repo.get_credit_release_request_by_id(tenant_id, credit_request_id)
+    if not existing:
+        raise ResourceNotFoundError("credit_release_request", credit_request_id)
+    if existing.get("status") != "pending":
+        raise IllegalTransitionError(
+            entity="credit_release_request",
+            current_state=str(existing.get("status")),
+            requested_state="rejected",
+            allowed=["pending"],
+        )
+
+    decided = repo.decide_credit_release_request(
+        tenant_id,
+        credit_request_id,
+        new_status="rejected",
+        decided_by=actor_id,
+        decision_notes=notes,
+    )
+    if decided is None:
+        raise IllegalTransitionError(
+            entity="credit_release_request",
+            current_state="already decided",
+            requested_state="rejected",
+            allowed=["pending"],
+        )
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="credit_release_request",
+        entity_id=credit_request_id,
+        action="STATUS_CHANGE",
+        actor_id=actor_id,
+        actor_role="tenant_admin",
+        before_state={"status": "pending"},
+        after_state={"status": "rejected", "decision_notes": notes},
+        ip_address=ip_address,
+    )
+
+    try:
+        notify_staff(
+            tenant_id=tenant_id,
+            event_type="credit_release_rejected",
+            entity_type="credit_release_request",
+            entity_id=credit_request_id,
+            title="Credit release request rejected",
+            body=f"Reason: {notes}",
+            target_role="nigeria_office_staff",
+        )
+    except Exception as exc:
+        logger.warning("Failed to notify staff of credit release rejection %s: %s", credit_request_id, exc)
+
+    hydrated = repo.get_credit_release_request_by_id(tenant_id, credit_request_id) or decided
+    return _fmt_credit_request(hydrated)

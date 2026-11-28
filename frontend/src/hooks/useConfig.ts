@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { configKeys } from '../api/keys'
+import { configKeys, tenantApprovalKeys } from '../api/keys'
 import { configApi, type BrandingConfig, type UpdateCbmRateInput, type UpdateDollarRateMarkupInput } from '../api/tenantManagement'
-import { STALE_FOREVER } from '../lib/queryClient'
+import { STALE_30S, STALE_FOREVER } from '../lib/queryClient'
 import { uploadTenantLogo } from '../api/uploads'
 import { FRESH_ON_OPEN } from './useSeedOnce'
 
@@ -177,4 +177,15 @@ export function useTenantLogo() {
   const upload = useMutation({ mutationFn: (file: File) => uploadTenantLogo(file), onSuccess: refresh })
   const remove = useMutation({ mutationFn: () => configApi.removeLogo(), onSuccess: refresh })
   return { upload, remove }
+}
+
+/** Pending count badge for the tenant admin Approvals sidebar link (Phase 1, TC-02). */
+export function useTenantApprovalCount(enabled = true): number {
+  const query = useQuery({
+    queryKey: tenantApprovalKeys.count(),
+    queryFn: () => configApi.getApprovals({ counts_only: true }),
+    staleTime: STALE_30S,
+    enabled,
+  })
+  return query.data?.counts.total ?? 0
 }

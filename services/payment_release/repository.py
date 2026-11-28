@@ -1418,3 +1418,170 @@ def update_shipment_tracking_for_customer(
             "status": status,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Credit release requests (Phase 1, TC-03, D2)
+# ---------------------------------------------------------------------------
+
+
+def get_customer_credit_snapshot(tenant_id: str, customer_id: str) -> dict[str, Any]:
+    """Return customer's per-customer credit limit/terms plus current exposure."""
+    cust_rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT id, name, credit_limit_ngn, credit_terms_days
+        FROM customer
+        WHERE tenant_id = %s AND id = %s
+        LIMIT 1
+        """,
+        (tenant_id, customer_id),
+    )
+    cust = cust_rows[0] if cust_rows else {}
+    billing_rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COALESCE(SUM(GREATEST(balance_ngn, 0)), 0) AS unpaid_billing_ngn
+        FROM billing
+        WHERE tenant_id = %s
+          AND customer_id = %s
+          AND status NOT IN ('cancelled', 'waived', 'paid', 'overpaid')
+        """,
+        (tenant_id, customer_id),
+    )
+    carryover_rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT COALESCE(SUM(carryover_amount_ngn), 0) AS active_carryover_ngn
+        FROM carryover_ledger
+        WHERE tenant_id = %s
+          AND customer_id = %s
+          AND status = 'outstanding'
+        """,
+        (tenant_id, customer_id),
+    )
+    return {
+        "customer_name": cust.get("name"),
+        "credit_limit_ngn": cust.get("credit_limit_ngn"),
+        "credit_terms_days": cust.get("credit_terms_days"),
+        "unpaid_billing_ngn": (billing_rows[0]["unpaid_billing_ngn"] if billing_rows else 0) or 0,
+        "active_carryover_ngn": (carryover_rows[0]["active_carryover_ngn"] if carryover_rows else 0) or 0,
+    }
+
+
+def create_credit_release_request(tenant_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        INSERT INTO credit_release_request (
+            tenant_id, billing_id, customer_id,
+            carton_tags, packages_released, package_unit,
+            warehouse_id, physical_document_number, packing_list_invoice_numbers,
+            due_date, amount_ngn, customer_credit_limit_ngn,
+            customer_current_exposure_ngn, exceeds_credit_limit,
+            reason, requested_by
+        ) VALUES (
+            %(tenant_id)s, %(billing_id)s, %(customer_id)s,
+            %(carton_tags)s, %(packages_released)s, %(package_unit)s,
+            %(warehouse_id)s, %(physical_document_number)s, %(packing_list_invoice_numbers)s,
+            %(due_date)s, %(amount_ngn)s, %(customer_credit_limit_ngn)s,
+            %(customer_current_exposure_ngn)s, %(exceeds_credit_limit)s,
+            %(reason)s, %(requested_by)s
+        )
+        RETURNING *
+        """,
+        data,
+    )
+
+
+def get_credit_release_request_by_id(tenant_id: str, request_id: str) -> dict[str, Any] | None:
+    rows = execute_with_tenant(
+        tenant_id,
+        """
+        SELECT r.*,
+               c.name AS customer_name,
+               b.invoice_number AS invoice_number,
+               req_u.full_name AS requested_by_name,
+               dec_u.full_name AS decided_by_name
+        FROM credit_release_request r
+        LEFT JOIN customer c ON c.id = r.customer_id AND c.tenant_id = r.tenant_id
+        LEFT JOIN billing b ON b.id = r.billing_id AND b.tenant_id = r.tenant_id
+        LEFT JOIN tenant_user req_u ON req_u.id = r.requested_by AND req_u.tenant_id = r.tenant_id
+        LEFT JOIN tenant_user dec_u ON dec_u.id = r.decided_by AND dec_u.tenant_id = r.tenant_id
+        WHERE r.tenant_id = %s AND r.id = %s
+        LIMIT 1
+        """,
+        (tenant_id, request_id),
+    )
+    return rows[0] if rows else None
+
+
+def list_credit_release_requests(
+    tenant_id: str,
+    *,
+    status: str | None = None,
+    billing_id: str | None = None,
+) -> list[dict[str, Any]]:
+    clauses = ["r.tenant_id = %(tenant_id)s"]
+    params: dict[str, Any] = {"tenant_id": tenant_id}
+    if status:
+        clauses.append("r.status = %(status)s")
+        params["status"] = status
+    if billing_id:
+        clauses.append("r.billing_id = %(billing_id)s")
+        params["billing_id"] = billing_id
+    where_sql = " AND ".join(clauses)
+    return execute_with_tenant(
+        tenant_id,
+        f"""
+        SELECT r.*,
+               c.name AS customer_name,
+               b.invoice_number AS invoice_number,
+               req_u.full_name AS requested_by_name,
+               dec_u.full_name AS decided_by_name
+        FROM credit_release_request r
+        LEFT JOIN customer c ON c.id = r.customer_id AND c.tenant_id = r.tenant_id
+        LEFT JOIN billing b ON b.id = r.billing_id AND b.tenant_id = r.tenant_id
+        LEFT JOIN tenant_user req_u ON req_u.id = r.requested_by AND req_u.tenant_id = r.tenant_id
+        LEFT JOIN tenant_user dec_u ON dec_u.id = r.decided_by AND dec_u.tenant_id = r.tenant_id
+        WHERE {where_sql}
+        ORDER BY r.created_at DESC
+        LIMIT 100
+        """,
+        params,
+    )
+
+
+def decide_credit_release_request(
+    tenant_id: str,
+    request_id: str,
+    *,
+    new_status: str,
+    decided_by: str,
+    decision_notes: str | None = None,
+    release_note_id: str | None = None,
+) -> dict[str, Any] | None:
+    return execute_write_with_tenant(
+        tenant_id,
+        """
+        UPDATE credit_release_request
+        SET status          = %(status)s,
+            decided_by      = %(decided_by)s,
+            decided_at      = NOW(),
+            decision_notes  = %(decision_notes)s,
+            release_note_id = COALESCE(%(release_note_id)s, release_note_id),
+            updated_at      = NOW()
+        WHERE tenant_id = %(tenant_id)s
+          AND id = %(id)s
+          AND status = 'pending'
+        RETURNING *
+        """,
+        {
+            "tenant_id": tenant_id,
+            "id": request_id,
+            "status": new_status,
+            "decided_by": decided_by,
+            "decision_notes": decision_notes,
+            "release_note_id": release_note_id,
+        },
+    )

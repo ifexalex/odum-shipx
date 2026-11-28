@@ -294,6 +294,144 @@ function ProfileTab({ customer, shipments, billing, claims, onSaved }: ProfileTa
         <StatCard label="Outstanding" value={outstanding != null ? fmtNgn(outstanding) : '—'} icon="warn" sublabel={outstanding ? 'across unpaid records' : 'nothing due'} />
         <StatCard label="Open claims" value={openClaims ?? '—'} icon="check" sublabel={openClaims ? 'needs attention' : 'no active disputes'} />
       </div>
+
+      <CreditStandingCard customer={customer} onSaved={onSaved} />
+    </>
+  )
+}
+
+function CreditStandingCard({
+  customer,
+  onSaved,
+}: {
+  customer: Customer
+  onSaved: (c: Customer) => void
+}): JSX.Element {
+  const { session } = useSession()
+  const isAdmin = session?.role === 'tenant_admin' || (session?.roles ?? []).includes('tenant_admin')
+  const summary = customer.credit_summary
+  const [editing, setEditing] = useState(false)
+  const [limitRaw, setLimitRaw] = useState(summary?.credit_limit_ngn ?? '')
+  const [termsRaw, setTermsRaw] = useState(
+    summary?.credit_terms_days != null ? String(summary.credit_terms_days) : '',
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function openEdit(): void {
+    setLimitRaw(summary?.credit_limit_ngn ?? '')
+    setTermsRaw(summary?.credit_terms_days != null ? String(summary.credit_terms_days) : '')
+    setError(null)
+    setEditing(true)
+  }
+
+  async function handleSave(): Promise<void> {
+    setSaving(true)
+    setError(null)
+    try {
+      const updated = await customersApi.updateCredit(customer.id, {
+        credit_limit_ngn: limitRaw.trim() === '' ? null : Number(limitRaw),
+        credit_terms_days: termsRaw.trim() === '' ? null : Number(termsRaw),
+      })
+      toast.success('Credit terms updated', customer.name ?? undefined)
+      onSaved(updated)
+      setEditing(false)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update credit terms.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <Card padding="default" style={{ marginTop: 'var(--space-4)' }}>
+        <SectionHead
+          title="Credit limit & exposure"
+          sub="Controls credit release warnings and default debt payment dates."
+          action={
+            isAdmin && !customer.anonymised_at ? (
+              <Button variant="secondary" size="sm" onClick={openEdit}>
+                Edit credit terms
+              </Button>
+            ) : undefined
+          }
+        />
+        <div className={styles.spacer8} />
+        {summary ? (
+          <>
+            {summary.over_limit && (
+              <div style={{ marginBottom: 'var(--space-3)' }}>
+                <Banner variant="warning" title="Over credit limit">
+                  Current exposure ({fmtNgn(Number(summary.current_exposure_ngn))}) exceeds this customer&apos;s
+                  effective credit limit ({fmtNgn(Number(summary.effective_credit_limit_ngn))}).
+                </Banner>
+              </div>
+            )}
+            <Kvp
+              label="Effective credit limit"
+              value={
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <strong>{fmtNgn(Number(summary.effective_credit_limit_ngn))}</strong>
+                  <Badge variant="neutral">
+                    {summary.using_tenant_default_limit ? 'Tenant default' : 'Custom'}
+                  </Badge>
+                </span>
+              }
+            />
+            <Kvp
+              label="Payment terms"
+              value={
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                  <span>{summary.effective_credit_terms_days} days</span>
+                  <Badge variant="neutral">
+                    {summary.using_tenant_default_terms ? 'Tenant default' : 'Custom'}
+                  </Badge>
+                </span>
+              }
+            />
+            <Kvp label="Current exposure" value={fmtNgn(Number(summary.current_exposure_ngn))} />
+            <Kvp label="Available credit" value={fmtNgn(Number(summary.available_credit_ngn))} divider={false} />
+          </>
+        ) : (
+          <span className={styles.smallMuted}>Credit standing unavailable.</span>
+        )}
+      </Card>
+
+      {editing && (
+        <Modal open onClose={() => setEditing(false)} title="Edit customer credit terms" size="sm">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {error && <Banner variant="error">{error}</Banner>}
+            <Field
+              label="Credit limit (NGN)"
+              name="credit_limit_ngn"
+              type="number"
+              optional
+              placeholder="Leave blank to use tenant default"
+              value={limitRaw}
+              onChange={(e) => setLimitRaw(e.target.value)}
+              helper="Clear to fall back to the default limit set under Settings → Policies."
+            />
+            <Field
+              label="Payment terms (days)"
+              name="credit_terms_days"
+              type="number"
+              optional
+              placeholder="Leave blank to use tenant default"
+              value={termsRaw}
+              onChange={(e) => setTermsRaw(e.target.value)}
+            />
+            <div className={styles.modalActions}>
+              <Button variant="ghost" onClick={() => setEditing(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Action variant="primary" loading={saving} onClick={() => void handleSave()}>
+                Save credit terms
+              </Action>
+            </div>
+          </div>
+        </Modal>
+      )}
     </>
   )
 }

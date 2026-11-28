@@ -110,6 +110,42 @@ def get_customer_for_user(tenant_id: str, user_id: str) -> dict[str, Any] | None
     return repo.get_customer_by_user_id(tenant_id, user_id)
 
 
+def build_customer_credit_summary(tenant_id: str, customer: dict[str, Any]) -> dict[str, Any]:
+    """Compute effective credit limit, payment terms, and current credit exposure (TC-04, D3)."""
+    from decimal import Decimal
+
+    from shared.tenant_policies import resolve_policy_for_date
+
+    defaults = resolve_policy_for_date(tenant_id, "credit_defaults")
+    default_limit = Decimal(str(defaults.get("default_credit_limit_ngn", 0)))
+    default_terms = int(defaults.get("default_credit_terms_days", 14))
+
+    raw_limit = customer.get("credit_limit_ngn")
+    raw_terms = customer.get("credit_terms_days")
+    effective_limit = Decimal(str(raw_limit)) if raw_limit is not None else default_limit
+    effective_terms = int(raw_terms) if raw_terms is not None else default_terms
+
+    exposure_data = repo.get_customer_credit_exposure(tenant_id, str(customer["id"]))
+    unpaid_billing = Decimal(str(exposure_data.get("unpaid_billing_ngn") or "0"))
+    active_carryover = Decimal(str(exposure_data.get("active_carryover_ngn") or "0"))
+    current_exposure = unpaid_billing + active_carryover
+    available = max(effective_limit - current_exposure, Decimal("0"))
+
+    return {
+        "credit_limit_ngn": str(raw_limit) if raw_limit is not None else None,
+        "credit_terms_days": int(raw_terms) if raw_terms is not None else None,
+        "effective_credit_limit_ngn": str(effective_limit),
+        "effective_credit_terms_days": effective_terms,
+        "using_tenant_default_limit": raw_limit is None,
+        "using_tenant_default_terms": raw_terms is None,
+        "unpaid_billing_ngn": str(unpaid_billing),
+        "active_carryover_ngn": str(active_carryover),
+        "current_exposure_ngn": str(current_exposure),
+        "available_credit_ngn": str(available),
+        "over_limit": current_exposure > effective_limit,
+    }
+
+
 def get_customer(
     tenant_id: str,
     customer_id: str,
@@ -122,7 +158,58 @@ def get_customer(
     # Customer role users may only access their own record
     if is_customer_role and (not requesting_user_id or str(customer.get("user_id")) != requesting_user_id):
         raise ResourceNotFoundError("customer", customer_id)
+    if not is_customer_role:
+        try:
+            return {**customer, "credit_summary": build_customer_credit_summary(tenant_id, customer)}
+        except Exception:
+            logger.debug("Skipping credit_summary enrichment for customer %s", customer_id)
     return customer
+
+
+def update_customer_credit(
+    tenant_id: str,
+    customer_id: str,
+    *,
+    credit_limit_ngn: Any,
+    credit_terms_days: int | None,
+    actor_id: str,
+    ip_address: str | None = None,
+) -> dict[str, Any]:
+    """Set or reset a customer's credit limit and payment terms (tenant_admin only, TC-04, D3)."""
+    existing = repo.get_customer_by_id(tenant_id, customer_id)
+    if not existing:
+        raise ResourceNotFoundError("customer", customer_id)
+
+    updated = repo.update_customer_credit_terms(
+        tenant_id,
+        customer_id,
+        credit_limit_ngn=credit_limit_ngn,
+        credit_terms_days=credit_terms_days,
+    )
+    if updated is None:
+        raise RuntimeError("update_customer_credit_terms returned None unexpectedly")
+
+    log_audit(
+        tenant_id=tenant_id,
+        entity_type="customer",
+        entity_id=customer_id,
+        action="UPDATE",
+        actor_id=actor_id,
+        actor_role="tenant_admin",
+        before_state={
+            "credit_limit_ngn": str(existing["credit_limit_ngn"]) if existing.get("credit_limit_ngn") is not None else None,
+            "credit_terms_days": existing.get("credit_terms_days"),
+        },
+        after_state={
+            "credit_limit_ngn": str(updated["credit_limit_ngn"]) if updated.get("credit_limit_ngn") is not None else None,
+            "credit_terms_days": updated.get("credit_terms_days"),
+        },
+        ip_address=ip_address,
+    )
+    try:
+        return {**updated, "credit_summary": build_customer_credit_summary(tenant_id, updated)}
+    except Exception:
+        return updated
 
 
 _ERASED_EMAIL_DOMAIN = "@erased.invalid"

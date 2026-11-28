@@ -34,6 +34,7 @@ export function GenerateReleaseNoteModal({
   const [packagesReleased, setPackagesReleased] = useState('')
   const [packageUnit, setPackageUnit] = useState('cartons')
   const [releaseWithOutstanding, setReleaseWithOutstanding] = useState(hasOutstanding && canAuthoriseCredit)
+  const [requestCreditApproval, setRequestCreditApproval] = useState(hasOutstanding && !canAuthoriseCredit)
   const [approvalNotes, setApprovalNotes] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [physicalDocumentNumber, setPhysicalDocumentNumber] = useState('')
@@ -55,11 +56,33 @@ export function GenerateReleaseNoteModal({
     .filter(Boolean)
   const packagesReleasedCount = Number(packagesReleased)
   const creditRelease = hasOutstanding && canAuthoriseCredit && releaseWithOutstanding
+  const creditRequestMode = hasOutstanding && !canAuthoriseCredit && requestCreditApproval
 
   async function handleSubmit(): Promise<void> {
     setSubmitting(true)
     setError(null)
     try {
+      if (creditRequestMode) {
+        const req = await releaseNotesApi.createCreditRequest({
+          billing_id: billing.id,
+          carton_tags: releaseMode === 'tags' ? cartonTags : [],
+          packages_released: releaseMode === 'count' ? packagesReleasedCount : undefined,
+          package_unit: releaseMode === 'count' ? packageUnit.trim() : undefined,
+          warehouse_id: warehouseId || undefined,
+          physical_document_number: physicalDocumentNumber.trim() || undefined,
+          packing_list_invoice_numbers: invoiceNumbers.length > 0 ? invoiceNumbers : undefined,
+          due_date: dueDate || undefined,
+          reason: approvalNotes.trim(),
+        })
+        toast.success(
+          'Credit release requested',
+          req.exceeds_credit_limit
+            ? 'Sent to tenant admin approvals (exceeds customer credit limit).'
+            : 'Sent to tenant admin approvals.',
+        )
+        onSuccess()
+        return
+      }
       const created = await releaseNotesApi.create({
         billing_id: billing.id,
         carton_tags: releaseMode === 'tags' ? cartonTags : [],
@@ -85,7 +108,7 @@ export function GenerateReleaseNoteModal({
     (releaseMode === 'tags'
       ? cartonTags.length > 0
       : packagesReleasedCount > 0 && packageUnit.trim().length > 0) &&
-    (!creditRelease || approvalNotes.trim().length > 0) &&
+    ((!creditRelease && !creditRequestMode) || approvalNotes.trim().length >= 3) &&
     !submitting
 
   return (
@@ -248,9 +271,42 @@ export function GenerateReleaseNoteModal({
           </>
         )}
         {hasOutstanding && !canAuthoriseCredit && (
-          <Banner variant="info" title="Unpaid balance">
-            <strong>{formatNgn(outstandingBalance)}</strong> remains unpaid. Only a tenant admin can authorise a release on credit.
-          </Banner>
+          <>
+            <CheckboxField
+              label={`Request credit release approval (${formatNgn(outstandingBalance)} still owed)`}
+              checked={requestCreditApproval}
+              onChange={setRequestCreditApproval}
+            />
+            {requestCreditApproval ? (
+              <>
+                <Banner variant="info" title="Requires tenant admin approval">
+                  <strong>{formatNgn(outstandingBalance)}</strong> remains unpaid. Your request will wait in the
+                  tenant admin Approvals inbox until approved.
+                </Banner>
+                <Field
+                  label="Reason for credit release"
+                  name="credit_reason"
+                  required
+                  multiline
+                  placeholder="Why should these goods be released before full payment?"
+                  value={approvalNotes}
+                  onChange={(e) => setApprovalNotes(e.target.value)}
+                />
+                <DateField
+                  label="Proposed debt payment date"
+                  name="due_date"
+                  optional
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </>
+            ) : (
+              <Banner variant="info" title="Unpaid balance">
+                <strong>{formatNgn(outstandingBalance)}</strong> remains unpaid. Only a tenant admin can authorise a
+                release on credit.
+              </Banner>
+            )}
+          </>
         )}
 
         <div className={styles.modalActions}>
@@ -263,7 +319,7 @@ export function GenerateReleaseNoteModal({
             disabled={!canSubmit}
             onClick={() => void handleSubmit()}
           >
-            Generate release note
+            {creditRequestMode ? 'Request credit release' : 'Generate release note'}
           </Action>
         </div>
       </div>

@@ -69,6 +69,7 @@ TENANT_TABLES: tuple[TenantTable, ...] = (
     TenantTable("tenant_user_role"),
     TenantTable("tenant_user_activation", omit=frozenset({"token_hash"})),
     TenantTable("tenant_config"),  # secrets inside config_value are removed by the export, see redact_config
+    TenantTable("tenant_policy_history"),  # → tenant_user
     TenantTable("tenant_counter"),
     TenantTable("charge_type"),
     TenantTable("warehouse"),
@@ -93,6 +94,7 @@ TENANT_TABLES: tuple[TenantTable, ...] = (
     TenantTable("storage_fee_log"),  # → billing, container, misc_charge
     TenantTable("cbm_dispute"),  # → billing, packing_list
     TenantTable("release_note", omit=frozenset({"pickup_code_hash"})),  # → billing, container, release_note
+    TenantTable("credit_release_request"),  # → billing, customer, warehouse, release_note
     TenantTable("pickup_record", decrypt=frozenset({"id_number"})),  # → release_note
     TenantTable("carryover_ledger"),  # → billing, release_note
     TenantTable("damage_claim"),  # → container, packing_list

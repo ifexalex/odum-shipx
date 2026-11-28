@@ -5,6 +5,20 @@ import type { ProtectedOutcome } from './platformSecurity'
 // Customer types (partially defined here since 7.1 pulled customersApi forward)
 // ---------------------------------------------------------------------------
 
+export interface CustomerCreditSummary {
+  credit_limit_ngn: string | null
+  credit_terms_days: number | null
+  effective_credit_limit_ngn: string
+  effective_credit_terms_days: number
+  using_tenant_default_limit: boolean
+  using_tenant_default_terms: boolean
+  unpaid_billing_ngn: string
+  active_carryover_ngn: string
+  current_exposure_ngn: string
+  available_credit_ngn: string
+  over_limit: boolean
+}
+
 export interface Customer {
   id: string
   tenant_id: string
@@ -27,6 +41,9 @@ export interface Customer {
   // any — null when there's no login (no invite ever sent, or it expired)
   // and when the customer already has an active login (user_id set).
   pending_invite_expires_at?: string | null
+  credit_limit_ngn?: string | null
+  credit_terms_days?: number | null
+  credit_summary?: CustomerCreditSummary
 }
 
 export interface CustomerListParams {
@@ -95,6 +112,10 @@ export const customersApi = {
    */
   invite: (id: string) =>
     apiRequest<CustomerInvite>({ method: 'POST', path: `/v1/customers/${id}/invite` }),
+
+  /** Set or reset a customer's per-customer credit limit and payment terms (tenant_admin only, TC-04). */
+  updateCredit: (id: string, body: { credit_limit_ngn: number | null; credit_terms_days: number | null }) =>
+    apiRequest<Customer>({ method: 'PATCH', path: `/v1/customers/${id}/credit`, body }),
 }
 
 // ---------------------------------------------------------------------------
@@ -603,6 +624,107 @@ export const configApi = {
   /** Live connectivity check against the stored key — proves it actually works, not just present. */
   testPaystackConnection: () =>
     apiRequest<PaystackTestResult>({ method: 'POST', path: '/v1/tenant/config/paystack/test', body: {} }),
+
+  /** Effective-dated tenant business policies and append-only change history (Phase 1, TC-01). */
+  getPolicies: () =>
+    apiRequest<TenantPoliciesResponse>({ method: 'GET', path: '/v1/tenant/policies' }),
+
+  updatePolicy: (body: { policy_key: PolicyKey; value: Record<string, unknown>; effective_date?: string }) =>
+    apiRequest<TenantPoliciesResponse>({ method: 'PUT', path: '/v1/tenant/policies', body }),
+
+  /** Unified tenant admin approvals inbox (Phase 1, TC-02). */
+  getApprovals: (params: { type?: TenantApprovalType; counts_only?: boolean } = {}) =>
+    apiRequest<TenantApprovalsResponse>({
+      method: 'GET',
+      path: '/v1/tenant/approvals',
+      query: {
+        type: params.type,
+        counts_only: params.counts_only ? 'true' : undefined,
+      },
+    }),
+
+  /** Server-served role-to-capability matrix (Phase 1, TC-05). */
+  getPermissions: () =>
+    apiRequest<TenantPermissionsResponse>({ method: 'GET', path: '/v1/tenant/permissions' }),
+}
+
+export type PolicyKey =
+  | 'storage_fee'
+  | 'refund_threshold_usd'
+  | 'credit_defaults'
+  | 'dispute_escalation'
+  | 'reminder_days'
+
+export interface PolicyHistoryEntry {
+  id: string
+  policy_key: PolicyKey
+  old_value: Record<string, unknown> | null
+  new_value: Record<string, unknown>
+  effective_date: string
+  changed_by: string | null
+  changed_by_name: string | null
+  created_at: string
+}
+
+export interface TenantPoliciesResponse {
+  policies: {
+    storage_fee: { enabled: boolean; grace_period_days: number; daily_fee_per_carton_ngn: number }
+    refund_threshold_usd: { staff_limit: number; requires_manager_above: number }
+    credit_defaults: { default_credit_limit_ngn: number; default_credit_terms_days: number }
+    dispute_escalation: { enabled: boolean; auto_escalate_days: number }
+    reminder_days: { storage_first_reminder: number; storage_final_reminder: number }
+  }
+  scheduled: Partial<Record<PolicyKey, PolicyHistoryEntry>>
+  history: PolicyHistoryEntry[]
+  default_effective_date: string
+}
+
+export type TenantApprovalType = 'credit_release' | 'refund' | 'claim' | 'announcement'
+
+export interface TenantApprovalItem {
+  id: string
+  type: TenantApprovalType
+  title: string
+  summary: string
+  amount_ngn: string | null
+  customer_id: string | null
+  customer_name: string | null
+  customer_outstanding_ngn: string | null
+  customer_credit_limit_ngn: string | null
+  exceeds_credit_limit: boolean
+  requested_by: string | null
+  requested_by_name: string | null
+  self_requested: boolean
+  reason: string
+  created_at: string
+  entity_id: string
+  detail_path: string
+  metadata: Record<string, unknown>
+}
+
+export interface TenantApprovalsResponse {
+  counts: {
+    credit_release: number
+    refund: number
+    claim: number
+    announcement: number
+    total: number
+  }
+  staff_limit_usd: number
+  staff_limit_ngn: number
+  items: TenantApprovalItem[]
+}
+
+export interface RoleCapabilityItem {
+  key: string
+  domain: string
+  label: string
+  allowed: boolean
+}
+
+export interface TenantPermissionsResponse {
+  roles: Record<string, RoleCapabilityItem[]>
+  capabilities: { key: string; domain: string; label: string; roles: string[] }[]
 }
 
 // ---------------------------------------------------------------------------

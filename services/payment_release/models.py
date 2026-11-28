@@ -145,6 +145,34 @@ class CreateWarehouseRequest(BaseModel):
     is_default: bool = False
 
 
+class CreateCreditReleaseRequest(BaseModel):
+    """POST /v1/release-notes/credit-requests — staff request for admin credit release approval (TC-03, D2)."""
+
+    billing_id: str
+    carton_tags: list[str] = Field(default_factory=list)
+    packages_released: int | None = Field(default=None, gt=0)
+    package_unit: str | None = None
+    warehouse_id: str | None = None
+    physical_document_number: str | None = None
+    packing_list_invoice_numbers: list[str] = Field(default_factory=list)
+    due_date: date | None = None
+    reason: str = Field(min_length=3, max_length=1000)
+
+    @model_validator(mode="after")
+    def _require_tags_or_packages(self) -> "CreateCreditReleaseRequest":
+        if not self.carton_tags and self.packages_released is None:
+            raise ValueError("Either carton_tags or packages_released is required")
+        if self.packages_released is not None and not self.package_unit:
+            raise ValueError("package_unit is required when packages_released is supplied")
+        return self
+
+
+class DecideCreditReleaseRequest(BaseModel):
+    """POST /v1/release-notes/credit-requests/{id}/{approve|reject}."""
+
+    decision_notes: str | None = Field(default=None, max_length=1000)
+
+
 class UpdateWarehouseRequest(BaseModel):
     """Partial edit of a warehouse's letterhead fields. Every field is optional;
     only those sent are patched (service uses exclude_unset). is_default is not

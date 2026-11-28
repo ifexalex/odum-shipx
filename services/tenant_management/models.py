@@ -1,6 +1,6 @@
 """Pydantic models for the Tenant Management service."""
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -530,3 +530,22 @@ class SelfRegistrationUpdateRequest(BaseModel):
     """
 
     enabled: bool
+
+
+class UpdatePolicyRequest(BaseModel):
+    """PUT /v1/tenant/policies — update a single business policy with an effective date (TC-01, D4)."""
+
+    policy_key: str = Field(min_length=1)
+    value: dict[str, Any]
+    effective_date: date | None = None
+
+
+class UpdateCustomerCreditRequest(BaseModel):
+    """PATCH /v1/customers/{id}/credit — per-customer credit limit and payment terms (TC-04, D3).
+
+    Supplying ``None`` clears the per-customer override so the customer falls back to the
+    tenant default from the Policies page.
+    """
+
+    credit_limit_ngn: Decimal | None = Field(default=None, ge=Decimal("0"), allow_inf_nan=False)
+    credit_terms_days: int | None = Field(default=None, ge=0, le=365)
