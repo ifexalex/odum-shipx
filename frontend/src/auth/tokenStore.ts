@@ -1,3 +1,4 @@
+import { clearStepUp } from './stepUp'
 import type { TokenType, UserRole } from './types'
 
 type ActiveAuth =
@@ -30,6 +31,8 @@ export function setActiveLocalAuth(auth: { tenantId: string; role: UserRole; rol
 
 export function clearActiveTokens(): void {
   active = null
+  // A step-up grant belongs to the session it was earned in.
+  clearStepUp()
 }
 
 export function getActiveIdToken(): string | null {

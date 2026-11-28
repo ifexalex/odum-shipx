@@ -156,3 +156,7 @@ For each release_note with status = 'active' AND valid_until IS NOT NULL AND val
 - [x] All jobs are idempotent (safe to re-run)
 
 **Ground-truth gap closed (2026-11-28, platform audit PA-07):** migration 074 revoked `UPDATE` on `platform_audit_log` from `logistics_app`, but the cleanup still anonymised a deleted tenant's rows with a plain `UPDATE`. Since the app connects as `logistics_app`, the statement was refused, the transaction rolled back, and no offboarded tenant could be deleted after its 90 days. The cleanup now calls `anonymise_platform_audit_for_tenant(uuid)`, a `SECURITY DEFINER` function from migration 075 that only runs in the `PLATFORM` context. Tests: `tests/unit/test_data_cleanup.py`.
+
+### `platform_approvals` — every 15 minutes (platform audit Phase 1, 2026-11-28)
+
+`services/scheduled/platform_approvals.py` calls `services.tenant_management.approvals.run_due()`: it runs each `scheduled` approval whose `execute_after` has passed (a sole admin's offboarding, 24 hours after the request, as the requester) and moves undecided `pending` requests past `expires_at` to `expired`. Returns `{executed, failed, expired}`; a failed action is recorded on its row and counted as `scheduled_job_step`. AWS: EventBridge `rate(15 minutes)` → Lambda `platform-approvals`; Azure: Container App Job `*/15 * * * *`. The 90-day cleanup also anonymises a deleted tenant's approvals now (payload, reason, secret and target cleared; open ones cancelled). Tests: `tests/unit/test_platform_admin_phase1.py::TestScheduledRun`.

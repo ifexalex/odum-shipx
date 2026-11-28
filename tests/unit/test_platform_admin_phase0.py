@@ -33,7 +33,13 @@ def _platform_event(method: str, path: str, query: dict | None = None, body: dic
 
 
 def _platform_ctx() -> TenantContext:
-    return TenantContext(tenant_id="PLATFORM", user_id="platform-admin-1", role=UserRole.PLATFORM_ADMIN)
+    return TenantContext(
+        tenant_id="PLATFORM",
+        user_id="platform-admin-1",
+        role=UserRole.PLATFORM_ADMIN,
+        platform_user_id="pu-1",
+        platform_role="owner",
+    )
 
 
 def _call(event: dict) -> dict:
@@ -202,11 +208,22 @@ class TestOffboardingReason:
         assert resp["statusCode"] == 422
         offboard.assert_not_called()
 
-    def test_the_reason_reaches_the_service(self):
-        with patch("services.tenant_management.handler.service.offboard_tenant", return_value={"id": TENANT_ID}) as offboard:
+    def test_the_reason_reaches_the_approval_request(self):
+        # Since Phase 1 an offboarding goes through a two-person approval (decision D4); the reason travels with it.
+        tenant = {"id": TENANT_ID, "status": "active", "company_name": "Acme", "slug": "acme"}
+        with (
+            patch("services.tenant_management.handler.service.get_tenant", return_value=tenant),
+            patch("services.tenant_management.handler.step_up.require_step_up"),
+            patch(
+                "services.tenant_management.handler.approvals.request_protected_action",
+                return_value={"outcome": "pending_approval", "approval": {"id": "a-1"}},
+            ) as request,
+        ):
             resp = _call(_platform_event("DELETE", f"/v1/platform/tenants/{TENANT_ID}", body={"reason": " Contract ended "}))
-        assert resp["statusCode"] == 200
-        assert offboard.call_args.kwargs["reason"] == "Contract ended"
+        assert resp["statusCode"] == 202
+        protected = request.call_args.args[1]
+        assert protected.reason == "Contract ended"
+        assert protected.payload == {"tenant_id": TENANT_ID, "reason": "Contract ended"}
 
 
 # ---------------------------------------------------------------------------

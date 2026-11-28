@@ -37,7 +37,7 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | GET | `/v1/platform/tenants` | List tenants, one page at a time: `?status=&tier=&q=&cursor=&limit=` (max 100), paginated envelope with `total_count` (2026-11-28, PA-02) | platform_admin |
 | GET | `/v1/platform/tenants/{id}` | Get tenant detail | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}` | Update tenant | platform_admin |
-| DELETE | `/v1/platform/tenants/{id}` | Offboard tenant; body `{"reason": "…"}` required (1–2000 chars, stored on the `TENANT_OFFBOARDED` audit row, PA-04). Also queues the tenant data export, same transaction (audit BE-10) | platform_admin |
+| DELETE | `/v1/platform/tenants/{id}` | Offboard tenant; body `{"reason": "…", "confirm"?: "<slug>"}` (reason 1–2000 chars, stored on the `TENANT_OFFBOARDED` audit row, PA-04). **Since Phase 1:** step-up required, and the answer is a protected-action outcome, not the tenant: 202 `pending_approval` / `scheduled`, or 200 `executed` (sole admin). The offboarding itself (status, queued data export, audit BE-10) runs when approved | tenant_lifecycle + step-up |
 | GET | `/v1/platform/tenants/{id}/offboarding-export` | The offboarded tenant's data export: status, size, checksum, rows, attempts, deletion date (2026-11-17) | platform_admin |
 | POST | `/v1/platform/tenants/{id}/offboarding-export` | Queue an export when there is none or it gave up (2026-11-17) | platform_admin |
 | POST | `/v1/platform/tenants/{id}/offboarding-export/link` | Five-minute download link to the archive; audited (2026-11-17) | platform_admin |
@@ -50,7 +50,19 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | DELETE | `/v1/platform/impersonation/{session_id}` | End impersonation session | platform_admin |
 | GET | `/v1/platform/onboarding-requests` | List shipping-company onboarding leads; `?status=` filters (`new\|contacted\|approved\|rejected\|provisioned`) | platform_admin |
 | GET | `/v1/platform/onboarding-requests/{id}` | Get one onboarding lead | platform_admin |
-| PATCH | `/v1/platform/onboarding-requests/{id}` | Update lead status (`{status, rejection_reason?}`) — mark contacted / approve / reject | platform_admin |
+| PATCH | `/v1/platform/onboarding-requests/{id}` | Update lead status (`{status, rejection_reason?}`) — mark contacted / approve / reject | support |
+| GET | `/v1/platform/me` | The caller's directory row and `permissions` (Phase 1) | read |
+| POST | `/v1/platform/auth/step-up` | Re-authenticate: `{password, mfa_code?}` (Cognito) or `{id_token}` (Entra). Returns `{step_up_token, expires_at}`, good for 5 minutes, sent back as `X-Step-Up-Token` | read |
+| GET | `/v1/platform/admins` | The platform admin directory | read |
+| POST | `/v1/platform/admins` | Invite `{email, name, role}`: creates the identity-provider account in the `platform_admin` group and an `invited` row | admins + step-up |
+| PATCH | `/v1/platform/admins/{id}` | `{role?, disabled?}`; never your own row, never the last active owner | admins + step-up |
+| GET | `/v1/platform/approvals` | Two-person requests, newest first; `?status=open\|pending\|scheduled\|executed\|failed\|rejected\|cancelled\|expired`, `?limit=` (max 200) | read |
+| GET | `/v1/platform/approvals/{id}` | One request | read |
+| POST | `/v1/platform/approvals/{id}/approve` | A second admin approves; the action runs now, as the requester | approve + step-up |
+| POST | `/v1/platform/approvals/{id}/reject` | A second admin turns it down | approve + step-up |
+| POST | `/v1/platform/approvals/{id}/cancel` | The requester, or an owner, withdraws a pending or scheduled request | requester or admins |
+
+**Roles column (Phase 1, 2026-11-28):** every platform route needs `platform_admin` *and* the named permission of the caller's directory role (`shared/platform_roles.py`). Reads need `read`; the table's other rows map as: create/edit/suspend/activate/reactivate/offboard/exports → `tenant_lifecycle`; impersonate, end a session, onboarding leads → `support`; plans, quota overrides → `plans`; settings, gateways → `settings`. Suspend also needs a step-up.
 
 ### Public Endpoints (no JWT)
 | Method | Path | Handler | Roles |
@@ -142,6 +154,43 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 
 Covered by `tests/unit/test_platform_admin_phase0.py`, `test_platform_audit_actions.py` and `test_data_cleanup.py`, plus the platform page tests in `frontend/src/pages/platform/`.
 
+### Platform admin directory, step-up and approvals (platform audit Phase 1a, 2026-11-28)
+
+Decisions D2 (four roles) and D4 (all six dangerous actions need a second admin; the sole-admin fallback) from the platform audit, accepted 2026-11-28. MFA enforcement (D3) is Phase 1b; the metrics and job tables (D7) are Phase 1c.
+
+**Roles** (`platform_user.role`, `shared/platform_roles.py`):
+
+| Role | Permissions |
+|---|---|
+| owner | everything, including `admins` |
+| admin | `read`, `tenant_lifecycle`, `support`, `plans`, `settings`, `approve` |
+| support | `read`, `support` |
+| finance | `read` |
+
+A support or finance admin is also refused any write outside `/v1/platform` and `/v1/tenants` (`shared.auth._assert_platform_write_outside_console`), since a few tenant routes accept a platform admin. A write route with no entry in `handler._required_platform_permission` needs `admins` (fail-closed).
+
+**Who gets into the directory.** A console invite creates the identity-provider account (in the `platform_admin` group) and an `invited` row bound to its subject; the first request activates it. `scripts/platform_admins.py add` seeds an `invited` row by email, bound on first sign-in. While the directory holds no active or invited owner, the first platform admin to sign in becomes the owner (an advisory lock stops two). Before Phase 1 every group member had full power, so bootstrap grants nothing new; seed an owner before deploying to skip it.
+
+**Step-up.** The dangerous routes (offboard, suspend, a new gateway key, maintenance on, admin invite and change, approve, reject) need header `X-Step-Up-Token`, else 403 `STEP_UP_REQUIRED`. `POST /v1/platform/auth/step-up` checks the proof on the server: on Cognito it signs in as the caller (username from the directory, never the body) with `USER_PASSWORD_AUTH`, then the TOTP code if the pool asks (403 `STEP_UP_MFA_REQUIRED`), revokes the tokens that sign-in returned, and checks the subject matches. On Entra it verifies an ID token from a fresh sign-in (`auth_time` within 5 minutes). Wrong attempts count toward the sign-in lockout (`rate_limit.LOGIN_FAILURES`, key `step_up:{subject}`); a bad proof is 403 `STEP_UP_FAILED`. The token is an HS256 JWT (`typ=platform_step_up`, 5 minutes) keyed off the impersonation secret with a separate derivation. The request body is validated before the step-up check, so a bad request never prompts.
+
+**Protected actions answer with an outcome.** Wire change: `DELETE /v1/platform/tenants/{id}`, `PUT /v1/platform/settings` turning `maintenance_mode` on, and `PUT /v1/platform/settings/{kind}-gateway` changing a secret field now answer
+
+```json
+{"data": {"outcome": "pending_approval | scheduled | executed", "approval": {…}, "result": {…}}}
+```
+
+with HTTP 202 for `pending_approval` and `scheduled`, 200 for `executed` (`result` is what the route used to return). Maintenance must be turned on by itself (422 otherwise); turning it off, and a gateway edit that keeps the stored key (`****` or the same value), are applied directly as before.
+
+**The approval flow** (`services/tenant_management/approvals.py`, table `platform_approval`, migration 076): with another active owner or admin, the request is `pending` for 24 hours and they are emailed; any of them except the requester approves (`SelfApprovalForbiddenError` 422, and a CHECK in the table) or rejects; approving runs the action at once **as the requester**, moving `pending → approved → executed | failed`. The status guard on each UPDATE means two approvers cannot both run it. A sole admin must send `confirm` (the tenant slug, the gateway kind, or `maintenance`; 422 `VALIDATION_ERROR` on `confirm` otherwise) and every active owner is emailed; an offboarding is then `scheduled` for 24 hours (cancellable; `services/scheduled/platform_approvals.py` runs it every 15 minutes once due), and the other actions run at once. A request's payload is hashed when made and checked before it runs (`APPROVAL_TAMPERED`); a gateway key is held encrypted in `secret_payload` (`shared/encryption.py`) and is never in `payload` or any response. One open request per action and target (409 `DUPLICATE_RESOURCE`). Plan price changes, a manual `data_cleanup` re-run and a tenant admin transfer are in the schema for Phases 2–4 and refused until their executors exist.
+
+**Audit.** `platform_audit_log` gains `before_state`, `after_state` (secrets masked) and `request_id` (from the bound log context). Tenant edits and status changes, settings, plan limits, quota overrides, gateways and directory changes fill them. `GET /v1/platform/audit-log` rows carry `actor_name` and `actor_role` from the directory. New actions: `PLATFORM_ADMIN_ENROLLED`, `_INVITED`, `_ROLE_CHANGED`, `_DISABLED`, `_ENABLED`, `STEP_UP_VERIFIED`, `APPROVAL_REQUESTED`, `_APPROVED`, `_REJECTED`, `_CANCELLED`, `_SCHEDULED`, `_EXECUTED`, `_FAILED`, `_EXPIRED`.
+
+**Ground-truth gaps found:** `platform_audit_log.actor_id` is a UUID; an Entra `oid` and a Cognito `sub` both are, so the `actor_name` join (`pu.subject = pal.actor_id::text`) holds on both clouds. The 90-day cleanup now also anonymises a deleted tenant's approvals (payload, reason, secret and target cleared, open ones cancelled) before deleting the tenant.
+
+**Known gap:** the console's step-up dialog handles Cognito only. On Entra it explains that a fresh Microsoft sign-in cannot be requested yet; the backend accepts `{id_token}`, and the console side lands with MFA (Phase 1b).
+
+Covered by `tests/unit/test_platform_admin_phase1.py` (roles, route permissions, directory lookup, step-up tokens and verification, approvals, protected settings routes, the directory service, audit rows) and the frontend tests `auth/stepUp.test.ts`, `shell/StepUpHost.test.tsx`, `pages/platform/PlatformApprovals.test.tsx`, `PlatformAdmins.test.tsx`.
+
 **Implementation notes / ground-truth gaps found (2026-07-18 — platform admin impersonation was broken at four layers):** (1) `impersonation.py`'s `_get_tenant_admin()` selected non-existent columns `tu.user_id` / `tu.is_active` (real schema: `id` PK, `status` enum) — every `POST /v1/platform/tenants/{id}/impersonate` 500'd against the real DB; (2) `platform_audit_log.actor_id` had an FK to `tenant_user(id)`, but platform admins have no `tenant_user` row by design, so **every platform audit insert silently failed** (swallowed with a warning) and the platform audit-log page was permanently empty — FK dropped in migration 037 (same class as migration 014); (3) the frontend read `result.id_token` where the wire field is `token`; (4) `buildSession()` required `custom:tenant_id`/`cognito:groups` claims, but the raw impersonation token carries bare `tenant_id`/`role` — now accepted as a fallback shape. Also: `scripts/local_server.py` now maps impersonation-token claims the same way the production REQUEST authorizer does, and `LocalAuthProvider` implements `startImpersonation`/`exitImpersonation` (was a hard throw), so "Impersonate" works in both local auth modes. Full loop verified live: start → tenant-scoped read → write blocked 422 → end session.
 
 **Implementation notes / ground-truth gaps found (2026-07-09):** `GET /v1/customers` previously had **no role scoping** — any logged-in customer could list every customer's PII in the tenant (cross-customer data leak within a tenant). Fixed: customer role now receives only their own record, resolved via `customer.user_id = ctx.user_id` (`get_customer_for_user`). At the same time PATCH/DELETE were widened to support customer self-service (Account page 10.7): ownership is verified via the same `user_id` linkage, and PATCH's body is filtered to a safe self-service allowlist before hitting `update_customer`.
@@ -232,7 +281,9 @@ Platform admin requests use a distinct JWT structure from tenant users:
 - `cognito:groups`: `"platform_admin"` (no tenant prefix — unlike tenant users which use `"{tenant_id}:{role}"`)
 - `custom:tenant_id`: `"PLATFORM"` (bypasses per-tenant active/suspended check in auth middleware)
 
-Locally, set `X-Role: platform_admin` and `X-Tenant-ID: PLATFORM` to simulate platform admin access.
+Since Phase 1 (2026-11-28) the group gets a token to the platform routes and no further: `get_tenant_context` resolves the caller to an active `platform_user` row (`shared/platform_directory.py`) and puts its id and role on the context (`platform_user_id`, `platform_role`). No row, or a disabled one, is 403 (`PLATFORM_ADMIN_NOT_ENROLLED` / `PLATFORM_ADMIN_DISABLED`); a directory outage is 503 (fail-closed). See "Platform admin directory, step-up and approvals" below.
+
+Locally, set `X-Role: platform_admin` and `X-Tenant-ID: PLATFORM` to simulate platform admin access. The seed creates the matching owner row (subject `00000000-0000-0000-0000-000000000000`) and a second admin (`…0002`) for trying approvals.
 
 ### Tenant Status Transitions
 

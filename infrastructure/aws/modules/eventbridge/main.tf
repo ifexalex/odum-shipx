@@ -25,6 +25,7 @@ locals {
     usage-aggregation       = "rate(1 hour)"
     release-note-expiry     = "cron(0 0 * * ? *)" # midnight UTC daily
     offboarding-export      = "rate(1 hour)"      # writes queued tenant data exports (audit BE-10)
+    platform-approvals      = "rate(15 minutes)"  # due sole-admin offboardings, expired approvals (platform Phase 1)
   }
 }
 

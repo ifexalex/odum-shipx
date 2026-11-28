@@ -103,6 +103,7 @@ def update_platform_settings(
                 raise ValidationError(f"{key} must be a non-empty string", field_errors={key: "Must be a non-empty string"})
             validated[key] = value.strip()
 
+    current = repo.get_platform_settings() if validated else {}
     for key, value in validated.items():
         repo.upsert_platform_setting(key, value, actor_id)
 
@@ -117,6 +118,8 @@ def update_platform_settings(
                 target_tenant_id=None,
                 details={"updated_keys": sorted(validated.keys()), "values": validated},
                 ip_address=ip_address,
+                before_state={key: current.get(key) for key in validated},
+                after_state=dict(validated),
             )
         except Exception as exc:
             logger.warning("Platform audit insert failed for settings update: %s", exc)
@@ -231,7 +234,8 @@ def update_plan(tier: str, body: dict[str, Any], actor_id: str, ip_address: str 
     plan_limits = settings.get(PLAN_LIMITS_SETTING_KEY) or {}
     if not isinstance(plan_limits, dict):
         plan_limits = {}
-    plan_limits[tier] = {**(plan_limits.get(tier) or {}), **override}
+    before = dict(plan_limits.get(tier) or {})
+    plan_limits[tier] = {**before, **override}
     repo.upsert_platform_setting(PLAN_LIMITS_SETTING_KEY, plan_limits, actor_id)
 
     try:
@@ -241,6 +245,8 @@ def update_plan(tier: str, body: dict[str, Any], actor_id: str, ip_address: str 
             target_tenant_id=None,
             details={"tier": tier, "override": override},
             ip_address=ip_address,
+            before_state={"tier": tier, "limits": before},
+            after_state={"tier": tier, "limits": plan_limits[tier]},
         )
     except Exception as exc:
         logger.warning("Platform audit insert failed: %s", exc)
@@ -267,6 +273,7 @@ def set_quota_override(
 
     override = {k: v for k, v in body.items() if k in LIMIT_DIMENSIONS and isinstance(v, int | float) and v >= 0}
     key = f"{QUOTA_OVERRIDE_KEY_PREFIX}{tenant_id}"
+    previous = repo.get_platform_settings().get(key) or {}
     repo.upsert_platform_setting(key, override, actor_id)
 
     try:
@@ -276,6 +283,8 @@ def set_quota_override(
             target_tenant_id=tenant_id,
             details={"override": override},
             ip_address=ip_address,
+            before_state={"override": previous if isinstance(previous, dict) else {}},
+            after_state={"override": override},
         )
     except Exception as exc:
         logger.warning("Platform audit insert failed: %s", exc)
@@ -365,11 +374,34 @@ def update_gateway_settings(
             target_tenant_id=None,
             details={"gateway": kind, "fields": sorted(body.keys())},  # never log values
             ip_address=ip_address,
+            # Secrets masked on both sides: the record shows a key changed, never the key.
+            before_state=_mask_gateway(existing, spec["secret_fields"]),
+            after_state=_mask_gateway(merged, spec["secret_fields"]),
         )
     except Exception as exc:
         logger.warning("Platform audit insert failed: %s", exc)
 
     return {kind: _mask_gateway(merged, spec["secret_fields"])}
+
+
+def split_gateway_update(kind: str, body: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split a gateway update into ``(plain_fields, changed_secrets)``.
+
+    A secret counts as changed when the body carries a value other than the mask (``****``) that differs from the
+    stored one. A change to a secret needs a second admin (decision D4); a change to plain fields alone does not.
+
+    Raises:
+        ResourceNotFoundError: Unknown gateway kind.
+    """
+    spec = _GATEWAY_KINDS.get(kind)
+    if not spec:
+        raise ResourceNotFoundError("gateway", kind)
+    existing = repo.get_platform_settings().get(spec["setting_key"]) or {}
+    if not isinstance(existing, dict):
+        existing = {}
+    plain = {k: v for k, v in body.items() if k not in spec["secret_fields"]}
+    secrets = {k: v for k, v in body.items() if k in spec["secret_fields"] and v != "****" and v != existing.get(k)}
+    return plain, secrets
 
 
 def test_gateway(kind: str) -> dict[str, Any]:

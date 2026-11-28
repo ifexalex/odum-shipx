@@ -1,4 +1,5 @@
 import { apiRequest, apiRequestList } from './client'
+import type { ProtectedOutcome } from './platformSecurity'
 
 // ---------------------------------------------------------------------------
 // Customer types (partially defined here since 7.1 pulled customersApi forward)
@@ -746,8 +747,16 @@ export const platformApi = {
   activateTenant: (id: string) =>
     apiRequest<Tenant>({ method: 'PATCH', path: `/v1/platform/tenants/${id}/activate`, body: {} }),
 
-  offboardTenant: (id: string, reason: string) =>
-    apiRequest<Tenant>({ method: 'DELETE', path: `/v1/platform/tenants/${id}`, body: { reason } }),
+  /**
+   * Offboard needs a second platform admin (decision D4): the answer says whether it waits for one, waits 24 hours
+   * (sole admin), or ran now. `confirm` is the tenant's slug, required only from a sole admin.
+   */
+  offboardTenant: (id: string, reason: string, confirm?: string) =>
+    apiRequest<ProtectedOutcome<Tenant>>({
+      method: 'DELETE',
+      path: `/v1/platform/tenants/${id}`,
+      body: { reason, ...(confirm ? { confirm } : {}) },
+    }),
 
   impersonate: (id: string) =>
     // Wire shape from services/tenant_management/impersonation.py — the
@@ -912,10 +921,22 @@ export const platformSettingsApi = {
   get: () => apiRequest<PlatformSettingsMap>({ method: 'GET', path: '/v1/platform/settings' }),
   update: (body: Partial<PlatformSettingsMap>) =>
     apiRequest<PlatformSettingsMap>({ method: 'PUT', path: '/v1/platform/settings', body }),
+  /** Turning maintenance on needs a second admin (decision D4); sent on its own. `confirm`: "maintenance". */
+  enableMaintenance: (confirm?: string) =>
+    apiRequest<ProtectedOutcome>({
+      method: 'PUT',
+      path: '/v1/platform/settings',
+      body: { maintenance_mode: true, ...(confirm ? { confirm } : {}) },
+    }),
 
   getGateways: () => apiRequest<GatewayConfigs>({ method: 'GET', path: '/v1/platform/settings/gateways' }),
+  /** A new secret value needs a second admin (decision D4) and answers with a ProtectedOutcome; other edits apply. */
   updateGateway: (kind: GatewayKind, body: Record<string, unknown>) =>
-    apiRequest<Partial<GatewayConfigs>>({ method: 'PUT', path: `/v1/platform/settings/${kind}-gateway`, body }),
+    apiRequest<Partial<GatewayConfigs> | ProtectedOutcome>({
+      method: 'PUT',
+      path: `/v1/platform/settings/${kind}-gateway`,
+      body,
+    }),
   testGateway: (kind: GatewayKind) =>
     apiRequest<{ success: boolean; error: string | null }>({
       method: 'POST',
@@ -931,8 +952,15 @@ export const platformSettingsApi = {
 export interface PlatformAuditEntry {
   id: string
   action: string
-  /** The platform admin's identity subject; null for a platform job. Names arrive with the admin directory (Phase 1). */
+  /** The platform admin's identity subject; null for a platform job. */
   actor_id: string | null
+  /** The actor's name and role from the platform admin directory (Phase 1); null for a job or a removed admin. */
+  actor_name?: string | null
+  actor_role?: string | null
+  /** What changed, secrets masked (Phase 1; older rows have neither). */
+  before_state?: Record<string, unknown> | null
+  after_state?: Record<string, unknown> | null
+  request_id?: string | null
   target_tenant_id: string | null
   /** The tenant's name, joined by the server, so a row never needs the whole tenant list to be labelled. */
   target_tenant_name?: string | null

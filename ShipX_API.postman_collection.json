@@ -123,6 +123,18 @@
     {
       "key": "tenant_slug",
       "value": "acme"
+    },
+    {
+      "key": "step_up_token",
+      "value": ""
+    },
+    {
+      "key": "approval_id",
+      "value": ""
+    },
+    {
+      "key": "platform_admin_id",
+      "value": ""
     }
   ],
   "item": [
@@ -581,6 +593,10 @@
                 "value": "{{user_id}}"
               },
               {
+                "key": "X-Step-Up-Token",
+                "value": "{{step_up_token}}"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
@@ -601,7 +617,8 @@
                 "{{tenant_id}}",
                 "suspend"
               ]
-            }
+            },
+            "description": "Needs X-Step-Up-Token since Phase 1 (2026-11-28)."
           }
         },
         {
@@ -688,6 +705,10 @@
                 "value": "{{user_id}}"
               },
               {
+                "key": "X-Step-Up-Token",
+                "value": "{{step_up_token}}"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
@@ -704,10 +725,10 @@
                 "{{tenant_id}}"
               ]
             },
-            "description": "Body {\"reason\"} required since 2026-11-28 (platform audit PA-04); stored on the TENANT_OFFBOARDED audit row. Queues the data export in the same transaction.",
+            "description": "Body {\"reason\", \"confirm\"?} (reason required since 2026-11-28, PA-04). Since Phase 1 (2026-11-28) it needs X-Step-Up-Token (403 STEP_UP_REQUIRED otherwise) and opens a two-person approval: 202 {outcome: pending_approval|scheduled, approval}, or 200 {outcome: executed, approval, result} for a sole admin who sent confirm = the tenant slug. The offboarding (status, data export) runs when approved.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reason\": \"Contract ended; tenant asked to leave\"\n}",
+              "raw": "{\n  \"reason\": \"Contract ended; tenant asked to leave\",\n  \"confirm\": \"{{tenant_slug}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -986,6 +1007,435 @@
                 "onboarding-requests",
                 "{{onboarding_request_id}}"
               ]
+            }
+          }
+        },
+        {
+          "name": "Get Me (platform directory)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "me"
+              ]
+            },
+            "description": "The caller's platform_user row and the permissions its role grants (Phase 1)."
+          }
+        },
+        {
+          "name": "Step-up re-authenticate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/auth/step-up",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "auth",
+                "step-up"
+              ]
+            },
+            "description": "Re-authenticate before a dangerous action. Cognito: {password, mfa_code?} (403 STEP_UP_MFA_REQUIRED asks for the code; 403 STEP_UP_FAILED on a wrong one). Entra: {id_token} from a fresh sign-in. Local/test: the STEP_UP_LOCAL_PASSWORD. Returns {step_up_token, expires_at}: set {{step_up_token}} and send it as X-Step-Up-Token for 5 minutes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"local-step-up\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Platform Admins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/admins",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "admins"
+              ]
+            },
+            "description": "The platform admin directory, owners first."
+          }
+        },
+        {
+          "name": "Invite Platform Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "X-Step-Up-Token",
+                "value": "{{step_up_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/admins",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "admins"
+              ]
+            },
+            "description": "Owners only; needs X-Step-Up-Token. Creates the identity-provider account in the platform_admin group and an invited row.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"new-admin@shipx.co\",\n  \"name\": \"New Admin\",\n  \"role\": \"support\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Update Platform Admin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "X-Step-Up-Token",
+                "value": "{{step_up_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/admins/{{platform_admin_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "admins",
+                "{{platform_admin_id}}"
+              ]
+            },
+            "description": "Owners only; needs X-Step-Up-Token. {role?, disabled?}. Never your own row, never the last active owner.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List Approvals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/approvals?status=open",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "approvals"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "open"
+                }
+              ]
+            },
+            "description": "Two-person requests, newest first. status=open means pending or scheduled."
+          }
+        },
+        {
+          "name": "Get Approval",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/approvals/{{approval_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "approvals",
+                "{{approval_id}}"
+              ]
+            },
+            "description": "One approval request."
+          }
+        },
+        {
+          "name": "Approve Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "X-Step-Up-Token",
+                "value": "{{step_up_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/approvals/{{approval_id}}/approve",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "approvals",
+                "{{approval_id}}",
+                "approve"
+              ]
+            },
+            "description": "A second owner or admin (not the requester); needs X-Step-Up-Token. Runs the action now, as the requester.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Checked with sales\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reject Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "X-Step-Up-Token",
+                "value": "{{step_up_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/approvals/{{approval_id}}/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "approvals",
+                "{{approval_id}}",
+                "reject"
+              ]
+            },
+            "description": "A second owner or admin; needs X-Step-Up-Token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Not agreed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancel Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Tenant-ID",
+                "value": "{{platform_tenant_id}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "platform_admin"
+              },
+              {
+                "key": "X-User-ID",
+                "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/platform/approvals/{{approval_id}}/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "platform",
+                "approvals",
+                "{{approval_id}}",
+                "cancel"
+              ]
+            },
+            "description": "The requester, or an owner. Works on pending and scheduled requests (a sole admin's offboarding during its 24 hours).",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         }

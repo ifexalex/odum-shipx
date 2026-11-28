@@ -252,6 +252,16 @@ Implementation notes / ground-truth gaps found, all in the platform console (`sr
 - **Settings.** General edits `platform_name`, `support_email` and `default_trial_days`; blank text fields are not sent, because the server refuses empty strings. The provider button is now "Check fields" and says it sends nothing.
 - **Seat counts.** `Tenant.user_count` now counts staff seats only (no customer portal accounts), so "Over quota" badges match the tenant's own plan page.
 
+### Platform admin audit Phase 1a (2026-11-28): roles, re-authentication, approvals
+
+Implementation notes / ground-truth gaps found:
+- **New pages.** `/platform/approvals` (`PlatformApprovals`): open requests first (chips Open / All), with Approve and Reject for an owner or admin who did not make the request, and Cancel for the requester or an owner; a decision modal takes an optional note. `/platform/admins` (`PlatformAdmins`): the directory, with Invite (name, email, role) and Manage (change role, disable, re-enable) for owners only; nobody manages their own row. Both are in the sidebar; Approvals carries the open count as a badge (`useOpenApprovalCount`).
+- **Roles in the UI.** `hooks/usePlatformSecurity.ts`: `usePlatformMe()` (`GET /v1/platform/me`, platform admins only) and `useCanPlatform(permission)`, false until `/me` loads. The tenant page hides lifecycle actions without `tenant_lifecycle`, and Impersonate without `support`. The API enforces the same rules; the UI only hides what would be refused.
+- **Re-authentication.** `shell/StepUpHost.tsx`, mounted once in `App.tsx`, is the "Confirm it's you" dialog: password, then the 6-digit authenticator code when Cognito asks. `api/client.ts` opens it on a 403 `STEP_UP_REQUIRED` from a platform route, then retries the request once with `X-Step-Up-Token` (token held in `auth/stepUp.ts`, module memory, cleared with the session, 5 minutes). On Entra the dialog says a fresh Microsoft sign-in cannot be requested yet (Phase 1b).
+- **Wire change, protected actions.** `platformApi.offboardTenant(id, reason, confirm)` now returns `ProtectedOutcome<Tenant>` (`api/platformSecurity.ts`), not the tenant. The offboard dialog asks for the slug as typed confirmation and reports "Sent for approval" or "Offboarding scheduled" (`describeOutcome`). Settings turns maintenance on with `platformSettingsApi.enableMaintenance('maintenance')` after saving the other fields (the API wants it alone), with a typed "maintenance" in the confirm dialog. A provider save that changes a key may answer with an outcome (`isProtectedOutcome`) and shows "Sent for approval".
+- **Audit log.** Rows show the actor's directory name (`actor_name`, role on hover), falling back to the shortened subject; Details shows Before and After when the row has them.
+- **Statuses.** The registry gains `platformApproval` and `platformAdmin`.
+
 ## 7.10 Reports & Notification Log ✅
 
 Backend: `15_api_notifications.md`. Notification log (`NotificationLog`, `NotifDetailModal`) shows delivery status per channel with a retry action (`POST /v1/notifications/log/{id}/retry`, tenant_admin only) — surface provider error detail (`gateway_response`) on the detail modal for debugging delivery failures, but never the full raw payload if it could contain PII beyond what's already masked server-side.

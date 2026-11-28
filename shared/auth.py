@@ -186,6 +186,21 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         # all of them. Counted only for a request that got this far, so a revoked token costs the tenant nothing.
         rate_limit.hit(rate_limit.TENANT, tenant_id)
 
+    # A platform-group token is not enough on its own: the caller must be an active admin in the platform directory,
+    # whose role then decides what they may do (platform audit Phase 1, C-28). Fail-closed on a lookup failure.
+    platform_user_id: str | None = None
+    platform_role: str | None = None
+    if tenant_id == PLATFORM_TENANT_ID and UserRole.PLATFORM_ADMIN in roles:
+        platform_user_id, platform_role = _resolve_platform_caller(
+            user_id,
+            str(claims.get("email") or claims.get("preferred_username") or "") or None,
+            str(claims.get("name") or "") or None,
+        )
+        http = event.get("requestContext", {}).get("http", {})
+        _assert_platform_write_outside_console(
+            platform_role, http.get("method", "") or event.get("httpMethod", ""), http.get("path", "")
+        )
+
     ctx = TenantContext(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -194,6 +209,8 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         impersonated_by=impersonated_by,
         session_id=imp_session_id,
         read_only=read_only,
+        platform_user_id=platform_user_id,
+        platform_role=platform_role,
     )
 
     # Bind trace context the moment identity is known, from this single
@@ -213,6 +230,29 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         assert_not_read_only(ctx, http_method)
 
     return ctx
+
+
+def _resolve_platform_caller(subject: str, email: str | None, name: str | None) -> tuple[str, str]:
+    """Indirection over ``shared.platform_directory`` so handler test suites can stub the directory in one place."""
+    from shared.platform_directory import resolve_platform_caller
+
+    return resolve_platform_caller(subject, email, name)
+
+
+# Roles whose platform permissions include writes to tenant data. Platform routes check their own permission per
+# route; this is the backstop for the few tenant routes outside /v1/platform that accept a platform admin.
+_PLATFORM_ROLES_THAT_MAY_WRITE = frozenset({"owner", "admin"})
+_PLATFORM_CONSOLE_PREFIXES = ("/v1/platform", "/v1/tenants")
+
+
+def _assert_platform_write_outside_console(platform_role: str | None, method: str, path: str) -> None:
+    """Deny a support or finance admin any write outside the platform console's own routes."""
+    from shared.exceptions import InsufficientPermissionsError
+
+    if method in ("", "GET", "HEAD", "OPTIONS") or path.startswith(_PLATFORM_CONSOLE_PREFIXES):
+        return
+    if platform_role not in _PLATFORM_ROLES_THAT_MAY_WRITE:
+        raise InsufficientPermissionsError(f"Your platform role ({platform_role or 'none'}) does not allow this.")
 
 
 def assert_not_read_only(ctx: Any, method: str) -> None:

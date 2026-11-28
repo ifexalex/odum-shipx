@@ -23,6 +23,7 @@ const LIST_PAGES = [
   './nigeria/ReleaseNoteList.tsx',
   './nigeria/SeizedItemList.tsx',
   './platform/OnboardingRequests.tsx',
+  './platform/PlatformApprovals.tsx',
   './platform/PlatformAuditLog.tsx',
   './platform/PlatformTenantList.tsx',
   './tenant-admin/ActivityLog.tsx',

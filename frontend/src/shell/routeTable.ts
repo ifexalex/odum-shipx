@@ -73,6 +73,8 @@ export const routeTable: RouteDef[] = [
   },
   { path: '/platform/settings/plans', allow: ['platform_admin'], title: 'Plans', layout: 'staff', parent: '/platform/settings', crumb: 'Plans' },
   { path: '/platform/audit-log', allow: ['platform_admin'], title: 'Audit log', layout: 'staff' },
+  { path: '/platform/approvals', allow: ['platform_admin'], title: 'Approvals', layout: 'staff' },
+  { path: '/platform/admins', allow: ['platform_admin'], title: 'Platform admins', layout: 'staff' },
 
   // Tenant admin
   { path: '/dashboard', allow: ['tenant_admin', 'nigeria_office_staff'], title: 'Dashboard', layout: 'staff' },

@@ -80,6 +80,7 @@ class TestTenantHandlerDispatch:
         monkeypatch.setattr("shared.auth._check_tenant_active", lambda t: None)
         with (
             patch("services.tenant_management.handler.service") as mock_svc,
+            patch("services.tenant_management.handler.step_up.require_step_up"),  # re-authenticated (Phase 1)
             patch("shared.metering.record_usage"),
         ):
             mock_svc.suspend_tenant.return_value = suspended

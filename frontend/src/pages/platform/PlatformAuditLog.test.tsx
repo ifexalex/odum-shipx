@@ -29,8 +29,14 @@ beforeEach(() => {
         id: 'e2', action: 'TENANT_DATA_EXPORTED', actor_id: null, target_tenant_id: null, target_tenant_name: null,
         details: null, ip_address: null, created_at: '2026-11-28T08:00:00Z',
       },
+      {
+        id: 'e3', action: 'TENANT_SUSPENDED', actor_id: 'f00dbabe-1234-4321-8888-000000000002', actor_name: 'Ada Nwachukwu',
+        actor_role: 'owner', target_tenant_id: null, target_tenant_name: 'Beta Cargo', details: { reason: 'Unpaid' },
+        before_state: { status: 'active' }, after_state: { status: 'suspended' }, ip_address: null,
+        created_at: '2026-11-28T07:00:00Z',
+      },
     ],
-    meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
+    meta: { pagination: { has_more: false, next_cursor: null, total_count: 3 } },
   })
 })
 
@@ -52,5 +58,16 @@ describe('PlatformAuditLog', () => {
     expect(await screen.findByText('Acme Logistics')).toBeInTheDocument()
     expect(screen.getByText('f00dbabe…')).toBeInTheDocument()
     expect(screen.getByText('Platform job')).toBeInTheDocument()
+  })
+
+  it('names the actor from the directory and shows what changed (Phase 1)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    renderPage()
+    expect(await screen.findByText('Ada Nwachukwu')).toBeInTheDocument()
+    const buttons = screen.getAllByRole('button', { name: 'Details' })
+    await userEvent.click(buttons.at(-1)!)
+    expect(await screen.findByText('Before')).toBeInTheDocument()
+    expect(screen.getByText('After')).toBeInTheDocument()
+    expect(screen.getByText(/"suspended"/)).toBeInTheDocument()
   })
 })

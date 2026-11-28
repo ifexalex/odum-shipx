@@ -193,14 +193,15 @@ locals {
 
   # Scheduled jobs → cron expression, mirroring the AWS EventBridge rules.
   scheduled_jobs = {
-    storage_fee        = "0 0 * * *"   # midnight UTC daily
-    storage_reminders  = "0 8 * * *"   # 08:00 UTC daily
-    data_cleanup       = "0 2 * * *"   # 02:00 UTC daily
-    release_expiry     = "0 0 * * *"   # midnight UTC daily
-    dispute_escalation = "0 */6 * * *" # every 6 hours
-    sla_check          = "0 */4 * * *" # every 4 hours
-    usage_aggregation  = "0 * * * *"   # hourly
-    offboarding_export = "30 * * * *"  # hourly, half past: queued tenant data exports (audit BE-10)
+    storage_fee        = "0 0 * * *"    # midnight UTC daily
+    storage_reminders  = "0 8 * * *"    # 08:00 UTC daily
+    data_cleanup       = "0 2 * * *"    # 02:00 UTC daily
+    release_expiry     = "0 0 * * *"    # midnight UTC daily
+    dispute_escalation = "0 */6 * * *"  # every 6 hours
+    sla_check          = "0 */4 * * *"  # every 4 hours
+    usage_aggregation  = "0 * * * *"    # hourly
+    offboarding_export = "30 * * * *"   # hourly, half past: queued tenant data exports (audit BE-10)
+    platform_approvals = "*/15 * * * *" # every 15 minutes: due sole-admin offboardings, expired approvals
   }
 
   # Workers → the Service Bus queue each consumes (for the KEDA scaler).

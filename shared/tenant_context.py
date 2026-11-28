@@ -32,6 +32,10 @@ class TenantContext:
     impersonated_by: str | None = None
     session_id: str | None = None
     read_only: bool = False
+    # Platform callers only: the caller's ``platform_user`` row id and role (owner, admin, support, finance), resolved
+    # from the directory on every request (shared/platform_directory.py). None for tenant users.
+    platform_user_id: str | None = None
+    platform_role: str | None = None
     is_platform_admin: bool = field(init=False)
 
     def __post_init__(self) -> None:
@@ -70,6 +74,21 @@ class TenantContext:
             raise InsufficientPermissionsError(
                 action="this operation",
                 required_role=" or ".join(r.value for r in allowed_roles),
+            )
+
+    def has_platform_permission(self, permission: str) -> bool:
+        """True when this is a platform admin whose directory role grants ``permission``."""
+        from shared.platform_roles import PlatformPermission, permissions_for
+
+        return self.is_platform_admin and PlatformPermission(permission) in permissions_for(self.platform_role)
+
+    def assert_platform_permission(self, permission: str) -> None:
+        """Raise InsufficientPermissionsError unless the platform role grants ``permission``."""
+        from shared.exceptions import InsufficientPermissionsError
+
+        if not self.has_platform_permission(permission):
+            raise InsufficientPermissionsError(
+                f"Your platform role ({self.platform_role or 'none'}) does not allow this ({permission})."
             )
 
     def assert_tenant_scope(self, target_tenant_id: str) -> None:

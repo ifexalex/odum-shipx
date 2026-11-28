@@ -4,6 +4,8 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { platformApi, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
 import { platformTenantKeys } from '../../api/keys'
+import { describeOutcome } from '../../api/platformSecurity'
+import { useCanPlatform } from '../../hooks/usePlatformSecurity'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
 import { Badge, Banner, Button, Card, ConfirmDialog, Field, Kvp, Modal, Mono, Select, StatusBadge, Table, UserCell, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
@@ -36,11 +38,14 @@ interface ActionModalProps {
 
 function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps): JSX.Element {
   const [reason, setReason] = useState('')
+  const [confirmSlug, setConfirmSlug] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const needsReason = action === 'suspend' || action === 'offboard'
-  const canSubmit = !needsReason || reason.trim().length > 0
+  // Typing the slug is what stands in for a second admin when there is none (decision D4); asked every time.
+  const slugConfirmed = action !== 'offboard' || confirmSlug.trim().toLowerCase() === tenant.slug.toLowerCase()
+  const canSubmit = (!needsReason || reason.trim().length > 0) && slugConfirmed
 
   const LABELS = {
     suspend: { title: 'Suspend tenant', button: 'Suspend', variant: 'danger' as const },
@@ -53,11 +58,23 @@ function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps):
     setSubmitting(true)
     setError(null)
     try {
-      let updated: Tenant
-      if (action === 'suspend') updated = await platformApi.suspendTenant(tenant.id, reason)
-      else if (action === 'activate') updated = await platformApi.activateTenant(tenant.id)
-      else updated = await platformApi.offboardTenant(tenant.id, reason)
-      toast.success(action === 'suspend' ? 'Tenant suspended' : action === 'activate' ? 'Suspension lifted' : 'Tenant offboarded', updated.company_name)
+      if (action === 'offboard') {
+        // Offboarding needs a second admin (decision D4): it usually waits; it runs now only for a sole admin.
+        const outcome = await platformApi.offboardTenant(tenant.id, reason, confirmSlug.trim())
+        if (outcome.outcome === 'executed' && outcome.result) {
+          toast.success('Tenant offboarded', outcome.result.company_name)
+          onSuccess(outcome.result)
+        } else {
+          toast.success(outcome.outcome === 'scheduled' ? 'Offboarding scheduled' : 'Sent for approval', describeOutcome(outcome))
+          onCancel()
+        }
+        return
+      }
+      const updated =
+        action === 'suspend'
+          ? await platformApi.suspendTenant(tenant.id, reason)
+          : await platformApi.activateTenant(tenant.id)
+      toast.success(action === 'suspend' ? 'Tenant suspended' : 'Suspension lifted', updated.company_name)
       onSuccess(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Action failed.')
@@ -78,6 +95,22 @@ function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps):
         )}
         {needsReason && (
           <Field label="Reason" name="reason" required multiline value={reason} onChange={(e) => setReason(e.target.value)} />
+        )}
+        {action === 'offboard' && (
+          <>
+            <Field
+              label={`Type ${tenant.slug} to confirm`}
+              name="confirm_slug"
+              required
+              autoComplete="off"
+              value={confirmSlug}
+              onChange={(e) => setConfirmSlug(e.target.value)}
+            />
+            <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
+              Another platform admin must approve this before it runs. If there is no one else to ask, it runs 24 hours
+              from now unless cancelled, and the owners are emailed.
+            </p>
+          </>
         )}
         <div className={styles.modalActions}>
           <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
@@ -583,6 +616,9 @@ export function PlatformTenantDetail(): JSX.Element {
   const [tab, setTab] = useState('overview')
   const [impersonating, setImpersonating] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
+  // What the caller's platform role allows (Phase 1); the API enforces the same, this only hides what would be refused.
+  const canLifecycle = useCanPlatform('tenant_lifecycle')
+  const canSupport = useCanPlatform('support')
 
   const error =
     pageError ??
@@ -647,7 +683,7 @@ export function PlatformTenantDetail(): JSX.Element {
             </>
           }
           primary={
-            tenant.status === 'suspended' ? (
+            !canLifecycle ? undefined : tenant.status === 'suspended' ? (
               <Button variant="primary" onClick={() => setActiveModal('activate')}>
                 Lift suspension
               </Button>
@@ -658,14 +694,14 @@ export function PlatformTenantDetail(): JSX.Element {
             ) : undefined
           }
           actions={
-            tenant.status === 'active' && (
+            tenant.status === 'active' && canSupport && (
               <Button variant="secondary" icon="eye" loading={impersonating} onClick={() => void handleImpersonate()}>
                 Impersonate
               </Button>
             )
           }
           // Destructive actions live in the overflow menu, never beside the main button (FD-24); each confirms.
-          more={[
+          more={canLifecycle ? [
             ...(tenant.status !== 'offboarded'
               ? [{ label: 'Edit tenant', icon: 'edit' as const, onSelect: () => setEditing(true) }]
               : []),
@@ -675,7 +711,7 @@ export function PlatformTenantDetail(): JSX.Element {
             ...(tenant.status !== 'offboarded'
               ? [{ label: 'Offboard tenant', icon: 'x' as const, tone: 'danger' as const, onSelect: () => setActiveModal('offboard') }]
               : []),
-          ]}
+          ] : []}
           moreLabel="More tenant actions"
         />
       }
