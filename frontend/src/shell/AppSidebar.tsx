@@ -4,10 +4,12 @@ import { useSession } from '../auth/useSession'
 import { PoweredByShipx, TenantBrand } from '../design/components'
 import { useBranding } from '../hooks/useConfig'
 import { useOnboardingPendingCount } from '../hooks/useOnboardingRequests'
+import { useOpenApprovalCount } from '../hooks/usePlatformSecurity'
 import { activeNavPath, navConfig, visualRoleFor, type NavLinkGroup } from './navConfig'
 import { Sidebar, type NavGroup } from './Sidebar'
 
 const ONBOARDING_REQUESTS_PATH = '/platform/onboarding-requests'
+const APPROVALS_PATH = '/platform/approvals'
 
 // Adapts the declarative, path-based navConfig into Sidebar's existing
 // onClick/active contract via the router. `liveCounts` overrides a link's
@@ -45,13 +47,17 @@ export function AppSidebar(): JSX.Element | null {
   // hook short-circuits to a no-op query for every non-platform role, so the
   // call is unconditional (Rules of Hooks) but only fetches for platform admins.
   const pendingOnboarding = useOnboardingPendingCount(isPlatformShell)
+  // Open two-person approvals (platform audit Phase 1): same gating as the lead badge.
+  const openApprovals = useOpenApprovalCount(isPlatformShell)
   // Reuses StaffLayout's cached tenant branding query (zero extra requests).
   const { branding } = useBranding(!!session && !isPlatformShell)
 
   if (!session) return null
 
-  const liveCounts: Record<string, number> =
-    pendingOnboarding > 0 ? { [ONBOARDING_REQUESTS_PATH]: pendingOnboarding } : {}
+  const liveCounts: Record<string, number> = {
+    ...(pendingOnboarding > 0 ? { [ONBOARDING_REQUESTS_PATH]: pendingOnboarding } : {}),
+    ...(openApprovals > 0 ? { [APPROVALS_PATH]: openApprovals } : {}),
+  }
   const groups = toNavGroups(navConfig[session.role], location.pathname, navigate, liveCounts)
 
   const tenantName = !isPlatformShell ? branding?.display_name?.trim() : undefined

@@ -213,3 +213,14 @@ batch_ref: str | None = None
 `services/tenant_management/models.py`:
 - `OffboardTenantRequest` — `reason: str` (1–2000 characters; a blank reason is refused). The body of `DELETE /v1/platform/tenants/{id}`, stored on the `TENANT_OFFBOARDED` audit row (PA-04).
 - `TenantListQuery` — `status: TenantStatus | None`, `tier: SubscriptionTier | None`, `q: str | None` (≤ 200; blank becomes `None`). The filters of `GET /v1/platform/tenants` (PA-02).
+- `OffboardTenantRequest.confirm: str | None` (Phase 1) — the tenant slug, typed by a sole admin in place of a second approver (decision D4).
+
+## Platform security models (2026-11-28, platform audit Phase 1)
+
+All `extra="forbid"`.
+- `PlatformAdminRole` (StrEnum) — `owner`, `admin`, `support`, `finance`.
+- `InvitePlatformAdminRequest` — `email` (lower-cased, shape-checked), `name` (1–200, not blank), `role`. Body of `POST /v1/platform/admins`.
+- `UpdatePlatformAdminRequest` — `role?`, `disabled?`; at least one. Body of `PATCH /v1/platform/admins/{id}`.
+- `StepUpRequest` — `password?` (1–256), `mfa_code?` (six digits), `id_token?`; `password` or `id_token` required. Body of `POST /v1/platform/auth/step-up`.
+- `ApprovalDecisionRequest` — `note?` (≤ 1000). Body of approve, reject and cancel.
+- `ApprovalListQuery` — `status?` (`open` or one approval status), `limit` (1–200, default 50).

@@ -494,6 +494,8 @@ def update_tenant(
             target_tenant_id=tenant_id,
             details=updates,
             ip_address=ip_address,
+            before_state={key: existing.get(key) for key in updates},
+            after_state={key: updated.get(key) for key in updates},
         )
     except Exception as exc:
         logger.warning("Platform audit insert failed: %s", exc)
@@ -564,6 +566,8 @@ def offboard_tenant(
             target_tenant_id=tenant_id,
             details={"reason": reason, **({"export_id": str(queued["id"])} if queued else {})},
             ip_address=ip_address,
+            before_state={"status": existing["status"]},
+            after_state={"status": "offboarded"},
         )
     except Exception as exc:
         logger.warning("Platform audit insert failed: %s", exc)
@@ -616,6 +620,8 @@ def suspend_tenant(
             target_tenant_id=tenant_id,
             details={"reason": reason},
             ip_address=ip_address,
+            before_state={"status": existing["status"]},
+            after_state={"status": "suspended"},
         )
     except Exception as exc:
         logger.warning("Platform audit insert failed: %s", exc)
@@ -674,6 +680,8 @@ def activate_tenant(
             actor_id=actor_id,
             target_tenant_id=tenant_id,
             ip_address=ip_address,
+            before_state={"status": existing["status"]},
+            after_state={"status": "active"},
         )
     except Exception as exc:
         logger.warning("Platform audit insert failed: %s", exc)
@@ -728,6 +736,8 @@ def reactivate_tenant(
             actor_id=actor_id,
             target_tenant_id=tenant_id,
             ip_address=ip_address,
+            before_state={"status": "offboarded"},
+            after_state={"status": "active"},
         )
     except Exception as exc:
         logger.warning("Platform audit insert failed: %s", exc)

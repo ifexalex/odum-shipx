@@ -40,7 +40,14 @@ def _event(method: str, path: str, body: dict | None = None) -> dict:
 
 def _ctx(role: UserRole) -> TenantContext:
     tid = PLATFORM_TENANT_ID if role == UserRole.PLATFORM_ADMIN else "t1"
-    return TenantContext(tenant_id=tid, user_id="actor-1", role=role)
+    platform = role == UserRole.PLATFORM_ADMIN
+    return TenantContext(
+        tenant_id=tid,
+        user_id="actor-1",
+        role=role,
+        platform_user_id="pu-1" if platform else None,
+        platform_role="owner" if platform else None,
+    )
 
 
 # ── Service: lead capture ────────────────────────────────────────────────────

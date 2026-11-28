@@ -56,8 +56,11 @@ import {
   notifLogKeys,
   onboardingRequestKeys,
   packingListKeys,
+  platformAdminKeys,
+  platformApprovalKeys,
   platformAuditKeys,
   platformDashboardKeys,
+  platformMeKeys,
   platformSettingsKeys,
   platformTenantKeys,
   refundKeys,
@@ -173,15 +176,37 @@ const RULES: Rule[] = [
   // ── Platform ────────────────────────────────────────────────────────────
   { test: /^\/v1\/platform\/onboarding-requests(\/|$)/, roots: [onboardingRequestKeys.all] },
   // Provisioning a tenant closes the lead it came from, and changes the dashboard's totals and its activity feed.
+  // An offboarding now opens a two-person approval instead of acting (platform audit Phase 1).
   {
     test: /^\/v1\/platform\/tenants(\/|$)/,
-    roots: [platformTenantKeys.all, onboardingRequestKeys.all, platformDashboardKeys.all, platformAuditKeys.all],
+    roots: [
+      platformTenantKeys.all,
+      onboardingRequestKeys.all,
+      platformDashboardKeys.all,
+      platformAuditKeys.all,
+      platformApprovalKeys.all,
+    ],
   },
-  // Plan limits change every tenant's effective limits (the tenant list shows users x/limit).
+  // Plan limits change every tenant's effective limits (the tenant list shows users x/limit). A new gateway key or
+  // turning maintenance on opens an approval.
   {
     test: /^\/v1\/platform\/(settings|plans)(\/|$)/,
-    roots: [platformSettingsKeys.all, platformTenantKeys.all, platformAuditKeys.all],
+    roots: [platformSettingsKeys.all, platformTenantKeys.all, platformAuditKeys.all, platformApprovalKeys.all],
   },
+  // A decided approval runs its action: any of the tenant, settings and audit views may now be out of date.
+  {
+    test: /^\/v1\/platform\/approvals(\/|$)/,
+    roots: [
+      platformApprovalKeys.all,
+      platformTenantKeys.all,
+      platformSettingsKeys.all,
+      platformDashboardKeys.all,
+      platformAuditKeys.all,
+    ],
+  },
+  { test: /^\/v1\/platform\/admins(\/|$)/, roots: [platformAdminKeys.all, platformMeKeys.all, platformAuditKeys.all] },
+  // Re-authenticating writes an audit row and changes nothing on screen.
+  { test: /^\/v1\/platform\/auth\/step-up$/, roots: [platformAuditKeys.all] },
   // Ending an impersonation session appends to the platform audit log.
   { test: /^\/v1\/platform\/impersonation(\/|$)/, roots: [platformAuditKeys.all] },
 ]

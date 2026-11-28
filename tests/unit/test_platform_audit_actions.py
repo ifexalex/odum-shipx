@@ -13,13 +13,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 FRONTEND_LIST = ROOT / "frontend" / "src" / "api" / "platformAuditActions.ts"
 _CALL_RE = re.compile(r"insert_platform_audit\(\s*action=([^\n]+)", re.MULTILINE)
 _LITERAL_RE = re.compile(r'"([A-Z_]+)"')
+# Code that names the enum member (``PlatformAuditAction.APPROVAL_REQUESTED``) and passes it on to a helper.
+_MEMBER_RE = re.compile(r"PlatformAuditAction\.([A-Z_]+)")
+_ENUM_FILE = ROOT / "shared" / "platform_audit.py"
 
 
 def _written_actions() -> set[str]:
     written: set[str] = set()
     for path in [*(ROOT / "services").rglob("*.py"), *(ROOT / "shared").rglob("*.py")]:
-        for match in _CALL_RE.finditer(path.read_text()):
+        text = path.read_text()
+        for match in _CALL_RE.finditer(text):
             written.update(_LITERAL_RE.findall(match.group(1)))
+        if path != _ENUM_FILE:
+            written.update(_MEMBER_RE.findall(text))
     return written
 
 

@@ -260,6 +260,21 @@ export const platformAuditKeys = {
   forTenant: (tenantId: string) => [...platformAuditKeys.all, 'tenant', tenantId] as const,
 }
 
+// ─── Platform security: the caller, the admin directory, approvals (Phase 1) ──
+export const platformMeKeys = {
+  all: ['platform-me'] as const,
+}
+
+export const platformAdminKeys = {
+  all: ['platform-admins'] as const,
+  list: () => [...platformAdminKeys.all, 'list'] as const,
+}
+
+export const platformApprovalKeys = {
+  all: ['platform-approvals'] as const,
+  list: (status?: string) => [...platformApprovalKeys.all, 'list', status ?? 'all'] as const,
+}
+
 // ─── Platform onboarding requests (shipping-company leads) ────────────────────
 export const onboardingRequestKeys = {
   all: ['onboarding-requests'] as const,

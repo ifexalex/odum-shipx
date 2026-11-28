@@ -12,6 +12,9 @@ import { withQuery } from '../../test/queryWrapper'
 import { PlatformTenantDetail } from './PlatformTenantDetail'
 
 vi.mock('../../auth/useSession')
+// The caller's platform role (Phase 1): an owner unless a test says otherwise.
+const canPlatform = vi.hoisted(() => ({ value: true }))
+vi.mock('../../hooks/usePlatformSecurity', () => ({ useCanPlatform: () => canPlatform.value }))
 vi.mock('../../api/tenantManagement', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/tenantManagement')>()
   return {
@@ -27,6 +30,7 @@ vi.mock('../../api/tenantManagement', async (importOriginal) => {
       offboardingExportLink: vi.fn(),
       updateTenant: vi.fn(),
       reactivateTenant: vi.fn(),
+      offboardTenant: vi.fn(),
     },
   }
 })
@@ -80,6 +84,7 @@ const assign = vi.fn()
 
 beforeEach(() => {
   vi.clearAllMocks()
+  canPlatform.value = true
   vi.mocked(useSession).mockReturnValue({ startImpersonation: vi.fn() } as unknown as ReturnType<typeof useSession>)
   vi.stubGlobal('location', { ...window.location, assign })
 })
@@ -214,5 +219,34 @@ describe('PlatformTenantDetail edit and reactivate (PA-09)', () => {
     await userEvent.click(confirm.at(-1)!)
     expect(platformApi.reactivateTenant).toHaveBeenCalledWith(TENANT.id)
     expect(await screen.findByText('Tenant admin must re-verify consent from all users under the new agreement.')).toBeInTheDocument()
+  })
+})
+
+describe('PlatformTenantDetail offboarding through two-person approval (Phase 1)', () => {
+  const active = { ...TENANT, status: 'active' as const, offboarded_at: null }
+
+  it('asks for the slug, sends it with the reason, and says the request awaits approval', async () => {
+    vi.mocked(platformApi.offboardTenant).mockResolvedValue({
+      outcome: 'pending_approval',
+      approval: { id: 'ap-1' } as never,
+    })
+    renderPage(active)
+    await userEvent.click(await screen.findByRole('button', { name: 'More tenant actions' }))
+    await userEvent.click(await screen.findByText('Offboard tenant'))
+    await userEvent.type(screen.getByLabelText(/Reason/), 'Contract ended')
+    const submit = screen.getByRole('button', { name: 'Offboard permanently' })
+    expect(submit).toBeDisabled()
+    await userEvent.type(screen.getByLabelText(/Type acme to confirm/), 'acme')
+    await userEvent.click(submit)
+    expect(platformApi.offboardTenant).toHaveBeenCalledWith(TENANT.id, 'Contract ended', 'acme')
+    expect(await screen.findByText(/Another platform admin must approve it within 24 hours/)).toBeInTheDocument()
+  })
+
+  it('offers no lifecycle actions to a role that cannot use them', async () => {
+    canPlatform.value = false
+    renderPage(active)
+    expect(await screen.findByText('Acme Logistics')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More tenant actions' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Impersonate' })).toBeNull()
   })
 })

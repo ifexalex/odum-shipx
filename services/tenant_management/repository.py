@@ -1202,11 +1202,13 @@ def list_platform_audit_log(
     if action:
         conditions += " AND pal.action = %(action)s"
         extra["action"] = action
-    # Each row carries its tenant's name, so the console never needs the whole tenant list to label a row (PA-02).
+    # Each row carries its tenant's name, so the console never needs the whole tenant list to label a row (PA-02),
+    # and its actor's directory name (Phase 1; PA-06 showed the id only). A platform job has no actor.
     inner = f"""
-        SELECT pal.*, t.company_name AS target_tenant_name
+        SELECT pal.*, t.company_name AS target_tenant_name, pu.name AS actor_name, pu.role AS actor_role
         FROM platform_audit_log pal
         LEFT JOIN tenant t ON t.id = pal.target_tenant_id
+        LEFT JOIN platform_user pu ON pu.subject = pal.actor_id::text
         WHERE 1=1{conditions}
     """
     base = f"SELECT * FROM ({inner}) AS paged WHERE 1=1"

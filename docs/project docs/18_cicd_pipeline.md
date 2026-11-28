@@ -1390,6 +1390,7 @@ Frontend: there is no coverage number to hold (vitest runs without coverage). In
 
 - `ci.yml` "Build service zips" and "Build scheduled job zips" now add the `services/` tree a second time, as the package, to each zip; `scripts/build_lambda_zip.sh` does the same for the Terraform-built package. Handler paths are unchanged.
 - The offboarding-export Lambda (`scheduled.offboarding_export`, audit BE-10) existed in Terraform but was never built or deployed by CI; it is in both lists now.
+- `platform-approvals` (`scheduled.platform_approvals`, platform audit Phase 1, 2026-11-28) is in `_deploy-env.yml`'s Lambda list; `tests/unit/test_infrastructure_contracts.py` fails when Terraform provisions a Lambda the deploy skips.
 - Guarded by `tests/unit/test_infrastructure_contracts.py::TestLambdaPackageLayout`: every Terraform-configured handler is imported, isolated (`python -I`), from a copy of the zip layout; every zip step must add the package; every scheduled Lambda must be built and deployed. Both workflow checks fail on the previous workflows.
 - Note: the Terraform fallback (`archive_file` over `services/` when no package was built) is still flattened only; CI's `update-function-code` replaces it on the first deploy.
 

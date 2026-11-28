@@ -82,6 +82,8 @@ locals {
     release_expiry     = { name = "release-expiry", memory = 256, timeout = 300, handler = "scheduled.release_expiry.lambda_handler", rule_key = "release-note-expiry" }
     # Builds a tenant's whole data archive in memory, hence the size and the longest timeout.
     offboarding_export = { name = "offboarding-export", memory = 1024, timeout = 900, handler = "scheduled.offboarding_export.lambda_handler", rule_key = "offboarding-export" }
+    # Runs sole-admin offboardings once their 24 hours are up and expires undecided approvals (platform audit Phase 1).
+    platform_approvals = { name = "platform-approvals", memory = 256, timeout = 300, handler = "scheduled.platform_approvals.lambda_handler", rule_key = "platform-approvals" }
   }
 
   # VPC SQS Lambda (metering queue consumer, needs DB)
@@ -127,9 +129,11 @@ locals {
       DB_SECRET_ARN = var.db_app_secret_arn
       # The name shared/providers reads (`get_storage_provider`). This was `S3_BUCKET`, which nothing reads, so every
       # Lambda fell back to the default "logistics-assets": not this deployment's bucket (2026-11-17).
-      S3_BUCKET_NAME        = var.bucket_name
-      EVENT_BUS_NAME        = var.event_bus_name
-      COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
+      S3_BUCKET_NAME       = var.bucket_name
+      EVENT_BUS_NAME       = var.event_bus_name
+      COGNITO_USER_POOL_ID = var.cognito_user_pool_id
+      # The public app client: platform step-up re-authentication signs in with it (tenant_management/step_up.py).
+      COGNITO_CLIENT_ID     = var.cognito_client_id
       ENVIRONMENT           = var.environment
       ENCRYPTION_KMS_KEY_ID = var.encryption_kms_key_arn
       REDIS_HOST            = var.redis_host

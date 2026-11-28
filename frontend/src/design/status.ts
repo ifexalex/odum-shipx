@@ -21,6 +21,7 @@ import type { NotifStatus } from '../api/notifications'
 import type { PackingListStatus } from '../api/packingList'
 import type { RefundStatus } from '../api/refunds'
 import type { ReleaseNoteStatus } from '../api/releaseNotes'
+import type { ApprovalStatus, PlatformAdminStatus } from '../api/platformSecurity'
 import type { OffboardingExportStatus, OnboardingRequestStatus, TenantStatus } from '../api/tenantManagement'
 import type { ContainerStatus } from '../api/tracking'
 import type { BadgeVariant } from './components/Badge'
@@ -178,6 +179,24 @@ const announcement = {
   rejected: { label: 'Rejected', variant: 'error' },
 } as const satisfies Record<'pending' | 'approved' | 'rejected', StatusEntry>
 
+// Two-person approvals of dangerous platform actions (platform audit Phase 1).
+const platformApproval = {
+  pending: { label: 'Awaiting approval', variant: 'warning' },
+  scheduled: { label: 'Scheduled', variant: 'warning' },
+  approved: { label: 'Running', variant: 'info' },
+  executed: { label: 'Done', variant: 'success' },
+  failed: { label: 'Failed', variant: 'error' },
+  rejected: { label: 'Rejected', variant: 'error' },
+  cancelled: { label: 'Cancelled', variant: 'neutral' },
+  expired: { label: 'Expired', variant: 'neutral' },
+} as const satisfies Record<ApprovalStatus, StatusEntry>
+
+const platformAdmin = {
+  invited: { label: 'Invited', variant: 'warning' },
+  active: { label: 'Active', variant: 'success' },
+  disabled: { label: 'Disabled', variant: 'neutral' },
+} as const satisfies Record<PlatformAdminStatus, StatusEntry>
+
 export const STATUS_REGISTRY = {
   container,
   invoice,
@@ -197,6 +216,8 @@ export const STATUS_REGISTRY = {
   offboardingExport,
   announcement,
   staffUser,
+  platformApproval,
+  platformAdmin,
 } as const
 
 export type StatusKind = keyof typeof STATUS_REGISTRY

@@ -123,6 +123,9 @@ class OffboardTenantRequest(BaseModel):
     """
 
     reason: str = Field(min_length=1, max_length=2000)
+    # Typed confirmation (the tenant's slug). Required only when the caller is the sole platform admin able to act,
+    # which replaces the second approver (decision D4); otherwise ignored.
+    confirm: str | None = Field(default=None, max_length=200)
 
     @field_validator("reason")
     @classmethod
@@ -131,6 +134,91 @@ class OffboardTenantRequest(BaseModel):
         if not stripped:
             raise ValueError("reason must not be blank")
         return stripped
+
+
+# ---------------------------------------------------------------------------
+# Platform admin directory, step-up and approvals (platform audit Phase 1)
+# ---------------------------------------------------------------------------
+
+
+class PlatformAdminRole(StrEnum):
+    owner = "owner"
+    admin = "admin"
+    support = "support"
+    finance = "finance"
+
+
+class InvitePlatformAdminRequest(BaseModel):
+    """Body of ``POST /v1/platform/admins``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=5, max_length=320)
+    name: str = Field(min_length=1, max_length=200)
+    role: PlatformAdminRole
+
+    @field_validator("email")
+    @classmethod
+    def _email_shape(cls, value: str) -> str:
+        email = value.strip().lower()
+        local, at, domain = email.partition("@")
+        if not at or not local or "." not in domain or " " in email:
+            raise ValueError("must be an email address")
+        return email
+
+    @field_validator("name")
+    @classmethod
+    def _name_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("name must not be blank")
+        return stripped
+
+
+class UpdatePlatformAdminRequest(BaseModel):
+    """Body of ``PATCH /v1/platform/admins/{id}``: a new role, and/or ``disabled`` true or false."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: PlatformAdminRole | None = None
+    disabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _something_to_change(self) -> "UpdatePlatformAdminRequest":
+        if self.role is None and self.disabled is None:
+            raise ValueError("send role and/or disabled")
+        return self
+
+
+class StepUpRequest(BaseModel):
+    """Body of ``POST /v1/platform/auth/step-up``: Cognito sends ``password`` (+ ``mfa_code``), Entra ``id_token``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    password: str | None = Field(default=None, min_length=1, max_length=256)
+    mfa_code: str | None = Field(default=None, pattern=r"^\d{6}$")
+    id_token: str | None = Field(default=None, min_length=1, max_length=16384)
+
+    @model_validator(mode="after")
+    def _one_proof(self) -> "StepUpRequest":
+        if not self.password and not self.id_token:
+            raise ValueError("send password or id_token")
+        return self
+
+
+class ApprovalDecisionRequest(BaseModel):
+    """Body of ``POST /v1/platform/approvals/{id}/{approve|reject|cancel}``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class ApprovalListQuery(BaseModel):
+    """Query string of ``GET /v1/platform/approvals``."""
+
+    status: str | None = Field(default=None, pattern=r"^(open|pending|scheduled|executed|failed|rejected|cancelled|expired)$")
+    limit: int = Field(default=50, ge=1, le=200)
 
 
 class TenantListQuery(BaseModel):

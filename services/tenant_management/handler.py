@@ -19,12 +19,13 @@ from typing import Any
 from shared import rate_limit
 from shared.auth import get_tenant_context
 from shared.client_ip import client_ip
-from shared.exceptions import LogisticsBaseError, ResourceNotFoundError
+from shared.exceptions import BusinessRuleViolationError, LogisticsBaseError, ResourceNotFoundError, ValidationError
 from shared.idempotency import check_idempotency, get_idempotency_key, store_idempotency
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.metering import record_usage
 from shared.observability import init_tracing
 from shared.pagination import parse_pagination_params
+from shared.platform_roles import PlatformPermission
 from shared.responses import (
     accepted,
     created,
@@ -36,24 +37,29 @@ from shared.responses import (
 from shared.tenant_context import PLATFORM_TENANT_ID, UserRole
 from shared.validation import parse_validated
 
-from . import branding_logo, impersonation, service
+from . import approvals, branding_logo, impersonation, platform, platform_admins, service, step_up
 from .models import (
     AcceptCustomerInviteRequest,
     ActivateAccountRequest,
+    ApprovalDecisionRequest,
+    ApprovalListQuery,
     CreateOnboardingRequest,
     CreateTenantRequest,
     CreateTenantUserRequest,
     CustomerRegistrationRequest,
+    InvitePlatformAdminRequest,
     LogoUploadRequest,
     OffboardTenantRequest,
     OnboardingRequestStatusUpdate,
     PaystackConfigRequest,
     SelfRegistrationUpdateRequest,
     SetLogoRequest,
+    StepUpRequest,
     SuspendTenantRequest,
     TenantListQuery,
     UpdateCbmRateRequest,
     UpdateDollarRateMarkupRequest,
+    UpdatePlatformAdminRequest,
     UpdateTenantConfigRequest,
     UpdateTenantRequest,
     UpdateTenantUserRequest,
@@ -217,6 +223,7 @@ def _dispatch(
             ctx.assert_role(UserRole.PLATFORM_ADMIN)
             # Handle POST directly — body is passed as dict (flexible schema)
             if method == "POST" and len(parts) == 2:
+                ctx.assert_platform_permission(PlatformPermission.TENANT_LIFECYCLE)
                 body = _parse_body(event)
                 req = parse_validated(CreateTenantRequest, body)
                 result = service.create_tenant(
@@ -502,6 +509,12 @@ def _platform_routes(
     # parts: ["v1", "platform", <resource>, ...]
     resource = parts[2] if len(parts) > 2 else ""
 
+    # Every platform route asks the caller's directory role for one permission (platform audit Phase 1, C-28).
+    ctx.assert_platform_permission(_required_platform_permission(method, parts))
+
+    if resource in ("me", "auth", "admins", "approvals"):
+        return _platform_security_routes(event, parts, method, ctx, request_id, ip_address)
+
     # GET /v1/platform/dashboard
     if resource == "dashboard" and method == "GET":
         data = service.get_platform_dashboard()
@@ -556,6 +569,20 @@ def _platform_routes(
                 return success(service.test_gateway(kind), request_id=request_id)
             if sub_action is None and method == "PUT":
                 body = _parse_body(event)
+                confirm = body.pop("confirm", None)
+                plain, secrets = platform.split_gateway_update(kind, body)
+                if secrets:
+                    # A new provider key needs re-authentication and a second admin (decision D4).
+                    step_up.require_step_up(event, ctx)
+                    protected = approvals.ProtectedAction(
+                        action=approvals.ApprovalAction.GATEWAY_SECRET_CHANGE,
+                        target_label=kind,
+                        summary=f"Change the {kind} gateway's secret",
+                        confirm_text=kind,
+                        payload={"kind": kind, "body": plain, "secret_fields": sorted(secrets)},
+                        secret=secrets,
+                    )
+                    return _protected_response(ctx, protected, confirm, ip_address, request_id)
                 data = service.update_gateway_settings(kind, body, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(data, request_id=request_id)
 
@@ -564,6 +591,22 @@ def _platform_routes(
             return success(data, request_id=request_id)
         if sub is None and method == "PUT":
             body = _parse_body(event)
+            confirm = body.pop("confirm", None)
+            if body.get("maintenance_mode") is True and not service.get_platform_settings().get("maintenance_mode"):
+                # Turning maintenance on takes every tenant offline: re-authentication and a second admin (D4).
+                if set(body) != {"maintenance_mode"}:
+                    raise ValidationError(
+                        "Turn maintenance mode on by itself, then save the other settings.",
+                        field_errors={"maintenance_mode": "Save on its own"},
+                    )
+                step_up.require_step_up(event, ctx)
+                protected = approvals.ProtectedAction(
+                    action=approvals.ApprovalAction.MAINTENANCE_ON,
+                    target_label="maintenance_mode",
+                    summary="Turn maintenance mode on for every tenant",
+                    confirm_text="maintenance",
+                )
+                return _protected_response(ctx, protected, confirm, ip_address, request_id)
             data = service.update_platform_settings(body, actor_id=ctx.user_id, ip_address=ip_address)
             return success(data, request_id=request_id)
 
@@ -623,6 +666,8 @@ def _platform_routes(
             if action == "suspend" and method == "PATCH":
                 body = _parse_body(event)
                 req = parse_validated(SuspendTenantRequest, body)
+                # Takes the whole tenant offline at once: re-authenticate first (C-29).
+                step_up.require_step_up(event, ctx)
                 result = service.suspend_tenant(tenant_id, req.reason, actor_id=ctx.user_id, ip_address=ip_address)
                 return success(result, request_id=request_id)
 
@@ -685,16 +730,144 @@ def _platform_routes(
                     result = service.update_tenant(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
                     return success(result, request_id=request_id)
 
-                # DELETE /v1/platform/tenants/{id} — body {"reason": "..."} (audit PA-04)
+                # DELETE /v1/platform/tenants/{id} — body {"reason", "confirm"?}: re-authentication and a second
+                # admin (decision D4); a sole admin's offboarding runs 24 hours later unless cancelled.
                 if method == "DELETE":
                     offboard_req = parse_validated(OffboardTenantRequest, _parse_body(event))
-                    result = service.offboard_tenant(
-                        tenant_id,
-                        actor_id=ctx.user_id,
+                    step_up.require_step_up(event, ctx)
+                    tenant = service.get_tenant(tenant_id)
+                    if tenant["status"] == "offboarded":
+                        raise BusinessRuleViolationError("Tenant is already offboarded")
+                    protected = approvals.ProtectedAction(
+                        action=approvals.ApprovalAction.OFFBOARD_TENANT,
+                        target_label=str(tenant["id"]),
+                        target_tenant_id=str(tenant["id"]),
+                        summary=f"Offboard {tenant['company_name']}",
+                        confirm_text=str(tenant["slug"]),
+                        payload={"tenant_id": str(tenant["id"]), "reason": offboard_req.reason},
                         reason=offboard_req.reason,
-                        ip_address=ip_address,
                     )
-                    return success(result, request_id=request_id)
+                    return _protected_response(ctx, protected, offboard_req.confirm, ip_address, request_id)
+
+    raise ResourceNotFoundError("route", "/".join(parts))
+
+
+# ---------------------------------------------------------------------------
+# Platform security: the caller, step-up, the admin directory and approvals (platform audit Phase 1)
+# ---------------------------------------------------------------------------
+
+_PLATFORM_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _required_platform_permission(method: str, parts: list[str]) -> PlatformPermission:
+    """The one permission a platform route needs. Reads need READ; each write names its own.
+
+    Unknown writes need ADMINS, the narrowest grant, so a route added without an entry here is owner-only until it is
+    given one (fail-closed).
+    """
+    resource = parts[2] if len(parts) > 2 else ""
+    action = parts[4] if len(parts) > 4 else None
+    if resource == "auth":  # re-authenticating is open to every platform role
+        return PlatformPermission.READ
+    if method in _PLATFORM_READ_METHODS:
+        return PlatformPermission.READ
+    if resource == "approvals":
+        verb = parts[4] if len(parts) > 4 else None
+        # Cancel is checked in approvals.cancel (requester or owner); approve and reject need APPROVE.
+        return PlatformPermission.READ if verb == "cancel" else PlatformPermission.APPROVE
+    if resource == "tenants":
+        if action == "impersonate":
+            return PlatformPermission.SUPPORT
+        if action == "quota-override":
+            return PlatformPermission.PLANS
+        return PlatformPermission.TENANT_LIFECYCLE
+    return {
+        "admins": PlatformPermission.ADMINS,
+        "plans": PlatformPermission.PLANS,
+        "settings": PlatformPermission.SETTINGS,
+        "impersonation": PlatformPermission.SUPPORT,
+        "onboarding-requests": PlatformPermission.SUPPORT,
+    }.get(resource, PlatformPermission.ADMINS)
+
+
+def _protected_response(
+    ctx: Any,
+    protected: approvals.ProtectedAction,
+    confirm: str | None,
+    ip_address: str | None,
+    request_id: str,
+) -> dict[str, Any]:
+    """Run a protected action through approvals: 202 while it waits, 200 when it ran (sole admin)."""
+    outcome = approvals.request_protected_action(ctx, protected, confirm=confirm, ip_address=ip_address)
+    status_code = 200 if outcome["outcome"] == "executed" else 202
+    return success(outcome, status_code=status_code, request_id=request_id)
+
+
+def _platform_security_routes(
+    event: dict[str, Any],
+    parts: list[str],
+    method: str,
+    ctx: Any,
+    request_id: str,
+    ip_address: str | None,
+) -> dict[str, Any]:
+    resource = parts[2]
+    item = parts[3] if len(parts) > 3 else None
+    verb = parts[4] if len(parts) > 4 else None
+
+    # GET /v1/platform/me — the caller's directory row and permissions
+    if resource == "me" and item is None and method == "GET":
+        return success(platform_admins.get_me(ctx), request_id=request_id)
+
+    # POST /v1/platform/auth/step-up — re-authenticate; returns a 5-minute step-up token
+    if resource == "auth" and item == "step-up" and method == "POST":
+        req = parse_validated(StepUpRequest, _parse_body(event))
+        me = platform_admins.get_me(ctx)
+        result = step_up.step_up(
+            ctx,
+            str(me["email"]),
+            password=req.password,
+            mfa_code=req.mfa_code,
+            id_token=req.id_token,
+            ip_address=ip_address,
+        )
+        return success(result, request_id=request_id)
+
+    if resource == "admins":
+        if item is None and method == "GET":
+            return success(platform_admins.list_admins(), request_id=request_id)
+        if item is None and method == "POST":
+            invite = parse_validated(InvitePlatformAdminRequest, _parse_body(event))
+            step_up.require_step_up(event, ctx)
+            created_admin = platform_admins.invite_admin(ctx, invite, ip_address=ip_address)
+            return created(created_admin, location=f"/v1/platform/admins/{created_admin['id']}", request_id=request_id)
+        if item and verb is None and method == "PATCH":
+            if not _is_uuid(item):
+                raise ResourceNotFoundError("platform admin", item)
+            update = parse_validated(UpdatePlatformAdminRequest, _parse_body(event))
+            step_up.require_step_up(event, ctx)
+            return success(platform_admins.update_admin(ctx, item, update, ip_address=ip_address), request_id=request_id)
+
+    if resource == "approvals":
+        if item is None and method == "GET":
+            query = parse_validated(
+                ApprovalListQuery,
+                {k: v for k, v in {"status": _qp(event, "status"), "limit": _qp(event, "limit")}.items() if v},
+            )
+            return success(approvals.list_approvals(query.status, query.limit), request_id=request_id)
+        if item and not _is_uuid(item):
+            raise ResourceNotFoundError("approval", item)
+        if item and verb is None and method == "GET":
+            return success(approvals.get_approval(item), request_id=request_id)
+        if item and method == "POST" and verb in ("approve", "reject", "cancel"):
+            decision = parse_validated(ApprovalDecisionRequest, _parse_body(event))
+            if verb == "approve":
+                step_up.require_step_up(event, ctx)
+                return success(approvals.approve(ctx, item, decision.note, ip_address), request_id=request_id)
+            if verb == "reject":
+                step_up.require_step_up(event, ctx)
+                return success(approvals.reject(ctx, item, decision.note, ip_address), request_id=request_id)
+            return success(approvals.cancel(ctx, item, decision.note, ip_address), request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
 
