@@ -122,6 +122,8 @@ NOT_TENANT_DATA: dict[str, str] = {
     "idempotency_key": "ephemeral 24h POST idempotency cache; not tenant business data",
     "platform_user": "the platform admin directory; no tenant",
     "platform_approval": "the platform's two-person approvals; anonymised, not deleted, when the tenant goes",
+    "tenant_metrics_daily": "derived daily counts for the platform console; cascades with the tenant",
+    "job_run": "the platform's scheduled-job history; no tenant",
 }
 
 #: Keys inside ``tenant_config.config_value`` that hold credentials, by config key.

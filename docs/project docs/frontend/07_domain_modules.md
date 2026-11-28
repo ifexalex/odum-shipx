@@ -268,6 +268,10 @@ Implementation notes / ground-truth gaps found:
 - **Re-authentication on Entra.** The 1a gap is closed: `StepUpHost` signs in again with Microsoft in a small window and sends the fresh token.
 - **Wire change.** `POST /v1/auth/session` body gains `pool`.
 
+### Platform admin audit Phase 1c (2026-11-28): the 8-area sidebar
+
+- `shell/navConfig.ts` `PLATFORM_AREAS`: Overview (the dashboard, now labelled Overview), Tenants (Tenants, Onboarding requests), Revenue, Plans (Plans and limits → `/platform/settings/plans`), Operations, Support, Security (Approvals, Platform admins, Audit log), Settings. An area without a built page (Revenue, Operations, Support) is left out of the sidebar, not shown empty. Plans and limits lights on its own page rather than Settings, by the longest-match rule. No page moved; Phase 2 rebuilds Overview on the new metrics.
+
 ## 7.10 Reports & Notification Log ✅
 
 Backend: `15_api_notifications.md`. Notification log (`NotificationLog`, `NotifDetailModal`) shows delivery status per channel with a retry action (`POST /v1/notifications/log/{id}/retry`, tenant_admin only) — surface provider error detail (`gateway_response`) on the detail modal for debugging delivery failures, but never the full raw payload if it could contain PII beyond what's already masked server-side.

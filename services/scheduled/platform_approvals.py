@@ -8,6 +8,7 @@ requests that nobody approved or rejected within 24 hours. The decision logic li
 import logging
 from typing import Any
 
+from shared.job_runs import tracked_job
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing, record_failure
 
@@ -17,6 +18,7 @@ init_tracing()
 logger = logging.getLogger(__name__)
 
 
+@tracked_job("platform_approvals")
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Run due scheduled approvals and expire stale pending ones; return the counts."""
     from services.tenant_management import approvals

@@ -1,5 +1,7 @@
 # Task 20 — Metering & Usage Service Implementation
 
+> **2026-11-28 (platform audit Phase 1c):** `usage_record` now also feeds `tenant_metrics_daily` (one row of counts per tenant per day, refreshed hourly by `usage_aggregation`; see `16_scheduled_jobs.md`). Metered `api_calls` and `containers_processed` are read per day; `storage_bytes` is summed up to the end of the day.
+
 ## Objective
 
 Implement the Metering Lambda service that consumes `UsageRecorded` events from the SQS metering queue, writes usage data to the `usage_record` table, and enforces per-tenant tier limits. Also implement the usage data retrieval for the Platform Admin dashboard.
