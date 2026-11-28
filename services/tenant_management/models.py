@@ -286,10 +286,10 @@ class UpdateTenantUserRequest(BaseModel):
 
 
 class WebhookEventType(StrEnum):
+    # Only events with an active backend dispatcher are offered (TA-01 / D1).
+    # Additional events (billing.payment_due, release_note.generated,
+    # packing_list.approved) are added in Phase 3 alongside their senders.
     container_status_updated = "container.status_updated"
-    billing_payment_due = "billing.payment_due"
-    release_note_generated = "release_note.generated"
-    packing_list_approved = "packing_list.approved"
 
 
 class WebhookConfigRequest(BaseModel):

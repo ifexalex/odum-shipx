@@ -10,6 +10,7 @@
  */
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { configApi } from '../../api/tenantManagement'
 import { ActivityLog } from './ActivityLog'
@@ -49,7 +50,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
       data: [ENTRY],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     })
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     expect(await screen.findByText('payment claim')).toBeInTheDocument()
     expect(screen.getByText('Emeka Eze')).toBeInTheDocument()
@@ -61,7 +66,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
       data: [ENTRY],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     })
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('payment claim')
     await userEvent.click(screen.getByRole('button', { name: /details/i }))
@@ -76,7 +85,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
       data: [{ ...ENTRY, before_state: null, after_state: null }],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
     })
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('payment claim')
     expect(screen.queryByRole('button', { name: /details/i })).toBeNull()
@@ -84,7 +97,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('choosing a category sends every entity_type in that category', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
@@ -100,7 +117,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('picking a specific record type within a category narrows to just that one', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
@@ -116,7 +137,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('switching category clears a record-type selection that no longer applies', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
@@ -137,7 +162,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('filters by action', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     await openMoreFilters()
@@ -150,7 +179,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('searches by actor name or record id, debounced', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search the activity log' }), 'Emeka')
@@ -162,7 +195,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('toggling sort order sends the new direction', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     expect(configApi.activity).toHaveBeenLastCalledWith(expect.objectContaining({ sort: 'desc' }))
@@ -174,7 +211,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('Clear filters resets category, record type, action, search, and date range together', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^Money/ }))
@@ -204,7 +245,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('a custom From/To date range is sent as createdAfter/createdBefore', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /^When:/ }))
@@ -220,7 +265,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('a custom From date overrides and clears the preset "When" selector', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     await userEvent.click(screen.getByRole('button', { name: /all time/i }))
@@ -243,7 +292,11 @@ describe('ActivityLog — tenant-admin audit trail', () => {
 
   it('does not offer impersonation as a filterable record type — platform-only, not a tenant business record', async () => {
     vi.mocked(configApi.activity).mockResolvedValue(emptyResult())
-    render(<ActivityLog />)
+    render(
+      <MemoryRouter>
+        <ActivityLog />
+      </MemoryRouter>,
+    )
 
     await screen.findByText('No activity matches these filters')
     // Category is a chip set; none of the chips name impersonation.

@@ -225,7 +225,7 @@ describe('Dashboard (B3)', () => {
     // Card title + CTA both carry the label — assert the heading
     expect(screen.getByRole('heading', { name: 'Add customer' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Invite staff' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Update dollar rate' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Review dollar markup' })).toBeInTheDocument()
     expect(screen.queryByText('Operations')).toBeNull()
     expect(screen.queryByText('Billing & Claims')).toBeNull()
   })

@@ -15,11 +15,9 @@ import { toast } from '../../design/toast'
 import { PageHeader } from '../../shell/PageHeader'
 
 // ─── Event toggle row ──────────────────────────────────────────────────────────
+// Only events that have an active backend sender are offered (TA-01 / D1).
 const WEBHOOK_EVENTS: Array<{ type: WebhookEventType; label: string }> = [
   { type: 'container.status_updated', label: 'Container status updated' },
-  { type: 'billing.payment_due',      label: 'Billing payment due' },
-  { type: 'release_note.generated',   label: 'Release note generated' },
-  { type: 'packing_list.approved',    label: 'Packing list approved' },
 ]
 
 interface EventToggleProps {

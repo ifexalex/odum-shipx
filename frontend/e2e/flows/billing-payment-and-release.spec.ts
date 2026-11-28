@@ -107,7 +107,6 @@ test.describe('billing payment and release note', () => {
     // it rather than assume full payment. Real seeded data, not a mock, so
     // this can't be sidestepped by controlling the fixture.
     await dialog.getByLabel(/release on credit/i).check()
-    await dialog.getByLabel(/credit granted by/i).fill('Chidi Okafor')
     await dialog.getByLabel(/approval notes/i).fill('e2e test — manager override for testing')
 
     const generateSubmit = dialog.getByRole('button', { name: /^generate release note$/i })

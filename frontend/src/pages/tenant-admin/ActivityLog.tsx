@@ -30,6 +30,7 @@
  * disturbs the table's scroll position.
  */
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { configApi, type TenantActivityEntry } from '../../api/tenantManagement'
 import {
@@ -130,6 +131,9 @@ function extractDiffRows(
 }
 
 export function ActivityLog(): JSX.Element {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const actorIdFilter = searchParams.get('actor_id') ?? ''
+  const actorNameFilter = searchParams.get('actor_name') ?? ''
   const [entries, setEntries] = useState<TenantActivityEntry[]>([])
   const [category, setCategory] = useState('')
   const [entityFilter, setEntityFilter] = useState('')
@@ -176,6 +180,7 @@ export function ActivityLog(): JSX.Element {
         const cat = CATEGORIES.find((c) => c.label === category)
         const entityTypes = effectiveEntityFilter ? [effectiveEntityFilter] : cat ? cat.entityTypes : undefined
         const result = await configApi.activity({
+          actorId: actorIdFilter || undefined,
           entityTypes,
           action: actionFilter || undefined,
           q: search || undefined,
@@ -195,7 +200,7 @@ export function ActivityLog(): JSX.Element {
         setLoading(false)
       }
     },
-    [effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection],
+    [actorIdFilter, effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection],
   )
 
   const loadRef = useRef(load)
@@ -205,7 +210,7 @@ export function ActivityLog(): JSX.Element {
   })
   useEffect(() => {
     void loadRef.current()
-  }, [effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection])
+  }, [actorIdFilter, effectiveEntityFilter, category, actionFilter, search, createdAfter, createdBefore, sortDirection])
 
   const expandedEntry = entries.find((e) => e.id === expandedId) ?? null
 
@@ -216,6 +221,9 @@ export function ActivityLog(): JSX.Element {
     setSearchInput('')
     setSearch('')
     when.clear()
+    if (actorIdFilter || actorNameFilter) {
+      setSearchParams({})
+    }
   }
 
   return (
@@ -231,6 +239,19 @@ export function ActivityLog(): JSX.Element {
         }
         notices={
           <>
+            {actorIdFilter && (
+              <Banner
+                variant="info"
+                title={`Filtered to ${actorNameFilter || actorIdFilter}`}
+                action={
+                  <Button variant="ghost" size="sm" onClick={() => setSearchParams({})}>
+                    Show all staff
+                  </Button>
+                }
+              >
+                Showing recorded actions by this team member only.
+              </Banner>
+            )}
             {error && (
               <Banner variant="error" title="Couldn't load">
                 {error}
@@ -242,7 +263,7 @@ export function ActivityLog(): JSX.Element {
           <FilterBar
             label="Filter the activity log"
             activeCount={
-              [category, actionFilter, effectiveEntityFilter, when.isActive].filter(Boolean).length
+              [actorIdFilter, category, actionFilter, effectiveEntityFilter, when.isActive].filter(Boolean).length
             }
             onClear={clearFilters}
             status={
