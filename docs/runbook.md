@@ -1192,3 +1192,16 @@ Cancelling an invoice now returns the credit it used and reopens the balances it
 
 **An approval is stuck.** `SELECT id, action, status, requested_at, expires_at, execute_after, error FROM platform_approval WHERE status IN ('pending', 'scheduled', 'approved') ORDER BY requested_at;` `pending` past `expires_at` is moved to `expired` by the 15-minute `platform_approvals` job; `scheduled` past `execute_after` is run by it. `approved` for more than a minute means the process died mid-run: check the action's own effect (the tenant's status, the setting), then set the row to `executed` or `failed` with `RETURNING id`. `failed` rows carry the error; the action did not complete, and can be requested again.
 
+### Rolling out MFA for platform admins (platform audit Phase 1b)
+
+AWS, in this order, so nobody is locked out:
+
+1. Deploy with `platform_mfa_required = false` in the environment's tfvars. This creates the platform pool, its client and the `/v1/platform/*` authorizer. **From this deploy on, `/v1/platform/*` accepts only platform-pool tokens at API Gateway**, so do steps 2–3 straight away.
+2. Set the frontend secrets `VITE_COGNITO_PLATFORM_USER_POOL_ID` / `VITE_COGNITO_PLATFORM_CLIENT_ID` from `terraform output cognito_platform_user_pool_id` / `cognito_platform_client_id`, and redeploy the SPA.
+3. `COGNITO_PLATFORM_USER_POOL_ID=… COGNITO_USER_POOL_ID=… AWS_REGION=… python3 scripts/platform_admins.py move-to-platform-pool --dry-run`, then without `--dry-run`. Each admin receives a temporary password and signs in at `/login?platform=1`, setting a new password and an authenticator app.
+4. Set `platform_mfa_required = true` (the default) and deploy. The backend now refuses any platform request not from the platform pool (403 `PLATFORM_MFA_REQUIRED`).
+5. Optionally re-run the move with `--disable-old` to disable the admins' tenant-pool accounts.
+
+**An admin lost their authenticator.** In the platform pool: `aws cognito-idp admin-set-user-mfa-preference --user-pool-id <platform pool> --username <email> --software-token-mfa-settings Enabled=false,PreferredMfa=false`, then `admin-reset-user-password`. Their next sign-in sets up a new authenticator (the pool requires MFA, so it asks again). Record why in the platform audit trail by hand.
+
+**Entra.** Create the Conditional Access policy first (`infrastructure/azure/SETUP.md` §6), sign in once as a platform admin and check the ID token carries `amr` with `mfa` (or set `entra_platform_mfa_acr` to the authentication context id it carries in `acrs`), then set `platform_mfa_required = true`. Turning it on before the policy locks every platform admin out with 403 `PLATFORM_MFA_REQUIRED`; set it back to `false` to recover.

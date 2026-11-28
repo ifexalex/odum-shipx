@@ -36,6 +36,9 @@ class TenantContext:
     # from the directory on every request (shared/platform_directory.py). None for tenant users.
     platform_user_id: str | None = None
     platform_role: str | None = None
+    # True when a platform caller's token came from the platform admins' Cognito pool (Phase 1b); their step-up
+    # re-authentication then signs in through that pool's client.
+    platform_pool: bool = False
     is_platform_admin: bool = field(init=False)
 
     def __post_init__(self) -> None:

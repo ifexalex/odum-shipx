@@ -291,6 +291,8 @@ module "container_app" {
   entra_local_accounts          = var.entra_local_accounts
   entra_platform_admin_group_id = var.entra_platform_admin_group_id
   entra_group_id_map            = var.entra_group_id_map
+  platform_mfa_required         = var.platform_mfa_required
+  entra_platform_mfa_acr        = var.entra_platform_mfa_acr
   entra_token_endpoint          = var.entra_token_endpoint
   entra_client_id               = var.entra_client_id
   # Graph client-credentials for provisioning users into the CIAM tenant (the

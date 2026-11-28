@@ -66,13 +66,27 @@ def verify_oidc_jwt(token: str) -> dict[str, Any] | None:
     COGNITO_AUDIENCE), issuer (fail-closed outside local/test when OIDC_ISSUER /
     COGNITO_ISSUER is absent), and rejects both Cognito access tokens
     (`token_use != "id"`) and Entra access tokens (`scp` claim present).
+
+    A token the tenant pool does not accept is tried against the platform admins' Cognito pool
+    (``PLATFORM_COGNITO_JWKS_URL`` / ``COGNITO_PLATFORM_CLIENT_ID`` / ``PLATFORM_COGNITO_ISSUER``, platform audit
+    Phase 1b), whose tokens the claims mapper reads as a platform admin. Its issuer is always required.
     """
+    claims = _verify_with(token, _jwks_url(), _audience(), _issuer())
+    if claims is not None:
+        return claims
+    platform_jwks = os.environ.get("PLATFORM_COGNITO_JWKS_URL", "").strip()
+    platform_audience = os.environ.get("COGNITO_PLATFORM_CLIENT_ID", "").strip()
+    platform_issuer = os.environ.get("PLATFORM_COGNITO_ISSUER", "").strip()
+    if platform_jwks and platform_audience and platform_issuer:
+        return _verify_with(token, platform_jwks, platform_audience, platform_issuer)
+    return None
+
+
+def _verify_with(token: str, jwks_url: str, audience: str, issuer: str) -> dict[str, Any] | None:
+    """Verify ``token`` against one identity provider's keys, audience and issuer; None when it does not verify."""
     try:
         import jwt
 
-        jwks_url = _jwks_url()
-        audience = _audience()
-        issuer = _issuer()
         env = os.environ.get("ENVIRONMENT", "").strip().lower()
         if not jwks_url or not audience:
             return None

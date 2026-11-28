@@ -151,3 +151,13 @@ output "cloudfront_domain" {
   description = "CloudFront distribution domain (e.g. d1abc.cloudfront.net)."
   value       = length(module.cloudfront) > 0 ? module.cloudfront[0].distribution_domain : null
 }
+
+output "cognito_platform_user_pool_id" {
+  description = "Platform admins' Cognito User Pool ID — the SPA's VITE_COGNITO_PLATFORM_USER_POOL_ID"
+  value       = module.cognito.platform_user_pool_id
+}
+
+output "cognito_platform_client_id" {
+  description = "Platform admins' app client ID — the SPA's VITE_COGNITO_PLATFORM_CLIENT_ID"
+  value       = module.cognito.platform_client_id
+}

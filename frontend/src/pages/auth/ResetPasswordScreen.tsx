@@ -12,7 +12,13 @@
  */
 import { useState, type FormEvent, type JSX } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { completeNewPassword, confirmForgotPassword, hasPendingNewPasswordChallenge } from '../../auth/authClient'
+import {
+  completeNewPassword,
+  confirmForgotPassword,
+  hasPendingNewPasswordChallenge,
+  MfaCodeRequiredError,
+  MfaSetupRequiredError,
+} from '../../auth/authClient'
 import { homePathForRole } from '../../auth/roleHome'
 import { useSession } from '../../auth/useSession'
 import { Banner, Button, Field, Icon, IconButton } from '../../design/components'
@@ -24,6 +30,8 @@ export function ResetPasswordScreen(): JSX.Element {
   const { login } = useSession()
   const [params] = useSearchParams()
   const firstLogin = params.get('first') === '1'
+  // A platform admin (platform audit Phase 1b): their pool needs 14+ characters with a symbol, then an authenticator.
+  const platform = params.get('platform') === '1'
   const emailParam = params.get('email') ?? ''
 
   const [email, setEmail] = useState(emailParam)
@@ -49,9 +57,22 @@ export function ResetPasswordScreen(): JSX.Element {
           setError('Your sign-in session expired. Sign in again with your temporary password.')
           return
         }
-        await completeNewPassword(password)
+        try {
+          await completeNewPassword(password)
+        } catch (err) {
+          // A platform admin's first sign-in goes on to authenticator setup (platform audit Phase 1b).
+          if (err instanceof MfaSetupRequiredError || err instanceof MfaCodeRequiredError) {
+            const mfa =
+              err instanceof MfaSetupRequiredError
+                ? { step: 'setup' as const, secret: err.secret, otpauthUri: err.otpauthUri }
+                : { step: 'code' as const }
+            navigate('/login?platform=1', { replace: true, state: { mfa } })
+            return
+          }
+          throw err
+        }
         // Challenge complete — establish the app session with the new password.
-        const session = await login(email, password)
+        const session = await login(email, password, { pool: platform ? 'platform' : 'tenant' })
         navigate(homePathForRole(session.role), { replace: true })
         return
       }

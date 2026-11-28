@@ -149,6 +149,14 @@ Pick one (see the README "Running the full app on Azure" for detail):
   token-issuance event and add the `/auth/callback` redirect URI; it injects `tenant_id`+`role` into
   every token so all roles resolve. See `docs/runbook.md` → "Azure deployment — required one-time setup".
 
+**Platform admins: require MFA (platform audit Phase 1b).** In the Entra admin centre create a Conditional Access
+policy: users = the `platform_admin` group; target resources = the ShipX SPA app registration; grant = require
+multi-factor authentication (an authentication strength of "Phishing-resistant MFA" or "Multifactor authentication").
+Optionally attach an authentication context (e.g. `c1`) and set `entra_platform_mfa_acr = "c1"`. Sign in once as a
+platform admin and confirm the ID token's `amr` contains `mfa` (or its `acrs` contains the context), then set
+`platform_mfa_required = true` and apply. The backend then refuses platform requests without MFA. Conditional Access
+needs Entra ID P1 (included in External ID's MFA add-on).
+
 ## 7. First deploy
 
 ```bash

@@ -175,4 +175,4 @@ class TestHandlerProviderSelection:
             resp = handler.lambda_handler(_event([f"shipx_rt={_REFRESH}"]), None)
         assert resp["statusCode"] == 200
         assert json.loads(resp["body"])["data"]["id_token"] == "cognito.id"
-        mock_refresh.assert_called_once_with(_REFRESH)
+        mock_refresh.assert_called_once_with(_REFRESH, pool="tenant")

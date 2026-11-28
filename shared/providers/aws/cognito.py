@@ -16,11 +16,16 @@ logger = logging.getLogger(__name__)
 class CognitoIdentityProvider:
     """IdentityProvider backed by boto3 cognito-idp for user/group provisioning."""
 
-    def __init__(self) -> None:
+    def __init__(self, user_pool_id: str | None = None) -> None:
+        """Bind to ``user_pool_id``, or to ``COGNITO_USER_POOL_ID`` (the tenant pool) when omitted.
+
+        The platform admins' pool (platform audit Phase 1b) is passed explicitly by
+        ``shared.providers.get_platform_identity_provider``.
+        """
         import boto3
 
         self.client: Any = boto3.client("cognito-idp", region_name=os.environ["AWS_REGION"])
-        self.user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
+        self.user_pool_id = user_pool_id or os.environ["COGNITO_USER_POOL_ID"]
 
     # ------------------------------------------------------------------
     # User management

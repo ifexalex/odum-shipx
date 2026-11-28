@@ -841,7 +841,7 @@ class TestDirectoryService:
             patch.object(
                 platform_admins.prepo, "insert_platform_user", return_value={"id": "pu-n", "subject": "sub-new"}
             ) as insert,
-            patch.object(platform_admins, "get_identity_provider", return_value=idp),
+            patch.object(platform_admins, "get_platform_identity_provider", return_value=idp),
             patch.object(platform_admins, "insert_platform_audit"),
         ):
             out = platform_admins.invite_admin(
@@ -896,6 +896,7 @@ class TestDirectoryService:
             patch.object(platform_admins.prepo, "get_platform_user", return_value=target),
             patch.object(platform_admins.prepo, "update_platform_user", return_value={**target, "status": "disabled"}) as update,
             patch.object(platform_admins, "get_identity_provider", return_value=idp),
+            patch.object(platform_admins, "get_platform_identity_provider", return_value=idp),
             patch.object(platform_admins, "evict_platform_caller") as evict,
             patch.object(platform_admins, "insert_platform_audit") as audit,
         ):
@@ -942,3 +943,4 @@ class TestAuditRows:
         sql = " ".join(execute.call_args.args[1].split())
         assert "pu.name AS actor_name" in sql
         assert "LEFT JOIN platform_user pu ON pu.subject = pal.actor_id::text" in sql
+        assert "pal.actor_id::text = ANY(pu.previous_subjects)" in sql  # names survive a move to the platform pool

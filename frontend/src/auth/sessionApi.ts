@@ -37,12 +37,13 @@ export interface RefreshedTokens {
  * silently restore the session via silentRefresh() below. Call once,
  * immediately after a successful login.
  */
-export async function establishServerSession(refreshToken: string): Promise<void> {
+export async function establishServerSession(refreshToken: string, pool: 'tenant' | 'platform' = 'tenant'): Promise<void> {
+  // `pool` tells the backend which Cognito app client refreshes this token (platform audit Phase 1b).
   const response = await fetch(authUrl('/v1/auth/session'), {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    body: JSON.stringify({ refresh_token: refreshToken, pool }),
   })
   if (!response.ok) {
     throw new Error(`Failed to establish persistent session (${response.status})`)

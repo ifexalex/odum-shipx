@@ -28,6 +28,7 @@ from typing import Any
 from shared import rate_limit
 from shared.exceptions import LogisticsBaseError, StepUpRequiredError
 from shared.platform_audit import PlatformAuditAction, insert_platform_audit
+from shared.platform_identity import platform_client_id
 from shared.tenant_context import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -194,7 +195,8 @@ def _verify_cognito(ctx: TenantContext, email: str, password: str | None, mfa_co
 
     if not password:
         raise StepUpFailedError("Enter your password.")
-    client_id = os.environ.get("COGNITO_CLIENT_ID", "")
+    # The caller's own pool: the platform admins' pool (MFA required) once they have moved to it (Phase 1b).
+    client_id = platform_client_id() if ctx.platform_pool else os.environ.get("COGNITO_CLIENT_ID", "")
     if not client_id:
         raise ExternalServiceError("Cognito", "COGNITO_CLIENT_ID is not configured")
     client = _cognito_client()

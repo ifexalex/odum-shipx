@@ -46,7 +46,7 @@ from shared.origin_guard import assert_json_content_type, assert_trusted_origin
 from shared.responses import error_response
 from shared.validation import parse_validated
 
-from .models import EstablishSessionRequest, LoginRequest
+from .models import AuthorizeUrlRequest, EstablishSessionRequest, LoginRequest
 
 setup_logging()
 init_tracing()
@@ -54,6 +54,9 @@ init_tracing()
 logger = logging.getLogger(__name__)
 
 _COOKIE_NAME = "shipx_rt"
+# Which Cognito pool issued the refresh token: "platform" for the platform admins' pool (platform audit Phase 1b),
+# absent for the tenant pool. httpOnly like the token itself; it only picks the app client to refresh with.
+_POOL_COOKIE_NAME = "shipx_rt_pool"
 # Short-lived transaction cookie for the interactive auth-code flow: holds the
 # server-generated PKCE verifier + state + nonce across the Entra redirect so
 # none of it ever touches JS (entra_oauth.py / _authorize_url / _callback).
@@ -241,15 +244,20 @@ def _authorize_url(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     """
     from . import entra_oauth
 
+    req = parse_validated(AuthorizeUrlRequest, _parse_body(event))
     verifier, challenge = entra_oauth.generate_pkce()
-    state = entra_oauth.generate_token()
+    # A step-up's state is marked so the SPA's /auth/callback page in the pop-up leaves the code to the opening tab.
+    state = ("su." if req.purpose == "step_up" else "") + entra_oauth.generate_token()
     nonce = entra_oauth.generate_token()
     try:
-        url = entra_oauth.build_authorize_url(state=state, nonce=nonce, code_challenge=challenge)
+        url = entra_oauth.build_authorize_url(
+            state=state, nonce=nonce, code_challenge=challenge, fresh_sign_in=req.purpose == "step_up"
+        )
     except ValueError as exc:
         raise LogisticsBaseError(str(exc), "ENTRA_NOT_CONFIGURED", 503) from exc
 
-    tx = _sign_tx({"v": verifier, "s": state, "n": nonce})
+    # The purpose rides in the signed transaction cookie, so the callback cannot be talked into the other one.
+    tx = _sign_tx({"v": verifier, "s": state, "n": nonce, "p": req.purpose})
     return {
         "statusCode": 200,
         "cookies": [_cookie_header(tx, _TX_COOKIE_MAX_AGE_SECONDS, name=_TX_COOKIE_NAME)],
@@ -281,6 +289,11 @@ def _session_context(id_token: str) -> dict[str, Any]:
     """
     try:
         claims = _decode_claims(id_token)
+        # The platform admins' pool (Phase 1b): its tokens carry no tenant or group claims; the pool is the grant.
+        from shared.platform_identity import is_platform_pool_token
+
+        if is_platform_pool_token(claims):
+            return {"tenant_id": "PLATFORM", "role": "platform_admin", "roles": ["platform_admin"]}
         subject = str(claims.get("oid") or claims.get("sub") or "")
         if not subject:
             return {}
@@ -370,6 +383,15 @@ def _callback(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     if not actual_nonce or not hmac.compare_digest(expected_nonce, actual_nonce):
         raise AuthenticationRequiredError()
     _log_id_token_shape(tokens["id_token"], request_id)
+    if tx.get("p") == "step_up":
+        # A platform step-up (Phase 1b): hand back the fresh ID token for POST /v1/platform/auth/step-up and leave the
+        # session cookie alone, so a different account signed in here can never replace the admin's session.
+        return {
+            "statusCode": 200,
+            "cookies": [_cookie_header("", 0, name=_TX_COOKIE_NAME)],
+            "headers": {**_STANDARD_HEADERS, "X-Request-Id": request_id},
+            "body": json.dumps({"data": {"id_token": tokens["id_token"], "purpose": "step_up"}}),
+        }
     body = json.dumps(
         {
             "data": {
@@ -437,13 +459,26 @@ def _login(event: dict[str, Any], request_id: str) -> dict[str, Any]:
 
 def _establish_session(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     req = parse_validated(EstablishSessionRequest, _parse_body(event))
+    pool_cookie = (
+        _cookie_header("platform", _COOKIE_MAX_AGE_SECONDS, name=_POOL_COOKIE_NAME)
+        if req.pool == "platform"
+        else _cookie_header("", 0, name=_POOL_COOKIE_NAME)
+    )
 
     return {
         "statusCode": 204,
-        "cookies": [_cookie_header(req.refresh_token, _COOKIE_MAX_AGE_SECONDS)],
+        "cookies": [_cookie_header(req.refresh_token, _COOKIE_MAX_AGE_SECONDS), pool_cookie],
         "headers": {**_STANDARD_HEADERS, "X-Request-Id": request_id},
         "body": "",
     }
+
+
+def _refresh_with_pool(refresh_token: str, pool: str) -> Any:
+    """Refresh through the provider; on Cognito, with the client of the pool that issued the token."""
+    refresher = _refresher()
+    if providers.AUTH_PROVIDER == "azure":
+        return refresher.refresh_id_token(refresh_token)
+    return refresher.refresh_id_token(refresh_token, pool="platform" if pool == "platform" else "tenant")
 
 
 def _refresh(event: dict[str, Any], request_id: str) -> dict[str, Any]:
@@ -451,7 +486,7 @@ def _refresh(event: dict[str, Any], request_id: str) -> dict[str, Any]:
     if not refresh_token:
         raise AuthenticationRequiredError()
 
-    tokens = _refresher().refresh_id_token(refresh_token)
+    tokens = _refresh_with_pool(refresh_token, _read_cookie(event, _POOL_COOKIE_NAME) or "tenant")
     body = json.dumps(
         {
             "data": {
@@ -489,12 +524,14 @@ def _logout(event: dict[str, Any], request_id: str) -> dict[str, Any]:
         refresher = _refresher()
         if subject and providers.AUTH_PROVIDER == "azure":
             refresher.revoke_refresh_token(refresh_token, subject=subject)
-        else:
+        elif providers.AUTH_PROVIDER == "azure":
             refresher.revoke_refresh_token(refresh_token)
+        else:
+            refresher.revoke_refresh_token(refresh_token, pool=_read_cookie(event, _POOL_COOKIE_NAME) or "tenant")
 
     return {
         "statusCode": 204,
-        "cookies": [_cookie_header("", 0)],
+        "cookies": [_cookie_header("", 0), _cookie_header("", 0, name=_POOL_COOKIE_NAME)],
         "headers": {**_STANDARD_HEADERS, "X-Request-Id": request_id},
         "body": "",
     }

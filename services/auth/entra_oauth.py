@@ -57,8 +57,11 @@ def authorize_endpoint() -> str:
     return token_endpoint
 
 
-def build_authorize_url(state: str, nonce: str, code_challenge: str) -> str:
+def build_authorize_url(state: str, nonce: str, code_challenge: str, *, fresh_sign_in: bool = False) -> str:
     """Build the Entra authorize URL for the interactive auth-code + PKCE flow.
+
+    ``fresh_sign_in`` (a platform step-up, Phase 1b) forces Entra to authenticate again (``prompt=login``,
+    ``max_age=0``) instead of reusing its session, so the token's ``auth_time`` is now.
 
     Raises:
         ValueError: required configuration (endpoint / client id / redirect uri)
@@ -88,7 +91,10 @@ def build_authorize_url(state: str, nonce: str, code_challenge: str) -> str:
     # (still SSO-fast for the chosen account). Override via ENTRA_AUTHORIZE_PROMPT
     # (e.g. "login" to force re-auth, or "" to disable).
     prompt = os.environ.get("ENTRA_AUTHORIZE_PROMPT", "select_account").strip()
-    if prompt:
+    if fresh_sign_in:
+        params["prompt"] = "login"
+        params["max_age"] = "0"
+    elif prompt:
         params["prompt"] = prompt
 
     return f"{endpoint}?{urllib.parse.urlencode(params)}"

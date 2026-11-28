@@ -101,7 +101,7 @@ describe('LoginScreen', () => {
     await userEvent.type(screen.getByLabelText('Password', { exact: false, selector: 'input' }), 'correct-password')
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 
-    expect(login).toHaveBeenCalledWith('amara@acmelogistics.com', 'correct-password')
+    expect(login).toHaveBeenCalledWith('amara@acmelogistics.com', 'correct-password', { pool: 'tenant' })
     expect(await screen.findByText('Dashboard')).toBeInTheDocument()
   })
 
