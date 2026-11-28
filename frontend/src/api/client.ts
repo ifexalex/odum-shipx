@@ -142,7 +142,7 @@ async function doFetch(opts: RequestOptions): Promise<Response> {
   }
 }
 
-async function parseError(response: Response): Promise<ApiError> {
+async function parseError(response: Response, path = ''): Promise<ApiError> {
   const requestId = response.headers.get('X-Request-Id')
   let shape: ApiErrorShape
   try {
@@ -158,8 +158,11 @@ async function parseError(response: Response): Promise<ApiError> {
   }
   // Tenant-level blocks (410 TENANT_OFFBOARDED / 403 TENANT_SUSPENDED) fail on
   // every request identically — flip the full-page gate (16.12) instead of
-  // leaving each page to render its own error banner.
-  reportTenantBlocked(shape.error_code)
+  // leaving each page to render its own error banner. Never trip the tenant gate
+  // from platform-admin management routes (/v1/platform/*).
+  if (!path.startsWith('/v1/platform/')) {
+    reportTenantBlocked(shape.error_code)
+  }
   return new ApiError(shape, requestId)
 }
 
@@ -226,7 +229,7 @@ async function fetchWithAuth(opts: RequestOptions): Promise<Response> {
   }
 
   if (!response.ok) {
-    throw await parseError(response)
+    throw await parseError(response, opts.path)
   }
 
   // A successful write makes some cached reads wrong. Doing this here, rather
@@ -313,7 +316,7 @@ export async function apiDownloadFile(
       query: isDedicatedDocument ? query : { ...query, format },
     })
     if (!response.ok) {
-      throw await parseError(response)
+      throw await parseError(response, path)
     }
     const envelope = (await response.json()) as SuccessEnvelope<ExportResultShape>
     const { download_url: downloadUrl, filename } = envelope.data

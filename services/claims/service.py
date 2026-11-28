@@ -271,7 +271,7 @@ def _evidence_links(tenant_id: str, claim_id: str) -> list[dict[str, Any]]:
     prefix = f"{tenant_id}/claims/{claim_id}/"
     storage = get_storage_provider()
     files: list[dict[str, Any]] = []
-    for row in repo.list_claim_evidence(claim_id):
+    for row in repo.list_claim_evidence(claim_id, tenant_id=tenant_id):
         key = str(row["file_key"])
         name = key[len(prefix) :]
         if not key.startswith(prefix) or not name or "/" in name or name in {".", ".."}:
@@ -605,7 +605,7 @@ def generate_presigned_url(
             rule_id="CLAIM_CLOSED_FOR_EVIDENCE",
         )
     canonical_claim_id = str(claim["id"])
-    if repo.count_claim_evidence(canonical_claim_id) >= _MAX_EVIDENCE_FILES_PER_CLAIM:
+    if repo.count_claim_evidence(canonical_claim_id, tenant_id=tenant_id) >= _MAX_EVIDENCE_FILES_PER_CLAIM:
         raise BusinessRuleViolationError(
             f"Maximum of {_MAX_EVIDENCE_FILES_PER_CLAIM} evidence files per claim reached",
             rule_id="EVIDENCE_LIMIT_REACHED",
@@ -624,7 +624,8 @@ def generate_presigned_url(
             "file_type": content_type,
             "file_size_bytes": None,
             "uploaded_by": ctx.user_id,
-        }
+        },
+        tenant_id=tenant_id,
     )
 
     return {
@@ -651,7 +652,7 @@ def confirm_evidence(tenant_id: str, claim_id: str, evidence_id: str, ctx: Any, 
             rule_id="CLAIM_CLOSED_FOR_EVIDENCE",
         )
     canonical_claim_id = str(claim["id"])
-    evidence = repo.get_claim_evidence(canonical_claim_id, evidence_id)
+    evidence = repo.get_claim_evidence(canonical_claim_id, evidence_id, tenant_id=tenant_id)
     if not evidence:
         raise ResourceNotFoundError("claim_evidence", evidence_id)
     if evidence.get("confirmed_at") is None:
@@ -660,9 +661,9 @@ def confirm_evidence(tenant_id: str, claim_id: str, evidence_id: str, ctx: Any, 
         except BusinessRuleViolationError as exc:
             if exc.rule_id == "FILE_TOO_LARGE":
                 logger.warning("Claim evidence over the size limit deleted at confirmation (claim_id=%s)", canonical_claim_id)
-                repo.delete_unconfirmed_claim_evidence(canonical_claim_id, evidence_id)
+                repo.delete_unconfirmed_claim_evidence(canonical_claim_id, evidence_id, tenant_id=tenant_id)
             raise
-        evidence = repo.confirm_claim_evidence(canonical_claim_id, evidence_id, size) or evidence
+        evidence = repo.confirm_claim_evidence(canonical_claim_id, evidence_id, size, tenant_id=tenant_id) or evidence
         log_audit(
             tenant_id=tenant_id,
             entity_type="claim_evidence",

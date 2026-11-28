@@ -774,7 +774,7 @@ def delete_misc_charge(
             rule_id="BILLING_NOT_UNPAID",
         )
 
-    charge = repo.get_misc_charge_by_id(charge_id)
+    charge = repo.get_misc_charge_by_id(charge_id, tenant_id=tenant_id)
     if not charge or str(charge["billing_id"]) != billing_id:
         raise ResourceNotFoundError("misc_charge", charge_id)
 

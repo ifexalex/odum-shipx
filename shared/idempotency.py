@@ -25,23 +25,10 @@ import json
 import logging
 from typing import Any
 
-from shared.db import get_connection
+from shared.db import execute_with_tenant, execute_write_with_tenant
 from shared.exceptions import BusinessRuleViolationError
 
 logger = logging.getLogger(__name__)
-
-# Sentinel to avoid redundant DDL on warm invocations
-_TABLE_CREATED: bool = False
-
-_DDL = """
-CREATE TABLE IF NOT EXISTS idempotency_key (
-    tenant_id     VARCHAR(100) NOT NULL,
-    key           VARCHAR(100) NOT NULL,
-    response_body JSONB        NOT NULL,
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (tenant_id, key)
-)
-"""
 
 _EXPIRY_INTERVAL = "24 hours"
 
@@ -92,26 +79,6 @@ def _body_hash(body: str | None) -> str | None:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
-def _ensure_table() -> None:
-    """Create the idempotency_key table if it does not already exist.
-
-    Called once per Lambda container lifetime via the _TABLE_CREATED flag.
-    Safe to call concurrently — CREATE TABLE IF NOT EXISTS is idempotent.
-    """
-    global _TABLE_CREATED
-    if _TABLE_CREATED:
-        return
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(_DDL)
-        conn.commit()
-        _TABLE_CREATED = True
-    except Exception:
-        conn.rollback()
-        raise
-
-
 def check_idempotency(
     key: str | None,
     tenant_id: str = "",
@@ -148,21 +115,15 @@ def check_idempotency(
 
     storage_key = _scoped_storage_key(key, actor_id, method, path)
     req_body_hash = _body_hash(body)
-    conn = None
     try:
-        _ensure_table()
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT response_body FROM idempotency_key"
-                " WHERE tenant_id = %s AND key = %s AND created_at > NOW() - INTERVAL %s",
-                (tenant_id, storage_key, _EXPIRY_INTERVAL),
-            )
-            row = cur.fetchone()
-        conn.commit()
-        if not row:
+        rows = execute_with_tenant(
+            tenant_id,
+            "SELECT response_body FROM idempotency_key WHERE tenant_id = %s AND key = %s AND created_at > NOW() - INTERVAL %s",
+            (tenant_id, storage_key, _EXPIRY_INTERVAL),
+        )
+        if not rows:
             return None
-        stored = dict(row["response_body"])
+        stored = dict(rows[0]["response_body"])
         if stored.get(_ENVELOPE_MARKER):
             stored_hash = stored.get("body_hash")
             if req_body_hash is not None and stored_hash is not None and req_body_hash != stored_hash:
@@ -177,11 +138,6 @@ def check_idempotency(
     except BusinessRuleViolationError:
         raise
     except Exception as exc:
-        if conn is not None:
-            try:
-                conn.rollback()
-            except Exception:
-                logger.debug("Idempotency rollback after check failure failed", exc_info=True)
         # Fail-open: if the DB is unavailable, process the request normally
         logger.warning("Idempotency check failed for key '%s': %s", key, exc)
         return None
@@ -215,25 +171,16 @@ def store_idempotency(
     payload: dict[str, Any] = (
         {_ENVELOPE_MARKER: True, "body_hash": req_body_hash, "response": response} if req_body_hash is not None else response
     )
-    conn = None
     try:
-        _ensure_table()
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO idempotency_key (tenant_id, key, response_body)"
-                " VALUES (%s, %s, %s::jsonb)"
-                " ON CONFLICT (tenant_id, key) DO UPDATE"
-                " SET response_body = EXCLUDED.response_body, created_at = NOW()"
-                " WHERE idempotency_key.created_at <= NOW() - INTERVAL %s",
-                (tenant_id, storage_key, json.dumps(payload), _EXPIRY_INTERVAL),
-            )
-        conn.commit()
+        execute_write_with_tenant(
+            tenant_id,
+            "INSERT INTO idempotency_key (tenant_id, key, response_body)"
+            " VALUES (%s, %s, %s::jsonb)"
+            " ON CONFLICT (tenant_id, key) DO UPDATE"
+            " SET response_body = EXCLUDED.response_body, created_at = NOW()"
+            " WHERE idempotency_key.created_at <= NOW() - INTERVAL %s",
+            (tenant_id, storage_key, json.dumps(payload), _EXPIRY_INTERVAL),
+        )
         logger.debug("Idempotency key stored: '%s' tenant '%s'", key, tenant_id)
     except Exception as exc:
-        if conn is not None:
-            try:
-                conn.rollback()
-            except Exception:
-                logger.debug("Idempotency rollback after store failure failed", exc_info=True)
         logger.warning("Idempotency store failed for key '%s': %s", key, exc)

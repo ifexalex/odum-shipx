@@ -103,9 +103,9 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
   return (
     <BreadcrumbContext.Provider value={breadcrumbLabels}>
       <ThemeProvider primaryColor={isPlatformShell ? null : (branding?.primary_color ?? null)} style={{ height: '100%' }}>
-        <TenantBlockedGate>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <ImpersonationBanner />
+          <TenantBlockedGate>
           <PageShell
             sidebar={<AppSidebar />}
             topbar={
@@ -143,8 +143,8 @@ export function StaffLayout({ children }: StaffLayoutProps): JSX.Element | null 
             <Breadcrumb trail={breadcrumb} />
             <ContentErrorBoundary>{children}</ContentErrorBoundary>
           </PageShell>
+          </TenantBlockedGate>
         </div>
-        </TenantBlockedGate>
       </ThemeProvider>
     </BreadcrumbContext.Provider>
   )

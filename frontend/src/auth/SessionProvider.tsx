@@ -57,6 +57,11 @@ export function SessionProvider({
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Saved only while impersonating — the platform admin's own session/idToken, restored on exit.
   const previousRef = useRef<SavedSession | null>(null)
+  // Single-flight deduplication so concurrent 401 recoveries share one /v1/auth/refresh call.
+  const inFlightRefreshRef = useRef<Promise<void> | null>(null)
+  // Track the last identity tuple so routine token refreshes do not wipe React Query cache.
+  const lastIdentityRef = useRef<string | null>(null)
+  const authChannelRef = useRef<BroadcastChannel | null>(null)
 
   function clearTimers(): void {
     if (refreshTimer.current) clearTimeout(refreshTimer.current)
@@ -67,7 +72,11 @@ export function SessionProvider({
 
   function applySession(next: Session | null): void {
     setSession(next)
-    onSessionChange?.(next)
+    const nextIdentity = next ? `${next.userId}|${next.tenantId}|${next.readOnly ? 'ro' : 'rw'}` : null
+    if (nextIdentity !== lastIdentityRef.current) {
+      lastIdentityRef.current = nextIdentity
+      onSessionChange?.(next)
+    }
   }
 
   // `function` declarations (not `useCallback` consts) so scheduleRefresh and
@@ -94,7 +103,11 @@ export function SessionProvider({
   async function restoreFromCookie(): Promise<boolean> {
     const tokens = await silentRefresh()
     if (!tokens) return false
-    const next = sessionFromIdToken(tokens.idToken, { tenantId: tokens.tenantId, role: tokens.role })
+    const next = sessionFromIdToken(tokens.idToken, {
+      tenantId: tokens.tenantId,
+      role: tokens.role,
+      roles: tokens.roles,
+    })
     setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
     applySession(next)
     scheduleRefresh(next)
@@ -106,19 +119,49 @@ export function SessionProvider({
     // refreshed (04_auth_and_session.md) — guard here too, not just in the
     // scheduler, since the Task 05 API client calls this directly on a 401.
     if (getActiveTokenType() === 'impersonation') return
-    const restored = await restoreFromCookie()
-    if (!restored) {
-      clearActiveTokens()
-      applySession(null)
-      setStatus('unauthenticated')
-      // Throws (rather than resolving) so the Task 05 API client's 401-recovery
-      // path (recoverFrom401) hits its catch block and logs out immediately,
-      // instead of retrying the original request with no Authorization header
-      // just to get a second, redundant 401.
-      throw new Error('Session could not be refreshed')
+    if (inFlightRefreshRef.current) {
+      return inFlightRefreshRef.current
     }
-    setStatus('authenticated')
+    const pending = (async () => {
+      const restored = await restoreFromCookie()
+      if (!restored) {
+        clearActiveTokens()
+        applySession(null)
+        setStatus('unauthenticated')
+        // Throws (rather than resolving) so the Task 05 API client's 401-recovery
+        // path (recoverFrom401) hits its catch block and logs out immediately,
+        // instead of retrying the original request with no Authorization header
+        // just to get a second, redundant 401.
+        throw new Error('Session could not be refreshed')
+      }
+      setStatus('authenticated')
+    })().finally(() => {
+      inFlightRefreshRef.current = null
+    })
+    inFlightRefreshRef.current = pending
+    return pending
   }
+
+  // Cross-tab logout sync: signing out in one tab immediately clears sibling tabs.
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const channel = new BroadcastChannel('shipx-auth')
+    authChannelRef.current = channel
+    channel.onmessage = (event: MessageEvent) => {
+      if (event.data === 'logout') {
+        clearTimers()
+        clearActiveTokens()
+        previousRef.current = null
+        applySession(null)
+        setStatus('unauthenticated')
+      }
+    }
+    return () => {
+      channel.close()
+      authChannelRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Silent restore on mount — this is what makes a page reload keep the user
   // signed in. The in-memory ID token is gone after any reload (by design,
@@ -144,7 +187,11 @@ export function SessionProvider({
     setStatus('loading')
     try {
       const tokens = await cognitoSignIn(email, password)
-      const next = sessionFromIdToken(tokens.idToken, { tenantId: tokens.tenantId, role: tokens.role })
+      const next = sessionFromIdToken(tokens.idToken, {
+        tenantId: tokens.tenantId,
+        role: tokens.role,
+        roles: tokens.roles,
+      })
       setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
       applySession(next)
       setStatus('authenticated')
@@ -183,7 +230,11 @@ export function SessionProvider({
     setStatus('loading')
     try {
       const tokens = await completeInteractiveLogin(code, state)
-      const next = sessionFromIdToken(tokens.idToken, { tenantId: tokens.tenantId, role: tokens.role })
+      const next = sessionFromIdToken(tokens.idToken, {
+        tenantId: tokens.tenantId,
+        role: tokens.role,
+        roles: tokens.roles,
+      })
       setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
       applySession(next)
       setStatus('authenticated')
@@ -198,6 +249,7 @@ export function SessionProvider({
   function logout(): void {
     const activeSessionId = session?.readOnly ? session.sessionId : undefined
     const previous = previousRef.current
+    const activeIdToken = previous?.idToken ?? getActiveIdToken()
     clearTimers()
     // Best-effort server-side impersonation revocation before clearing tokens so the
     // 30-min HS256 token cannot outlive logout and IMPERSONATION_END is audited.
@@ -210,7 +262,12 @@ export function SessionProvider({
     previousRef.current = null
     applySession(null)
     setStatus('unauthenticated')
-    void revokeServerSession()
+    try {
+      authChannelRef.current?.postMessage('logout')
+    } catch {
+      // BroadcastChannel may be closed during teardown.
+    }
+    void revokeServerSession(activeIdToken)
   }
 
   function startImpersonation(idToken: string, tenantName?: string): void {

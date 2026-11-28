@@ -160,12 +160,17 @@ def _get_handler_module(name: str) -> Any:
 def invoke_handler(service_name: str, event: dict[str, Any]) -> dict[str, Any]:
     """Resolve the service's entry function and invoke it with ``event``.
 
-    Prefers ``lambda_handler``, falling back to ``http_handler`` (some modules,
-    e.g. notification, expose both an SQS consumer and an HTTP entry point).
+    Routes ``/v1/webhooks/whatsapp`` to ``services.notification.handler.webhook_handler``
+    (mirroring AWS API Gateway's ``notification_webhook`` Lambda), and otherwise
+    prefers ``lambda_handler``, falling back to ``http_handler``.
     """
     handler_mod = _get_handler_module(service_name)
-    fn = getattr(handler_mod, "lambda_handler", None) or getattr(handler_mod, "http_handler", None)
+    path = str(event.get("requestContext", {}).get("http", {}).get("path", "")).split("?")[0]
+    if service_name == "notification" and (path == "/v1/webhooks/whatsapp" or path.startswith("/v1/webhooks/whatsapp/")):
+        fn = getattr(handler_mod, "webhook_handler", None)
+    else:
+        fn = getattr(handler_mod, "lambda_handler", None) or getattr(handler_mod, "http_handler", None)
     if fn is None:
-        raise AttributeError(f"No lambda_handler or http_handler in services.{service_name}.handler")
+        raise AttributeError(f"No matching handler in services.{service_name}.handler")
     result: dict[str, Any] = fn(event, {})
     return result

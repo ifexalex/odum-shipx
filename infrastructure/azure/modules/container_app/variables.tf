@@ -136,6 +136,12 @@ variable "oidc_audience" {
   default     = ""
 }
 
+variable "oidc_issuer" {
+  description = "OIDC token issuer (`iss` claim) for strict issuer validation in shared/auth_verify.py."
+  type        = string
+  default     = ""
+}
+
 variable "entra_platform_admin_group_id" {
   description = "Entra platform_admin group object id → mapped to the platform_admin role by the backend."
   type        = string

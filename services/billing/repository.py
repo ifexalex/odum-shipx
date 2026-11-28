@@ -1289,8 +1289,21 @@ def add_misc_charge_to_billing(tenant_id: str, data: dict[str, Any]) -> tuple[di
     return charge, billing
 
 
-def get_misc_charge_by_id(charge_id: str) -> dict[str, Any] | None:
-    """misc_charge has no RLS; use platform scope, scoped by billing_id + id."""
+def get_misc_charge_by_id(charge_id: str, tenant_id: str | None = None) -> dict[str, Any] | None:
+    """Look up a misc_charge row, tenant-scoped via its parent billing row when tenant_id is supplied."""
+    if tenant_id:
+        rows = execute_with_tenant(
+            tenant_id,
+            """
+            SELECT mc.*
+            FROM misc_charge mc
+            JOIN billing b ON b.id = mc.billing_id AND b.tenant_id = %s
+            WHERE mc.id = %s
+            LIMIT 1
+            """,
+            (tenant_id, charge_id),
+        )
+        return rows[0] if rows else None
     rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
         "SELECT * FROM misc_charge WHERE id = %s LIMIT 1",

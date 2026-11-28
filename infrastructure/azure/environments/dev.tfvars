@@ -36,6 +36,7 @@ entra_redirect_uri = "https://shipx-dev-fde-a3d7cufpbwgwcgc2.z03.azurefd.net/aut
 app_base_url      = "https://shipx-dev-fde-a3d7cufpbwgwcgc2.z03.azurefd.net"
 oidc_jwks_url     = "https://shipxcustomer.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/discovery/v2.0/keys"
 oidc_audience     = "c6d0fc93-1fb5-43c5-9621-513abf93c5d6"
+oidc_issuer       = "https://062cb98d-8990-4947-81c4-223cb1e9b8f3.ciamlogin.com/062cb98d-8990-4947-81c4-223cb1e9b8f3/v2.0"
 entra_user_domain = "shipxcustomer.onmicrosoft.com"
 # platform_admin GROUP object id in the CIAM tenant (fallback that resolves the
 # admin to platform_admin when the token has no tenant_id/role claim).

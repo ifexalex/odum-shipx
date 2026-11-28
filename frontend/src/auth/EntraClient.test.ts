@@ -49,6 +49,7 @@ describe('EntraClient (interactive BFF auth-code)', () => {
       refreshToken: '',
       tenantId: null,
       role: null,
+      roles: null,
     })
     const [url, init] = fetchMock.mock.calls[0]!
     expect(url).toBe('https://api.example.test/v1/auth/callback')

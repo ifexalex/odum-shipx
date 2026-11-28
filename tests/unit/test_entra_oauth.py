@@ -26,8 +26,8 @@ _ENV = {
 
 
 def _encode_tx(tx: dict) -> str:
-    """Encode a transaction dict the way the handler does (base64url JSON)."""
-    return base64.urlsafe_b64encode(json.dumps(tx).encode()).decode()
+    """Encode a transaction dict the way the handler does (HMAC-signed base64url JSON)."""
+    return handler._sign_tx({k: str(v) for k, v in tx.items()})
 
 
 def _urlopen_returning(payload: dict):
@@ -153,7 +153,7 @@ class TestHandlerInteractiveRoutes:
         # carrying the PKCE verifier, state and nonce.
         value = tx_cookie.split("=", 1)[1].split(";", 1)[0]
         assert not any(ch in value for ch in ' ",;{}')
-        decoded = json.loads(base64.urlsafe_b64decode(value))
+        decoded = handler._verify_tx(value)
         assert set(decoded) == {"v", "s", "n"}
 
     def test_callback_validates_state_exchanges_and_sets_session(self, monkeypatch):

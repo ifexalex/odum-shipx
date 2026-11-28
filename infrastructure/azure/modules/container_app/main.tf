@@ -33,19 +33,11 @@ locals {
     DATABASE_HOST  = var.db_host
     DATABASE_PORT  = tostring(var.db_port)
     DATABASE_NAME  = var.db_name
-    # PHASE 1 of the RLS credential switchover: still the admin login.
-    #
-    # Flipping this to var.db_app_user is phase 2, and must not be bundled with
-    # phase 1. `terraform apply` updates a Container App's env immediately,
-    # creating and activating a new revision — but the deploy pipeline runs
-    # migrations *after* apply (build → migrate → roll). So flipping it in the
-    # same change would start the API as `logistics_app` minutes before
-    # migration 060 gives that role a password: a self-inflicted outage window
-    # lasting as long as the image build plus the migration.
-    #
-    # Phase 1 provisions the credential and lets 060 set it. Phase 2 flips this
-    # one line, by which point the role already works.
-    DATABASE_USER               = var.db_user
+    # PHASE 2 of the RLS credential switchover: application workloads connect as
+    # `logistics_app` (DML-only, NOBYPASSRLS) so PostgreSQL RLS policies are
+    # enforced at the database layer. The `migrate` job overrides DATABASE_USER
+    # and DATABASE_PASSWORD with the owner login below.
+    DATABASE_USER               = var.db_app_user
     DATABASE_SSLMODE            = "require"
     REDIS_HOST                  = var.redis_host
     REDIS_PORT                  = tostring(var.redis_port)
@@ -58,6 +50,7 @@ locals {
     # OIDC token verification — Entra values wired in Phase 4 (empty until then).
     OIDC_JWKS_URL     = var.oidc_jwks_url
     OIDC_AUDIENCE     = var.oidc_audience
+    OIDC_ISSUER       = var.oidc_issuer
     ENTRA_USER_DOMAIN = var.entra_user_domain
     # Account model for provisioning (EntraIdentityProvider): "true" on an Entra
     # External ID (CIAM) tenant → email local accounts (email sign-in); "false"
@@ -177,9 +170,9 @@ locals {
   # tomap(): the conditional fragment makes this an object; for_each needs a map.
   secret_env = tomap(merge(
     {
-      # PHASE 1: still the owner's password, matching DATABASE_USER above.
-      # Phase 2 switches both together to the application credential.
-      DATABASE_PASSWORD                     = "database-password"
+      # PHASE 2: application role password matching DATABASE_USER = var.db_app_user.
+      # The migrate job overrides this with `database-password` (owner).
+      DATABASE_PASSWORD                     = "db-app-password"
       AZURE_SERVICE_BUS_CONNECTION_STRING   = "service-bus-connection"
       AZURE_EVENT_GRID_KEY                  = "event-grid-key"
       AZURE_COMMUNICATION_CONNECTION_STRING = "acs-connection"
