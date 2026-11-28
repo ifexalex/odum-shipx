@@ -22,7 +22,6 @@ const KNOWN_UNTESTED: Record<string, string> = {
   './customer/PaymentFailed.tsx': 'static "payment failed" page',
   './nigeria/EvidenceUploader.tsx': 'claim evidence upload widget',
   './platform/CreateTenantPage.tsx': 'tenant provisioning form',
-  './platform/PlatformAuditLog.tsx': 'cross-tenant audit log',
   './staff/StaffProfile.tsx': 'staff profile',
   './tenant-admin/NotificationTemplates.tsx': 'message template editor',
   './tenant-admin/RoleCheckboxList.tsx': 'role picker',

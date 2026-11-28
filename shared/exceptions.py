@@ -213,3 +213,19 @@ class ServiceUnavailableError(LogisticsBaseError):
             error_code="SERVICE_UNAVAILABLE",
             status_code=503,
         )
+
+
+class MaintenanceModeError(ServiceUnavailableError):
+    """503 while a platform admin has ShipX in maintenance mode.
+
+    Its own code, ``MAINTENANCE_MODE``, lets the apps show a maintenance screen instead of telling every user to check
+    their connection, which is what a bare 503 shows (audit PA-01).
+    """
+
+    def __init__(self) -> None:
+        LogisticsBaseError.__init__(
+            self,
+            message="ShipX is undergoing scheduled maintenance. Please try again shortly.",
+            error_code="MAINTENANCE_MODE",
+            status_code=503,
+        )

@@ -20,6 +20,12 @@ const COPY: Record<TenantBlockedKind, { title: string; body: string; hint: strin
     hint: 'If you believe this is an error, contact ShipX support.',
     code: 'HTTP 410 · TENANT_OFFBOARDED',
   },
+  maintenance: {
+    title: 'ShipX is down for maintenance',
+    body: 'ShipX is being updated, so the app is paused for everyone for a short while. Your data is safe.',
+    hint: 'Try again in a few minutes.',
+    code: 'HTTP 503 · MAINTENANCE_MODE',
+  },
   suspended: {
     title: 'This account is suspended',
     body: "Your company's ShipX subscription is currently suspended, so access is paused for everyone on the account.",
@@ -40,7 +46,11 @@ export function TenantBlockedScreen({ kind }: { kind: TenantBlockedKind }): JSX.
           <KolaMark size={40} color="var(--color-primary-bright)" />
         </div>
         <div className={styles.iconCircle}>
-          <Icon name="suspend" size={28} color="var(--color-error-strong)" />
+          <Icon
+            name={kind === 'maintenance' ? 'clock' : 'suspend'}
+            size={28}
+            color={kind === 'maintenance' ? 'var(--color-warning)' : 'var(--color-error-strong)'}
+          />
         </div>
         <h1 className={styles.title}>{copy.title}</h1>
         <p className={styles.body}>{copy.body}</p>
@@ -56,7 +66,7 @@ export function TenantBlockedScreen({ kind }: { kind: TenantBlockedKind }): JSX.
                 <Icon name="mail" size={16} />
                 Contact support
               </a>
-              {kind === 'suspended' && (
+              {(kind === 'suspended' || kind === 'maintenance') && (
                 <Button
                   variant="secondary"
                   size="lg"

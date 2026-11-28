@@ -34,10 +34,10 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | Method | Path | Handler | Roles |
 |---|---|---|---|
 | POST | `/v1/platform/tenants` | Create tenant + initial admin | platform_admin |
-| GET | `/v1/platform/tenants` | List tenants | platform_admin |
+| GET | `/v1/platform/tenants` | List tenants, one page at a time: `?status=&tier=&q=&cursor=&limit=` (max 100), paginated envelope with `total_count` (2026-11-28, PA-02) | platform_admin |
 | GET | `/v1/platform/tenants/{id}` | Get tenant detail | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}` | Update tenant | platform_admin |
-| DELETE | `/v1/platform/tenants/{id}` | Offboard tenant (also queues the tenant data export, same transaction, audit BE-10) | platform_admin |
+| DELETE | `/v1/platform/tenants/{id}` | Offboard tenant; body `{"reason": "…"}` required (1–2000 chars, stored on the `TENANT_OFFBOARDED` audit row, PA-04). Also queues the tenant data export, same transaction (audit BE-10) | platform_admin |
 | GET | `/v1/platform/tenants/{id}/offboarding-export` | The offboarded tenant's data export: status, size, checksum, rows, attempts, deletion date (2026-11-17) | platform_admin |
 | POST | `/v1/platform/tenants/{id}/offboarding-export` | Queue an export when there is none or it gave up (2026-11-17) | platform_admin |
 | POST | `/v1/platform/tenants/{id}/offboarding-export/link` | Five-minute download link to the archive; audited (2026-11-17) | platform_admin |
@@ -45,7 +45,7 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 | PATCH | `/v1/platform/tenants/{id}/activate` | Lift suspension (suspended→active) | platform_admin |
 | PATCH | `/v1/platform/tenants/{id}/reactivate` | Re-onboard offboarded tenant (offboarded→active) | platform_admin |
 | GET | `/v1/platform/dashboard` | Cross-tenant metrics | platform_admin |
-| GET | `/v1/platform/audit-log` | Platform audit log | platform_admin |
+| GET | `/v1/platform/audit-log` | Platform audit log; each row carries `target_tenant_name` | platform_admin |
 | POST | `/v1/platform/tenants/{id}/impersonate` | Start 30-min read-only impersonation session | platform_admin |
 | DELETE | `/v1/platform/impersonation/{session_id}` | End impersonation session | platform_admin |
 | GET | `/v1/platform/onboarding-requests` | List shipping-company onboarding leads; `?status=` filters (`new\|contacted\|approved\|rejected\|provisioned`) | platform_admin |
@@ -128,6 +128,19 @@ Entra adapter + user migration), scoped in `docs/adr/004-cognito-to-entra-portab
 **Implementation notes (2026-07-11 — audit gap A1):** `branding_config` now has a canonical shape the frontend writes via `PUT /v1/tenant/config {branding}` and every consumer reads: `display_name`, `tagline`, `primary_color`, `warehouse_address`, `pickup_hours`, `pickup_phone`, `support_email`, `support_whatsapp`, `document_footer` (all optional; JSONB is free-form so no backend model change was needed — see `frontend/src/api/tenantManagement.ts` `BrandingConfig`). `GET /v1/tenant/config` (exact path, GET only) was widened to all staff roles so the printable packing list / release note can render the tenant's branding for whoever prints them; writes and the webhook sub-routes stay tenant_admin-only, and the guard is covered by `TestTenantConfigReadAccess` in `tests/unit/test_tenant_management.py`.
 
 **Implementation notes / ground-truth gaps found (2026-11-13 — deactivating a staff user was a one-way door):** a tenant admin who deactivated a user had no way to undo it, and no control appeared offering to. Three separate gaps, each of which alone would have been enough: (1) **no endpoint** — `deactivate_user` existed, nothing reversed it, even though `enable_user` had been on every identity provider (Cognito, Entra, the base class) since they were written and was called from nowhere; (2) the frontend's `TenantUser.status` type was `'active' | 'inactive'`, but the database CHECK constraint is `('active','deactivated')` — the type named a value the column cannot hold, and the deactivate handler optimistically wrote exactly that value, so any status-based branch would have compared against a status that never occurs; (3) `StaffUserDetail.tsx` rendered the Deactivate button under `user.status === 'active' && …`, so on deactivation the button simply vanished with nothing in its place. Fixed: `POST /v1/tenant/users/{id}/reactivate` (`service.reactivate_user`, audited as a `STATUS_CHANGE`), the status union corrected to `'active' | 'deactivated'`, and the button turned into a ternary whose else-branch is "Reactivate user". Reactivation re-checks the tier seat limit — deactivation frees a seat, so without it a tenant at its ceiling could cycle users past the plan. Also fixed in passing: `usersApi.deactivate` was typed `apiRequest<TenantUser>` although the endpoint returns 204 with no body, so its result was `undefined` at runtime while the type promised a row. Verified live (local stack, `tenant_admin`): deactivate → 204 / `deactivated`, reactivate → 200 / `active`, reactivating an already-active user → 422, non-admin → 403, and on a starter tenant over its ceiling the UI shows `Usage limit exceeded for users: 14/10` with the Reactivate control still present.
+
+**Implementation notes / ground-truth gaps found (2026-11-28 — platform admin audit Phase 0, PA-01 … PA-10):** the platform console told the operator several things the backend did not do. Fixed together:
+- **PA-01, maintenance mode.** The settings page said maintenance "blocks tenant onboarding … existing sessions keep working". In fact `shared/auth._check_maintenance_mode` answers *every* authenticated tenant request with 503, and the SPA rendered that as "We couldn't reach the server. Check your connection". The 503 now carries its own code, `MAINTENANCE_MODE` (`shared.exceptions.MaintenanceModeError`, a `ServiceUnavailableError` subclass). The SPA's tenant gate shows a full-page maintenance screen with a Try again button, and the settings text and confirmation state the real effect. Platform admins and impersonation sessions are still let through.
+- **PA-02, the 50-tenant cap.** See the tenant list section above. The audit log joins `target_tenant_name` for the same reason.
+- **PA-03, seat counts.** `repository.list_tenants`, `get_dashboard_stats` and metering's `count_active_tenant_users` counted every active `tenant_user`, customers included, while the quota check (`count_active_users`) left them out. All four now use `shared.seats.staff_seat_condition()`.
+- **PA-04, offboarding reason.** The console required a reason, but `DELETE /v1/platform/tenants/{id}` never read its body. It now validates `OffboardTenantRequest` (422 without a non-blank reason), and the reason is stored on the audit row.
+- **PA-05 and PA-06, the audit log.** The filter offered `IMPERSONATION_STARTED`, `IMPERSONATION_ENDED` and `PLAN_UPDATED`, which are never written. It now offers the one shared list, and the table shows the actor.
+- **PA-07, append-only audit, and a broken 90-day cleanup.** Migration 074 revoked `UPDATE` on `platform_audit_log`, but `services/scheduled/data_cleanup.py` anonymised a deleted tenant's rows with a plain `UPDATE`. Since the app connects as `logistics_app`, that is refused, so the cleanup could not delete offboarded tenants. Migration 075 adds a `SECURITY DEFINER` function, `anonymise_platform_audit_for_tenant(uuid)`, which refuses to run outside the `PLATFORM` context, makes it the only write path, and revokes `DELETE` too. Verified against Postgres 15 as `logistics_app`: the plain `UPDATE` is denied under 074's grants, the function anonymises the rows, and `DELETE` is denied.
+- **PA-08.** The provider "Test configuration" button only checks that the required fields are filled. It is now labelled "Check fields" and says it sends nothing.
+- **PA-09.** The console now uses the existing `PATCH /v1/platform/tenants/{id}` (name, contact, plan) and `PATCH …/reactivate` (showing the notices to relay), and General settings edits `platform_name`, `support_email` and `default_trial_days`.
+- **PA-10.** Metering's unreachable `/v1/platform/dashboard` placeholder was deleted; tenant_management serves that path on both clouds.
+
+Covered by `tests/unit/test_platform_admin_phase0.py`, `test_platform_audit_actions.py` and `test_data_cleanup.py`, plus the platform page tests in `frontend/src/pages/platform/`.
 
 **Implementation notes / ground-truth gaps found (2026-07-18 — platform admin impersonation was broken at four layers):** (1) `impersonation.py`'s `_get_tenant_admin()` selected non-existent columns `tu.user_id` / `tu.is_active` (real schema: `id` PK, `status` enum) — every `POST /v1/platform/tenants/{id}/impersonate` 500'd against the real DB; (2) `platform_audit_log.actor_id` had an FK to `tenant_user(id)`, but platform admins have no `tenant_user` row by design, so **every platform audit insert silently failed** (swallowed with a warning) and the platform audit-log page was permanently empty — FK dropped in migration 037 (same class as migration 014); (3) the frontend read `result.id_token` where the wire field is `token`; (4) `buildSession()` required `custom:tenant_id`/`cognito:groups` claims, but the raw impersonation token carries bare `tenant_id`/`role` — now accepted as a fallback shape. Also: `scripts/local_server.py` now maps impersonation-token claims the same way the production REQUEST authorizer does, and `LocalAuthProvider` implements `startImpersonation`/`exitImpersonation` (was a hard throw), so "Impersonate" works in both local auth modes. Full loop verified live: start → tenant-scoped read → write blocked 422 → end session.
 
@@ -398,7 +411,27 @@ Query params:
 | `action` | string | — | Filter by action e.g. `TENANT_UPDATED`, `TENANT_CREATED` (optional) |
 | `cursor` | string | — | Opaque pagination cursor from previous response (optional) |
 
-Response uses standard `paginated()` envelope: `{ "data": [...], "next_cursor": "...", "has_more": true }`.
+Response uses the standard `paginated()` envelope: `{ "data": [...], "meta": { "pagination": { "next_cursor": "...", "has_more": true } } }`.
+
+Each row: `id`, `action`, `actor_id` (the platform admin's identity subject, `null` for a platform job), `target_tenant_id`, `target_tenant_name` (joined from `tenant`, `null` once the tenant has been deleted; added 2026-11-28 so the console never needs the whole tenant list to label a row), `details`, `ip_address`, `created_at`.
+
+`action` is always one of `shared.platform_audit.PlatformAuditAction`: `TENANT_CREATED`, `TENANT_UPDATED`, `TENANT_SUSPENDED`, `TENANT_ACTIVATED`, `TENANT_OFFBOARDED`, `TENANT_REACTIVATED`, `TENANT_EXPORT_QUEUED`, `TENANT_DATA_EXPORTED`, `TENANT_EXPORT_LINK_ISSUED`, `IMPERSONATION_START`, `IMPERSONATION_END`, `QUOTA_OVERRIDE_SET`, `QUOTA_OVERRIDE_CLEARED`, `PLAN_LIMITS_UPDATED`, `SETTINGS_UPDATED`, `GATEWAY_SETTINGS_UPDATED`, `ONBOARDING_REQUEST_UPDATED`. The console's filter offers the same list (`frontend/src/api/platformAuditActions.ts`); `tests/unit/test_platform_audit_actions.py` fails if the code writes a value not listed, or the two lists differ.
+
+The table is append-only for the app role: `UPDATE` was revoked in migration 074 and `DELETE` in 075. The 90-day cleanup anonymises a deleted tenant's rows only through the `anonymise_platform_audit_for_tenant(uuid)` function (migration 075).
+
+### GET /v1/platform/tenants — Tenant List (paginated since 2026-11-28)
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `status` | `active` \| `suspended` \| `offboarded` | — | Filter by status; any other value is a 422 |
+| `tier` | `starter` \| `business` \| `enterprise` | — | Filter by plan |
+| `q` | string (≤ 200) | — | Case-insensitive match on company name, slug, contact email or tenant ID; `%` and `_` match literally |
+| `limit` | int | 50 | Page size, 1–100 |
+| `cursor` | string | — | From the previous page's `meta.pagination.next_cursor` |
+
+Response: the `paginated()` envelope, newest tenants first, with `meta.pagination.total_count` = every tenant matching the filters. Each row is the `tenant` record plus `user_count` (staff seats in use) and `users_limit` (effective limit: tier, then plan override, then tenant override).
+
+**Wire change (2026-11-28):** the route used to return a bare `data` array, ignore the cursor and stop at 50 tenants with no sign that more existed, so the console's list, dashboard, audit filter and name lookups all lost every tenant after the 50th (audit PA-02). `user_count` also used to count customer portal accounts (PA-03); it now counts staff seats only (`shared/seats.py`, the rule the quota check uses).
 
 ### Dollar Rate — Bybit P2P base + per-tenant markup (2026-09-19)
 

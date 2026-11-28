@@ -2,11 +2,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { platformApi, type Tenant } from '../../api/tenantManagement'
+import { platformApi, type SubscriptionTier, type Tenant } from '../../api/tenantManagement'
 import { platformTenantKeys } from '../../api/keys'
 import { STALE_30S } from '../../lib/queryClient'
 import { useSession } from '../../auth/useSession'
-import { Badge, Banner, Button, Card, ConfirmDialog, Field, Kvp, Modal, Mono, StatusBadge, Table, UserCell, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
+import { Badge, Banner, Button, Card, ConfirmDialog, Field, Kvp, Modal, Mono, Select, StatusBadge, Table, UserCell, LinesSkeleton, PageSkeleton, EmptyState } from '../../design/components'
 import {
   platformApi as platformExtras,
   type PlanLimits,
@@ -88,6 +88,93 @@ function ActionModal({ action, tenant, onCancel, onSuccess }: ActionModalProps):
       </div>
     </Modal>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Edit tenant (audit PA-09): the backend's PATCH had no screen, so a plan could not be changed from the console
+// ---------------------------------------------------------------------------
+
+const TIER_OPTIONS: { value: SubscriptionTier; label: string }[] = [
+  { value: 'starter', label: 'Starter' },
+  { value: 'business', label: 'Business' },
+  { value: 'enterprise', label: 'Enterprise' },
+]
+
+interface EditTenantModalProps {
+  tenant: Tenant
+  onCancel: () => void
+  onSuccess: (updated: Tenant) => void
+}
+
+function EditTenantModal({ tenant, onCancel, onSuccess }: EditTenantModalProps): JSX.Element {
+  const [companyName, setCompanyName] = useState(tenant.company_name)
+  const [contactEmail, setContactEmail] = useState(tenant.primary_contact_email)
+  const [tier, setTier] = useState<SubscriptionTier>(tenant.subscription_tier)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Only what changed is sent, so the audit row records exactly what the admin edited.
+  const changes = {
+    ...(companyName.trim() !== tenant.company_name ? { company_name: companyName.trim() } : {}),
+    ...(contactEmail.trim() !== tenant.primary_contact_email ? { primary_contact_email: contactEmail.trim() } : {}),
+    ...(tier !== tenant.subscription_tier ? { subscription_tier: tier } : {}),
+  }
+  const canSubmit = Object.keys(changes).length > 0 && companyName.trim() !== '' && contactEmail.trim() !== ''
+
+  async function handleSubmit(): Promise<void> {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const updated = await platformApi.updateTenant(tenant.id, changes)
+      toast.success('Tenant updated', updated.company_name)
+      onSuccess(updated)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update the tenant.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal open onClose={onCancel} title={`Edit ${tenant.company_name}`} size="sm">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        {error && <Banner variant="error">{error}</Banner>}
+        <Field label="Company name" name="company_name" required value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+        <Field
+          label="Contact email"
+          name="primary_contact_email"
+          type="email"
+          required
+          value={contactEmail}
+          onChange={(e) => setContactEmail(e.target.value)}
+        />
+        <Select label="Plan" value={tier} onChange={(e) => setTier(e.target.value as SubscriptionTier)}>
+          {TIER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+        {tier !== tenant.subscription_tier && (
+          <Banner variant="info">
+            The new plan&apos;s limits apply at once. Billing for the plan is still handled outside ShipX.
+          </Banner>
+        )}
+        <div className={styles.modalActions}>
+          <Button variant="ghost" onClick={onCancel} disabled={submitting}>Cancel</Button>
+          <Button variant="primary" loading={submitting} disabled={!canSubmit} onClick={() => void handleSubmit()}>
+            Save changes
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+/** "CODE: sentence" notices from the reactivate route, shown as plain sentences. */
+function noticeText(notice: string): string {
+  const colon = notice.indexOf(':')
+  return colon >= 0 ? notice.slice(colon + 1).trim() : notice
 }
 
 // ---------------------------------------------------------------------------
@@ -488,6 +575,11 @@ export function PlatformTenantDetail(): JSX.Element {
   useBreadcrumbLabel(tenant?.company_name)
 
   const [activeModal, setActiveModal] = useState<'suspend' | 'activate' | 'offboard' | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [confirmReactivate, setConfirmReactivate] = useState(false)
+  const [reactivating, setReactivating] = useState(false)
+  const [reactivateError, setReactivateError] = useState<string | null>(null)
+  const [reactivationNotices, setReactivationNotices] = useState<string[]>([])
   const [tab, setTab] = useState('overview')
   const [impersonating, setImpersonating] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
@@ -510,6 +602,23 @@ export function PlatformTenantDetail(): JSX.Element {
     } catch (err) {
       setPageError(err instanceof ApiError ? err.message : 'Could not start impersonation.')
       setImpersonating(false)
+    }
+  }
+
+  async function handleReactivate(): Promise<void> {
+    if (!tenant) return
+    setReactivating(true)
+    setReactivateError(null)
+    try {
+      const result = await platformApi.reactivateTenant(tenant.id)
+      qc.setQueryData(platformTenantKeys.detail(id ?? ''), result.tenant)
+      setReactivationNotices(result.notices)
+      setConfirmReactivate(false)
+      toast.success('Tenant reactivated', result.tenant.company_name)
+    } catch (err) {
+      setReactivateError(err instanceof ApiError ? err.message : 'Could not reactivate the tenant.')
+    } finally {
+      setReactivating(false)
     }
   }
 
@@ -538,11 +647,15 @@ export function PlatformTenantDetail(): JSX.Element {
             </>
           }
           primary={
-            tenant.status === 'suspended' && (
+            tenant.status === 'suspended' ? (
               <Button variant="primary" onClick={() => setActiveModal('activate')}>
                 Lift suspension
               </Button>
-            )
+            ) : tenant.status === 'offboarded' ? (
+              <Button variant="primary" onClick={() => setConfirmReactivate(true)}>
+                Reactivate tenant
+              </Button>
+            ) : undefined
           }
           actions={
             tenant.status === 'active' && (
@@ -553,6 +666,9 @@ export function PlatformTenantDetail(): JSX.Element {
           }
           // Destructive actions live in the overflow menu, never beside the main button (FD-24); each confirms.
           more={[
+            ...(tenant.status !== 'offboarded'
+              ? [{ label: 'Edit tenant', icon: 'edit' as const, onSelect: () => setEditing(true) }]
+              : []),
             ...(tenant.status === 'active'
               ? [{ label: 'Suspend tenant', icon: 'pause' as const, tone: 'danger' as const, onSelect: () => setActiveModal('suspend') }]
               : []),
@@ -567,6 +683,17 @@ export function PlatformTenantDetail(): JSX.Element {
       {error && (
         <div className={styles.banner}>
           <Banner variant="error">{error}</Banner>
+        </div>
+      )}
+      {reactivationNotices.length > 0 && (
+        <div className={styles.banner}>
+          <Banner variant="warning" title="Tell the tenant before they resume work">
+            <ul style={{ margin: 0, paddingLeft: 'var(--space-5)' }}>
+              {reactivationNotices.map((n) => (
+                <li key={n}>{noticeText(n)}</li>
+              ))}
+            </ul>
+          </Banner>
         </div>
       )}
 
@@ -625,6 +752,34 @@ export function PlatformTenantDetail(): JSX.Element {
           )}
         </>
       )}
+
+      {editing && (
+        <EditTenantModal
+          tenant={tenant}
+          onCancel={() => setEditing(false)}
+          onSuccess={(updated) => {
+            qc.setQueryData(platformTenantKeys.detail(id ?? ''), updated)
+            setEditing(false)
+          }}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmReactivate}
+        title={`Reactivate ${tenant.company_name}?`}
+        confirmLabel="Reactivate tenant"
+        undo="You can offboard the tenant again later."
+        busy={reactivating}
+        error={reactivateError}
+        onConfirm={() => void handleReactivate()}
+        onCancel={() => {
+          setConfirmReactivate(false)
+          setReactivateError(null)
+        }}
+      >
+        The tenant&apos;s users can sign in again under a new agreement, and its data stops counting down to deletion.
+        Customer records anonymised while it was offboarded cannot be restored.
+      </ConfirmDialog>
 
       {activeModal && (
         <ActionModal

@@ -57,10 +57,3 @@
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   text-align: center;
 }
-
-/* "Showing 3 of 12 tenants" under the tenant table. */
-.showing {
-  margin: var(--space-3) 0 0;
-  font-size: var(--text-xs);
-  color: var(--color-ink-4);
-}

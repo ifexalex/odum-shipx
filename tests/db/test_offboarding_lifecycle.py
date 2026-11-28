@@ -137,7 +137,7 @@ def _offboard(tenant_id: str) -> None:
         patch_tenant_management("get_identity_provider", return_value=MagicMock()),
         patch("shared.auth._tenant_status_cache", MagicMock()),
     ):
-        service.offboard_tenant(tenant_id, actor_id="platform-admin-test")
+        service.offboard_tenant(tenant_id, actor_id="platform-admin-test", reason="Contract ended")
 
 
 def _write_export(tenant_id: str) -> dict:

@@ -34,7 +34,7 @@ Create these tables (all DDL is copied verbatim from the backend engineering spe
    - actor_id, actor_role, before_state JSONB, after_state JSONB, ip_address INET
    - Indexes: (tenant_id, entity_type, entity_id), (tenant_id, actor_id), (tenant_id, created_at)
 
-2. **`platform_audit_log`** — Cross-tenant admin actions (NOT tenant-scoped). **Migration 037** drops the `actor_id → tenant_user(id)` FK: platform admins are Cognito-only identities with no `tenant_user` row (same rationale as migration 014's `tenant_config.updated_by` drop), and the FK silently blocked every platform audit insert.
+2. **`platform_audit_log`** — Cross-tenant admin actions (NOT tenant-scoped). Append-only for the app role since **migration 075** (`DELETE` revoked; 074 revoked `UPDATE`); the only permitted change is anonymisation through `anonymise_platform_audit_for_tenant(uuid)` (see `05c`). **Migration 037** drops the `actor_id → tenant_user(id)` FK: platform admins are Cognito-only identities with no `tenant_user` row (same rationale as migration 014's `tenant_config.updated_by` drop), and the FK silently blocked every platform audit insert.
    - action, actor_id, target_tenant_id, details JSONB, ip_address INET
    - Indexes: (actor_id), (target_tenant_id), (created_at)
 

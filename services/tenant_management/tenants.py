@@ -433,10 +433,21 @@ def update_onboarding_request_status(
     return updated if updated else existing
 
 
-def list_tenants(limit: int = 50, cursor: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def list_tenants(
+    limit: int = 50,
+    cursor: dict[str, Any] | None = None,
+    status: str | None = None,
+    tier: str | None = None,
+    q: str | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool, int]:
+    """One page of the platform tenant list, filtered on the server (audit PA-02).
+
+    Returns:
+        ``(page, next_cursor, has_more, total_count)``.
+    """
     from shared.tier_limits import get_effective_limits
 
-    tenants = repo.list_tenants(limit=limit, cursor=cursor)
+    tenants, next_cursor, has_more, total = repo.list_tenants(limit=limit, cursor=cursor, status=status, tier=tier, q=q)
     # Effective (tier ⊕ plan-override ⊕ tenant-override) users limit per row,
     # so the platform list can render "users x/limit" honestly (audit gap B2).
     for t in tenants:
@@ -445,7 +456,7 @@ def list_tenants(limit: int = 50, cursor: dict[str, Any] | None = None) -> list[
         except Exception:  # limits are decorative here — never fail the list for them
             logger.warning("Could not resolve effective limits for tenant %s", t.get("id"))
             t["users_limit"] = None
-    return tenants
+    return tenants, next_cursor, has_more, total
 
 
 def get_tenant(tenant_id: str) -> dict[str, Any]:
@@ -492,8 +503,10 @@ def update_tenant(
 def offboard_tenant(
     tenant_id: str,
     actor_id: str,
+    reason: str,
     ip_address: str | None = None,
 ) -> dict[str, Any]:
+    """Offboard a tenant: block it, queue its data export, end its sessions, and audit the action with ``reason``."""
     existing = get_tenant(tenant_id)
     if existing["status"] == "offboarded":
         raise BusinessRuleViolationError("Tenant is already offboarded")
@@ -549,7 +562,7 @@ def offboard_tenant(
             action="TENANT_OFFBOARDED",
             actor_id=actor_id,
             target_tenant_id=tenant_id,
-            details={"export_id": str(queued["id"])} if queued else None,
+            details={"reason": reason, **({"export_id": str(queued["id"])} if queued else {})},
             ip_address=ip_address,
         )
     except Exception as exc:

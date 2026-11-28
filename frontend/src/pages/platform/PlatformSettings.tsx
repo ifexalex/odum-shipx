@@ -6,8 +6,8 @@
  *  /platform/settings/notifications → Providers (Termii SMS / Meta WhatsApp / Postmark email + test)
  *  /platform/settings/plans         → Plans & Limits (per-tier limit editor)
  *
- * Provider "Test" is a config-shape validation on the server (required fields
- * present) — live deliverability is proven by the notification pipeline.
+ * Provider "Check fields" is a config-shape validation on the server (required fields
+ * present); it sends nothing (audit PA-08). A real test send is Phase 3 of the platform redesign.
  */
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
@@ -18,6 +18,7 @@ import {
   platformSettingsApi,
   type GatewayKind,
   type PlanLimits,
+  type PlatformSettingsMap,
   type SubscriptionTier,
 } from '../../api/tenantManagement'
 import { usePlatformGateways, usePlatformGeneralSettings, usePlatformPlans } from '../../hooks/usePlatformSettings'
@@ -36,16 +37,22 @@ function GeneralSettings(): JSX.Element {
   const qc = useQueryClient()
   const query = usePlatformGeneralSettings()
   const settings = query.isFetchedAfterMount ? (query.data ?? null) : null
+  const [platformName, setPlatformName] = useState('')
+  const [supportEmail, setSupportEmail] = useState('')
   const [emailFrom, setEmailFrom] = useState('')
   const [maxTenants, setMaxTenants] = useState('')
+  const [trialDays, setTrialDays] = useState('')
   const [maintenance, setMaintenance] = useState(false)
   const [confirmMaintenance, setConfirmMaintenance] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useSeedOnce(query, (s) => {
+    setPlatformName(String(s.platform_name ?? ''))
+    setSupportEmail(String(s.support_email ?? ''))
     setEmailFrom(String(s.platform_email_from ?? ''))
     setMaxTenants(String(s.max_tenants ?? ''))
+    setTrialDays(s.default_trial_days == null ? '' : String(s.default_trial_days))
     setMaintenance(Boolean(s.maintenance_mode))
   })
 
@@ -56,9 +63,15 @@ function GeneralSettings(): JSX.Element {
     setSaving(true)
     setSaveError(null)
     try {
+      // The server refuses an empty text setting, so a blank field is left as it is rather than sent.
+      const text: Partial<PlatformSettingsMap> = {}
+      if (platformName.trim()) text.platform_name = platformName.trim()
+      if (supportEmail.trim()) text.support_email = supportEmail.trim()
+      if (emailFrom.trim()) text.platform_email_from = emailFrom.trim()
       const updated = await platformSettingsApi.update({
-        platform_email_from: emailFrom,
+        ...text,
         max_tenants: Number(maxTenants) || 0,
+        ...(trialDays.trim() !== '' ? { default_trial_days: Number(trialDays) } : {}),
         maintenance_mode: maintenance,
       })
       qc.setQueryData(platformSettingsKeys.general(), updated)
@@ -89,6 +102,21 @@ function GeneralSettings(): JSX.Element {
       <SectionHead title="General" sub="Platform-wide identity and safety switches" />
       <div style={{ height: 16 }} />
       <Field
+        label="Platform name"
+        name="platform_name"
+        value={platformName}
+        onChange={(e) => setPlatformName(e.target.value)}
+        helper="The product name on platform emails and pages."
+      />
+      <Field
+        label="Support email"
+        name="support_email"
+        icon="mail"
+        value={supportEmail}
+        onChange={(e) => setSupportEmail(e.target.value)}
+        helper="Where tenants are told to write for help."
+      />
+      <Field
         label="Notification from-address"
         name="platform_email_from"
         icon="mail"
@@ -104,12 +132,20 @@ function GeneralSettings(): JSX.Element {
         onChange={(e) => setMaxTenants(e.target.value)}
         helper="Hard cap on tenant onboarding."
       />
+      <Field
+        label="Default trial days"
+        name="default_trial_days"
+        type="number"
+        value={trialDays}
+        onChange={(e) => setTrialDays(e.target.value)}
+        helper="0 to 365. Stored for the trial status planned in Phase 4; nothing reads it yet."
+      />
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'var(--space-4) 0', borderTop: '1px solid var(--color-line-soft)' }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 'var(--text-md)', color: maintenance ? 'var(--color-error)' : 'var(--color-ink)' }}>Maintenance mode</div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-            Blocks tenant onboarding and shows a maintenance banner. Existing sessions keep working.
+            Takes ShipX offline for every tenant: each signed-in tenant user and customer gets a maintenance screen until you turn it off. Platform admins keep working.
           </div>
         </div>
         <ToggleSwitch label="Maintenance mode" checked={maintenance} onChange={setMaintenance} />
@@ -131,7 +167,7 @@ function GeneralSettings(): JSX.Element {
         onConfirm={() => void commitSave()}
         onCancel={() => setConfirmMaintenance(false)}
       >
-        Tenant onboarding will be blocked and a maintenance banner will appear across the platform. Existing user sessions will keep working.
+        Every tenant goes offline at once. All tenant staff and customers, including those signed in now, get a maintenance screen instead of the app until you turn this off. Platform admins keep working.
       </ConfirmDialog>
     </Card>
   )
@@ -210,7 +246,7 @@ function ProviderCard({ spec, initial }: { spec: ProviderSpec; initial: Record<s
       const test = await platformSettingsApi.testGateway(spec.kind)
       setResult(
         test.success
-          ? { kind: 'success', msg: 'Configuration valid — all required fields present.' }
+          ? { kind: 'success', msg: 'Required fields present. This checks the fields only; it sends no message.' }
           : { kind: 'error', msg: test.error ?? 'Configuration incomplete.' },
       )
     } catch (err) {
@@ -248,7 +284,7 @@ function ProviderCard({ spec, initial }: { spec: ProviderSpec; initial: Record<s
           </span>
         )}
         <Button variant="secondary" size="sm" loading={testing} disabled={dirty || saving} onClick={() => void handleTest()}>
-          Test configuration
+          Check fields
         </Button>
         <Button variant="primary" size="sm" icon="check" loading={saving} onClick={() => void handleSave()}>
           Save

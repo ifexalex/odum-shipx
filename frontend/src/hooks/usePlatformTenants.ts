@@ -3,11 +3,14 @@ import { platformApi } from '../api/tenantManagement'
 import { platformAuditKeys, platformDashboardKeys, platformTenantKeys } from '../api/keys'
 import { STALE_30S, STALE_5_MIN } from '../lib/queryClient'
 
-/** Platform tenant list — a plain array endpoint (not cursor-paginated). */
+/**
+ * Every tenant, with the API's cursor followed to the end (audit PA-02: it used to stop silently at 50). For the
+ * dashboard's health table and the audit log's tenant filter; the Tenants page pages on the server instead.
+ */
 export function usePlatformTenantList() {
   return useQuery({
     queryKey: platformTenantKeys.list(),
-    queryFn: () => platformApi.listTenants(),
+    queryFn: () => platformApi.listAllTenants(),
     staleTime: STALE_5_MIN,
   })
 }

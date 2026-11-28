@@ -110,7 +110,8 @@ For each tenant with status = 'offboarded' and offboarded_at older than 90 days:
   one transaction:
       delete every table in shared/tenant_data.TENANT_TABLES, children first
       delete impersonation_session rows for the tenant (NOT NULL key to tenant)
-      anonymise platform_audit_log rows about it (target_tenant_id, details → NULL)
+      anonymise platform_audit_log rows about it (target_tenant_id, details → NULL) through
+        anonymise_platform_audit_for_tenant(uuid) — migration 075; the app role may not UPDATE that table
       delete the tenant row
   delete Cognito users with this tenant_id (best effort)
   log in audit_log (platform scope)
@@ -153,3 +154,5 @@ For each release_note with status = 'active' AND valid_until IS NOT NULL AND val
 - [x] Storage reminders sent on correct days
 - [x] Data cleanup deletes all tenant data after 90 days
 - [x] All jobs are idempotent (safe to re-run)
+
+**Ground-truth gap closed (2026-11-28, platform audit PA-07):** migration 074 revoked `UPDATE` on `platform_audit_log` from `logistics_app`, but the cleanup still anonymised a deleted tenant's rows with a plain `UPDATE`. Since the app connects as `logistics_app`, the statement was refused, the transaction rolled back, and no offboarded tenant could be deleted after its 90 days. The cleanup now calls `anonymise_platform_audit_for_tenant(uuid)`, a `SECURITY DEFINER` function from migration 075 that only runs in the `PLATFORM` context. Tests: `tests/unit/test_data_cleanup.py`.

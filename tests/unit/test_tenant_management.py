@@ -506,7 +506,7 @@ class TestOffboardTenant:
             patch.object(service.repo, "set_tenant_status", return_value=offboarded),
             patch.object(service.repo, "insert_platform_audit"),
         ):
-            result = service.offboard_tenant(TENANT_ID, actor_id="platform-admin")
+            result = service.offboard_tenant(TENANT_ID, actor_id="platform-admin", reason="Contract ended")
 
         assert result["status"] == "offboarded"
 
@@ -516,7 +516,7 @@ class TestOffboardTenant:
         tenant = _tenant(status="offboarded")
         with patch.object(service.repo, "get_tenant_by_id", return_value=tenant):
             with pytest.raises(BusinessRuleViolationError):
-                service.offboard_tenant(TENANT_ID, actor_id="platform-admin")
+                service.offboard_tenant(TENANT_ID, actor_id="platform-admin", reason="Contract ended")
 
 
 # ---------------------------------------------------------------------------

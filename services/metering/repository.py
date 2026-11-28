@@ -10,6 +10,7 @@ from datetime import date
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant
+from shared.seats import staff_seat_condition
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -36,10 +37,10 @@ def get_tenant_info(tenant_id: str) -> dict[str, Any] | None:
 
 
 def count_active_tenant_users(tenant_id: str) -> int:
-    """Return count of active users for the tenant."""
+    """Return the tenant's staff seats (``shared.seats``: customer portal accounts excluded, as in the quota check)."""
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT COUNT(*) AS cnt FROM tenant_user WHERE tenant_id = %s AND status = 'active'",
+        f"SELECT COUNT(*) AS cnt FROM tenant_user WHERE tenant_id = %s AND {staff_seat_condition()}",
         (tenant_id,),
     )
     return int(rows[0]["cnt"]) if rows else 0

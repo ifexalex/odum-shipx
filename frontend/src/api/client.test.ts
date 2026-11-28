@@ -3,7 +3,7 @@ import { queryClient } from '../lib/queryClient'
 import { registerSessionActions } from '../auth/sessionBridge'
 import { clearTenantBlocked, getTenantBlocked } from '../auth/tenantGate'
 import { clearActiveTokens, setActiveLocalAuth, setActiveTokens } from '../auth/tokenStore'
-import { ApiError, AuthExpiredError, apiDownloadFile, apiRequest } from './client'
+import { ApiError, AuthExpiredError, apiDownloadFile, apiRequest, plainErrorMessage } from './client'
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -215,6 +215,14 @@ describe('tenant-blocked gate wiring (16.12 / A4)', () => {
     )
     await expect(apiRequest({ method: 'GET', path: '/v1/containers' })).rejects.toThrow()
     expect(getTenantBlocked()).toBe('suspended')
+  })
+
+  it('trips the maintenance screen when a response carries MAINTENANCE_MODE (PA-01)', async () => {
+    fetchMock.mockResolvedValue(
+      problemResponse(503, { error_code: 'MAINTENANCE_MODE', detail: 'ShipX is undergoing scheduled maintenance.' }),
+    )
+    await expect(apiRequest({ method: 'POST', path: '/v1/containers', body: {} })).rejects.toThrow()
+    expect(getTenantBlocked()).toBe('maintenance')
   })
 
   it('leaves the gate alone for ordinary errors', async () => {
@@ -430,5 +438,16 @@ describe('apiRequest — cache invalidation on writes', () => {
     fetchMock.mockResolvedValue(jsonResponse({ data: { ok: true } }))
     await apiRequest({ method: 'POST', path: '/v1/onboarding-requests' })
     expect(invalidateSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('plainErrorMessage', () => {
+  it('says maintenance is on instead of blaming the connection (PA-01)', () => {
+    expect(plainErrorMessage(503, 'ShipX is undergoing scheduled maintenance.', 'MAINTENANCE_MODE')).toBe(
+      'ShipX is undergoing scheduled maintenance.',
+    )
+    expect(plainErrorMessage(503, 'Service temporarily unavailable.', 'SERVICE_UNAVAILABLE')).toBe(
+      "We couldn't reach the server. Check your connection and try again.",
+    )
   })
 })

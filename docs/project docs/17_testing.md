@@ -2601,3 +2601,11 @@ Found by running them: **a real bug** (invoice generation set a used credit to `
 ## Logo limit raised to 5 MB (2026-11-24)
 
 - `test_tenant_logo.py`: over 5 MB refused, exactly 5 MB accepted, a 6 MB stored file deleted and refused. `CompanySettings.test.tsx`: a file over 5 MB is refused in the browser with "The limit is 5 MB.".
+
+## Platform admin audit Phase 0 (2026-11-28)
+
+- `tests/unit/test_platform_admin_phase0.py`: the `MAINTENANCE_MODE` 503 (PA-01); tenant list paging, filters, total count and literal wildcard search (PA-02); staff-only seat counts in the list, dashboard and metering (PA-03); a missing or blank offboarding reason refused and a valid one passed through (PA-04); tenant names joined onto audit rows; metering's dashboard path now 404 (PA-10).
+- `tests/unit/test_platform_audit_actions.py`: every action the code writes is in `PlatformAuditAction`, every listed action is written somewhere, and the console offers exactly that list (PA-05).
+- `tests/unit/test_data_cleanup.py`: the cleanup anonymises platform audit rows through migration 075's function and never issues `UPDATE platform_audit_log` (PA-07).
+- Frontend: `PlatformTenantList.test.tsx` (server filters, platform-total chip counts, loading the 51st tenant), `PlatformDashboard.test.tsx` (rows named by the server), `PlatformAuditLog.test.tsx` (new: the action list and actor column), `PlatformSettings.test.tsx` (maintenance wording, new general fields, "Check fields"), `PlatformTenantDetail.test.tsx` (edit sends only changes; reactivate shows the notices), `TenantBlockedScreen.test.tsx` and `api/client.test.ts` (the maintenance screen and message).
+- Migration 075 was checked by hand against Postgres 15 as `logistics_app`, inside rolled-back transactions: the plain `UPDATE` is denied under 074's grants, the function anonymises, `DELETE` is denied, and the function refuses a non-`PLATFORM` context.

@@ -112,15 +112,11 @@ def _delete_tenant(tenant_id: str, tenant: dict[str, Any]) -> None:
             "DELETE FROM impersonation_session WHERE target_tenant_id = %(tenant_id)s RETURNING 1",
             params,
         )
+        # Through the SECURITY DEFINER function from migration 075: the app role may neither update nor delete
+        # platform audit rows, so a plain UPDATE here is refused.
         execute_write_with_tenant(
             PLATFORM_TENANT_ID,
-            """
-            UPDATE platform_audit_log
-            SET target_tenant_id = NULL,
-                details          = NULL
-            WHERE target_tenant_id = %(tenant_id)s
-            RETURNING id
-            """,
+            "SELECT anonymise_platform_audit_for_tenant(%(tenant_id)s) AS anonymised",
             params,
         )
         if (

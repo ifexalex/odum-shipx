@@ -3,23 +3,25 @@
  *
  * Status filter chips with counts, search, and the prototype's richer columns:
  * tenant cell (initials avatar + slug), mono ID, contact name+email cell,
- * users x/limit. Filtering/search run client-side over the fetched list — the
- * platform has tens of tenants, one page. Deliberately absent (AUDIT_GAPS):
- * "Onboarding" status (not a backend status) and bulk actions (no bulk
- * endpoints).
+ * staff seats x/limit. Filtering, search and paging run on the server (audit
+ * PA-02: the list used to stop silently at 50 tenants); the chip counts come from
+ * the dashboard totals. Deliberately absent (AUDIT_GAPS): "Onboarding" status
+ * (not a backend status) and bulk actions (no bulk endpoints).
  */
-import { useMemo, useState, type JSX } from 'react'
+import { useEffect, useState, type JSX } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { type Tenant, type TenantStatus } from '../../api/tenantManagement'
-import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
-import { Badge, Banner, Button, Chip, Mono, StatusBadge, Table, SearchField, EmptyState } from '../../design/components'
-import { formatDate, plural } from '../../lib/format'
+import { platformTenantKeys } from '../../api/keys'
+import { platformApi, type Tenant, type TenantStatus } from '../../api/tenantManagement'
+import { useCursorPagination } from '../../hooks/useCursorPagination'
+import { usePlatformDashboardStats } from '../../hooks/usePlatformTenants'
+import { STALE_30S } from '../../lib/queryClient'
+import { Badge, Banner, Button, Chip, ListFooter, Mono, StatusBadge, Table, SearchField, EmptyState } from '../../design/components'
+import { formatDate } from '../../lib/format'
 import { statusLabel, statusesOf } from '../../design/status'
 import { FilterBar } from '../../shell/FilterBar'
 import { ListPage } from '../../shell/ListPage'
 import { PageHeader } from '../../shell/PageHeader'
 import { initialsFor } from '../../lib/initials'
-import styles from './admin.module.css'
 
 const TIER_COLOR: Record<string, string> = {
   starter: 'var(--color-ink-3)',
@@ -81,31 +83,44 @@ function TenantCell({ tenant }: { tenant: Tenant }): JSX.Element {
 
 export function PlatformTenantList(): JSX.Element {
   const navigate = useNavigate()
-  const { data: tenantsResult, isLoading: loading, error } = usePlatformTenantList()
-  const tenants = useMemo(() => tenantsResult?.data ?? [], [tenantsResult])
-
   const [statusFilter, setStatusFilter] = useState<TenantStatus | null>(null)
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
 
-  const counts = useMemo(() => {
-    const map: Record<TenantStatus, number> = { active: 0, suspended: 0, offboarded: 0 }
-    for (const t of tenants) map[t.status] += 1
-    return map
-  }, [tenants])
+  // Debounce the search term; the list refetches from the server when it changes.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [query])
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return tenants.filter((t) => {
-      if (statusFilter && t.status !== statusFilter) return false
-      if (!q) return true
-      return (
-        t.company_name.toLowerCase().includes(q) ||
-        (t.primary_contact_email ?? '').toLowerCase().includes(q) ||
-        (t.slug ?? '').toLowerCase().includes(q) ||
-        t.id.toLowerCase().includes(q)
-      )
-    })
-  }, [tenants, statusFilter, query])
+  const params = {
+    ...(statusFilter ? { status: statusFilter } : {}),
+    ...(debouncedQuery ? { q: debouncedQuery } : {}),
+  }
+  const {
+    items: visible,
+    isLoading: loading,
+    error,
+    hasMore,
+    loadMore,
+    isFetchingMore,
+    totalCount,
+  } = useCursorPagination(
+    platformTenantKeys.page(params),
+    (cursor) => platformApi.listTenants({ ...params, limit: 50, ...(cursor ? { cursor } : {}) }),
+    { staleTime: STALE_30S },
+  )
+
+  // Chip counts are the platform totals, so they stay right whatever page or search is on screen.
+  const { data: stats } = usePlatformDashboardStats()
+  const counts: Record<TenantStatus, number | null> = {
+    active: stats?.tenants.active_tenants ?? null,
+    suspended: stats?.tenants.suspended_tenants ?? null,
+    offboarded: stats?.tenants.offboarded_tenants ?? null,
+  }
+  const allCount = stats
+    ? stats.tenants.active_tenants + stats.tenants.suspended_tenants + stats.tenants.offboarded_tenants
+    : null
 
   return (
     <ListPage
@@ -127,7 +142,7 @@ export function PlatformTenantList(): JSX.Element {
           status={
             <>
               <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
-                All {tenants.length > 0 && <span style={{ opacity: 0.6 }}>{tenants.length}</span>}
+                All {allCount !== null && <span style={{ opacity: 0.6 }}>{allCount}</span>}
               </Chip>
               {statusesOf('tenant').map((status) => (
                 <Chip
@@ -136,7 +151,7 @@ export function PlatformTenantList(): JSX.Element {
                   onClick={() => setStatusFilter(statusFilter === status ? null : status)}
                 >
                   {statusLabel('tenant', status)}{' '}
-                  <span style={{ opacity: 0.6 }}>{counts[status]}</span>
+                  {counts[status] !== null && <span style={{ opacity: 0.6 }}>{counts[status]}</span>}
                 </Chip>
               ))}
             </>
@@ -154,12 +169,15 @@ export function PlatformTenantList(): JSX.Element {
         />
       }
       footer={
-        !loading &&
-        tenants.length > 0 && (
-          <p className={styles.showing}>
-            Showing {visible.length} of {plural(tenants.length, 'tenant')}
-          </p>
-        )
+        <ListFooter
+          shown={visible.length}
+          total={totalCount}
+          hasMore={hasMore}
+          loading={isFetchingMore}
+          onLoadMore={loadMore}
+          noun="tenants"
+          nounOne="tenant"
+        />
       }
     >
       <Table
@@ -219,9 +237,9 @@ export function PlatformTenantList(): JSX.Element {
             <EmptyState
               compact
               title={
-                tenants.length === 0
-                  ? 'No tenants onboarded yet'
-                  : 'No tenants match the current filter'
+                statusFilter || debouncedQuery
+                  ? 'No tenants match the current filter'
+                  : 'No tenants onboarded yet'
               }
             />
           ) : undefined

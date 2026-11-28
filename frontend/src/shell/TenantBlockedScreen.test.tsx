@@ -84,6 +84,17 @@ describe('TenantBlockedGate', () => {
     expect(screen.getByText('Contact support').closest('a')).toHaveAttribute('href', 'mailto:support@shipx.co')
   })
 
+  it('shows a maintenance screen, not a connection error, while ShipX is in maintenance (PA-01)', () => {
+    renderGate()
+    act(() => reportTenantBlocked('MAINTENANCE_MODE'))
+
+    expect(getTenantBlocked()).toBe('maintenance')
+    expect(screen.getByText('ShipX is down for maintenance')).toBeInTheDocument()
+    expect(screen.getByText('HTTP 503 · MAINTENANCE_MODE')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.queryByText('Routed page content')).toBeNull()
+  })
+
   it('shows the suspended variant with its own copy and code', () => {
     renderGate()
     act(() => reportTenantBlocked('TENANT_SUSPENDED'))

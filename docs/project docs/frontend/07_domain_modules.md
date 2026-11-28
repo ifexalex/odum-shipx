@@ -241,6 +241,17 @@ Notification template editor (`NotificationTemplatesPage`) needs a per-channel S
 
 ~~**Tenant-admin config sub-pages not yet wired:** `/admin/config/charge-types`, `/admin/config/webhooks`, `/admin/reports`, `/admin/notifications/log` — still fall through to `RouteStub`.~~ *(Superseded: all wired; `RouteStub` was deleted 2026-11-17, audit FE-08.)* The API bindings (`configApi.listChargeTypes`, etc.) are ready in `tenantManagement.ts`.
 
+
+### Platform admin audit Phase 0 (2026-11-28, PA-01 … PA-10)
+
+Implementation notes / ground-truth gaps found, all in the platform console (`src/pages/platform/`):
+- **Tenants list pages on the server.** `PlatformTenantList` now reads `GET /v1/platform/tenants?status=&q=&cursor=&limit=50` through `useCursorPagination` (key `platformTenantKeys.page(params)`), with a 300 ms search debounce and a Load more footer. Its chip counts come from the dashboard totals. **Wire change:** the route now returns the paginated envelope (`meta.pagination` with `total_count`); it used to return a bare array capped at 50. Views that need every tenant (the dashboard's health table, the audit log's tenant filter) use `platformApi.listAllTenants()`, which follows the cursor; `usePlatformTenantList()` now returns `Tenant[]`, not a `ListResponse`.
+- **Audit log.** The action filter offers `PLATFORM_AUDIT_ACTIONS` (`src/api/platformAuditActions.ts`, kept equal to the backend enum by a backend test). Rows are named by the server's `target_tenant_name` (new field on `PlatformAuditEntry`), and a new Actor column shows the admin's shortened identity subject, or "Platform job". The dashboard's activity feed uses the same field.
+- **Maintenance.** `auth/tenantGate.ts` has a third kind, `maintenance`, tripped by the 503 `MAINTENANCE_MODE` code. `TenantBlockedScreen` shows "ShipX is down for maintenance" with Try again, and `plainErrorMessage` returns the server's text for that code instead of "Check your connection". Platform Settings now says maintenance takes every tenant offline.
+- **Tenant page.** "Edit tenant" in the overflow menu (name, contact email, plan; only changed fields are sent to `PATCH /v1/platform/tenants/{id}`), and "Reactivate tenant" for an offboarded tenant (`PATCH …/reactivate`), which shows the notices to relay to the tenant.
+- **Settings.** General edits `platform_name`, `support_email` and `default_trial_days`; blank text fields are not sent, because the server refuses empty strings. The provider button is now "Check fields" and says it sends nothing.
+- **Seat counts.** `Tenant.user_count` now counts staff seats only (no customer portal accounts), so "Over quota" badges match the tenant's own plan page.
+
 ## 7.10 Reports & Notification Log ✅
 
 Backend: `15_api_notifications.md`. Notification log (`NotificationLog`, `NotifDetailModal`) shows delivery status per channel with a retry action (`POST /v1/notifications/log/{id}/retry`, tenant_admin only) — surface provider error detail (`gateway_response`) on the detail modal for debugging delivery failures, but never the full raw payload if it could contain PII beyond what's already masked server-side.

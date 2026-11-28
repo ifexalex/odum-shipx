@@ -207,3 +207,9 @@ batch_ref: str | None = None
 - **2026-11-25 (PR #174):** `MAX_ITEM_QUANTITY = 500` was removed — `quantity` has no artificial upper cap (`ge=1`) because the packing-list service enforces container CBM capacity (`CONTAINER_CAPACITY_EXCEEDED`) directly.
 - Each line item is stored as a **single row with a single `carton_tag`** carrying `quantity = N` and line-total `cbm`/weights (no row expansion). `declared_value_usd` is stored **per unit**.
 - `identical_confirmed` remains validated by the model whenever `quantity > 1`. See `08_api_packing_list.md`.
+
+## Platform admin models (2026-11-28, platform audit Phase 0)
+
+`services/tenant_management/models.py`:
+- `OffboardTenantRequest` — `reason: str` (1–2000 characters; a blank reason is refused). The body of `DELETE /v1/platform/tenants/{id}`, stored on the `TENANT_OFFBOARDED` audit row (PA-04).
+- `TenantListQuery` — `status: TenantStatus | None`, `tier: SubscriptionTier | None`, `q: str | None` (≤ 200; blank becomes `None`). The filters of `GET /v1/platform/tenants` (PA-02).
