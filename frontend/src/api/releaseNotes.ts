@@ -213,4 +213,71 @@ export const releaseNotesApi = {
   /** Re-issue an expired release note with a fresh 14-day validity window. */
   reissue: (id: string) =>
     apiRequest<ReleaseNote>({ method: 'POST', path: `/v1/release-notes/${id}/reissue`, body: {} }),
+
+  /** Staff request to release goods on credit (waits in tenant admin Approvals inbox, TC-03). */
+  createCreditRequest: (body: CreateCreditReleaseRequestInput) =>
+    apiRequest<CreditReleaseRequest>({ method: 'POST', path: '/v1/release-notes/credit-requests', body }),
+
+  listCreditRequests: (params: { status?: 'pending' | 'approved' | 'rejected'; billing_id?: string } = {}) =>
+    apiRequest<CreditReleaseRequest[]>({
+      method: 'GET',
+      path: '/v1/release-notes/credit-requests',
+      query: params as Record<string, string | undefined>,
+    }),
+
+  approveCreditRequest: (id: string, decision_notes?: string) =>
+    apiRequest<{ credit_request: CreditReleaseRequest; release_note: ReleaseNote }>({
+      method: 'POST',
+      path: `/v1/release-notes/credit-requests/${id}/approve`,
+      body: decision_notes ? { decision_notes } : {},
+    }),
+
+  rejectCreditRequest: (id: string, decision_notes: string) =>
+    apiRequest<CreditReleaseRequest>({
+      method: 'POST',
+      path: `/v1/release-notes/credit-requests/${id}/reject`,
+      body: { decision_notes },
+    }),
+}
+
+export interface CreateCreditReleaseRequestInput {
+  billing_id: string
+  carton_tags: string[]
+  packages_released?: number
+  package_unit?: string
+  warehouse_id?: string
+  physical_document_number?: string
+  packing_list_invoice_numbers?: string[]
+  due_date?: string
+  reason: string
+}
+
+export interface CreditReleaseRequest {
+  id: string
+  billing_id: string
+  customer_id: string
+  customer_name: string | null
+  invoice_number: string | null
+  carton_tags: string[]
+  packages_released: number | null
+  package_unit: string | null
+  warehouse_id: string | null
+  physical_document_number: string | null
+  packing_list_invoice_numbers: string[]
+  due_date: string | null
+  amount_ngn: string
+  customer_credit_limit_ngn: string | null
+  customer_current_exposure_ngn: string
+  exceeds_credit_limit: boolean
+  reason: string
+  requested_by: string | null
+  requested_by_name: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  decided_by: string | null
+  decided_by_name: string | null
+  decided_at: string | null
+  decision_notes: string | null
+  release_note_id: string | null
+  created_at: string
+  updated_at: string
 }

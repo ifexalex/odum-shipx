@@ -58,8 +58,10 @@ from .models import (
     SuspendTenantRequest,
     TenantListQuery,
     UpdateCbmRateRequest,
+    UpdateCustomerCreditRequest,
     UpdateDollarRateMarkupRequest,
     UpdatePlatformAdminRequest,
+    UpdatePolicyRequest,
     UpdateTenantConfigRequest,
     UpdateTenantRequest,
     UpdateTenantUserRequest,
@@ -298,6 +300,11 @@ def _dispatch(
             # wizard show the capacity presets. Writes (POST/DELETE) stay behind
             # the tenant_admin assert below.
             if len(parts) == 3 and parts[2] == "container-capacities" and method == "GET":
+                ctx.assert_role(*_STAFF_ROLES)
+                return _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address)
+
+            # GET /v1/tenant/permissions — server-served role capability matrix (TC-05).
+            if len(parts) == 3 and parts[2] == "permissions" and method == "GET":
                 ctx.assert_role(*_STAFF_ROLES)
                 return _tenant_admin_routes(event, parts, method, ctx, request_id, ip_address)
 
@@ -893,6 +900,41 @@ def _tenant_admin_routes(
         data = service.get_tenant_report(tenant_id)
         return success(data, request_id=request_id)
 
+    # GET/PUT /v1/tenant/policies — effective-dated business policies (Phase 1, TC-01, D4)
+    if resource == "policies":
+        if method == "GET":
+            return success(service.get_tenant_policies(tenant_id), request_id=request_id)
+        if method == "PUT":
+            ctx.assert_role(UserRole.TENANT_ADMIN)
+            req = parse_validated(UpdatePolicyRequest, _parse_body(event))
+            result = service.update_tenant_policy(
+                tenant_id,
+                req.policy_key,
+                req.value,
+                req.effective_date,
+                actor_id=ctx.user_id,
+                ip_address=ip_address,
+            )
+            return success(result, request_id=request_id)
+
+    # GET /v1/tenant/approvals — unified admin approvals inbox read model (Phase 1, TC-02, D5)
+    if resource == "approvals" and method == "GET":
+        ctx.assert_role(UserRole.TENANT_ADMIN)
+        counts_only = str(_qp(event, "counts_only", "")).lower() in ("1", "true", "yes")
+        data = service.get_tenant_approvals(
+            tenant_id,
+            actor_id=ctx.user_id,
+            item_type=_qp(event, "type") or None,
+            counts_only=counts_only,
+        )
+        return success(data, request_id=request_id)
+
+    # GET /v1/tenant/permissions — server-served role-to-action map (Phase 1, TC-05)
+    if resource == "permissions" and method == "GET":
+        from shared.role_permissions import get_role_permissions_payload
+
+        return success(get_role_permissions_payload(), request_id=request_id)
+
     # GET /v1/tenant/activity — tenant-scoped audit feed (audit gap B6).
     # ?actor_id= narrows to one staff member (staff-profile 3.4).
     # ?entity_type= narrows to one or more kinds of record — comma-separated
@@ -1350,6 +1392,20 @@ def _customer_routes(
                 return success(anonymised or {}, request_id=request_id)
 
         else:
+            # PATCH /v1/customers/{id}/credit — tenant_admin only (Phase 1, TC-04, D3)
+            if action == "credit" and method == "PATCH":
+                ctx.assert_role(UserRole.TENANT_ADMIN)
+                req = parse_validated(UpdateCustomerCreditRequest, _parse_body(event))
+                result = service.update_customer_credit(
+                    tenant_id,
+                    customer_id,
+                    credit_limit_ngn=req.credit_limit_ngn,
+                    credit_terms_days=req.credit_terms_days,
+                    actor_id=ctx.user_id,
+                    ip_address=ip_address,
+                )
+                return success(result, request_id=request_id)
+
             # POST /v1/customers/{id}/invite — office staff & tenant admin only;
             # issues a new invite, or resends (which invalidates any prior unconsumed one).
             if action == "invite" and method == "POST":

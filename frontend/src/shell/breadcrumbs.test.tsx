@@ -39,6 +39,7 @@ const EXPECTED: Record<string, (string | [string, string])[]> = {
   '/admin/config/notifications': [['Settings', '/admin/config'], 'Notification templates'],
   '/admin/config/webhooks': [['Settings', '/admin/config'], 'Webhooks'],
   '/admin/config/payments': [['Settings', '/admin/config'], 'Payments'],
+  '/admin/config/policies': [['Settings', '/admin/config'], 'Policies'],
   '/containers/new': [['Containers', '/containers'], 'New container'],
   '/containers/:id': [['Containers', '/containers'], 'Container'],
   '/packing-lists/new': [['Packing lists', '/packing-lists'], 'New packing list'],

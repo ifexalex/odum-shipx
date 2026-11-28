@@ -527,3 +527,12 @@ With single-tag multi-quantity packing-list items (`08_api_packing_list.md`), on
 - **Authorised carton count:** `generate_release_note` sums `packing_list_item.quantity` across the selected `carton_tags` (instead of counting tags with `len(carton_tags)`).
 - **Multi-trip partial pickup:** `record_pickup` deducts `cartons_released` against the release note's remaining cartons across multiple visits; the release note flips to `picked_up` only once cumulative pickups reach the total authorised quantity.
 - **Progress fields:** `GET /v1/release-notes` and `GET /v1/release-notes/{id}` include `cartons_picked_up` and `cartons_remaining` so the warehouse counter and release-note detail page show live collection progress.
+
+### Approved credit release requests (Tenant Admin Phase 0 & Phase 1, 2026-11-28)
+
+- **Approver identity derived from session (TA-02 / TC-03):** Direct credit releases (`POST /v1/release-notes` with `release_with_outstanding=true`) require `tenant_admin`, and `credit_granted_by_name` is always derived server-side from the authenticated admin's user record (ignoring client-supplied names).
+- **Staff credit release requests (migration `079`):**
+  - `POST /v1/release-notes/credit-requests` (`nigeria_office_staff`, `tenant_admin`): Submits a pending `credit_release_request` for an unpaid invoice with a required `reason`. Flags `exceeds_credit_limit` against the customer's effective credit limit (or tenant default), audits creation, and notifies `tenant_admin`.
+  - `GET /v1/release-notes/credit-requests` (`nigeria_office_staff`, `tenant_admin`): Lists credit release requests (filterable by `status` and `billing_id`).
+  - `POST /v1/release-notes/credit-requests/{id}/approve` (`tenant_admin`): Generates the credit release note under the approving admin's identity, links `release_note_id`, marks the request `approved`, audits (noting `self_approved` when requester == approver), and notifies staff.
+  - `POST /v1/release-notes/credit-requests/{id}/reject` (`tenant_admin`): Requires `decision_notes` (reason), marks the request `rejected`, audits, and notifies staff.

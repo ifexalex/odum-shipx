@@ -93,6 +93,8 @@ export const routeTable: RouteDef[] = [
   { path: '/admin/config/notifications', allow: ['tenant_admin'], title: 'Notification templates', layout: 'staff', parent: '/admin/config', crumb: 'Notification templates' },
   { path: '/admin/config/webhooks', allow: ['tenant_admin'], title: 'Webhooks', layout: 'staff', parent: '/admin/config', crumb: 'Webhooks' },
   { path: '/admin/config/payments', allow: ['tenant_admin'], title: 'Payments', layout: 'staff', parent: '/admin/config', crumb: 'Payments' },
+  { path: '/admin/config/policies', allow: ['tenant_admin'], title: 'Policies', layout: 'staff', parent: '/admin/config', crumb: 'Policies' },
+  { path: '/admin/approvals', allow: ['tenant_admin'], title: 'Tenant approvals', layout: 'staff' },
   { path: '/admin/reports', allow: ['tenant_admin'], title: 'Reports', layout: 'staff' },
   { path: '/admin/notifications/log', allow: ['tenant_admin'], title: 'Notification log', layout: 'staff' },
   { path: '/admin/activity-log', allow: ['tenant_admin'], title: 'Activity log', layout: 'staff' },

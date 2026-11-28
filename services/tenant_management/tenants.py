@@ -81,6 +81,7 @@ DEFAULT_CONFIGS: dict[str, Any] = {
     },
     "warehouse_address": {"address": "", "city": "Lagos", "state": "Lagos"},
     "refund_threshold_usd": {"staff_limit": 50, "requires_manager_above": 50},
+    "credit_defaults": {"default_credit_limit_ngn": 0, "default_credit_terms_days": 14},
     "dispute_escalation": {"enabled": True, "auto_escalate_days": 5},
     "reminder_days": {"storage_first_reminder": 7, "storage_final_reminder": 13},
     "webhook_config": {

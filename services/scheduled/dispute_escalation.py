@@ -209,16 +209,9 @@ def _get_active_tenants() -> list[dict[str, Any]]:
 
 
 def _get_dispute_escalation_config(tenant_id: str) -> dict[str, Any]:
-    rows = execute_with_tenant(
-        tenant_id,
-        """
-        SELECT config_value FROM tenant_config
-        WHERE tenant_id = %s AND config_key = 'dispute_escalation'
-        LIMIT 1
-        """,
-        (tenant_id,),
-    )
-    return rows[0]["config_value"] if rows else {}
+    from shared.tenant_policies import resolve_policy_for_date
+
+    return resolve_policy_for_date(tenant_id, "dispute_escalation")
 
 
 def _get_investigating_disputes(tenant_id: str) -> list[dict[str, Any]]:

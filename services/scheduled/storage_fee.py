@@ -75,13 +75,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
 
 def _process_tenant(tenant_id: str) -> int:
-    config = _get_storage_fee_config(tenant_id)
+    today = datetime.now(UTC).date()
+    config = _get_storage_fee_config(tenant_id, as_of_date=today)
     if not config.get("enabled"):
         return 0
 
     grace_period = int(config.get("grace_period_days", _DEFAULT_GRACE_PERIOD))
     daily_rate = Decimal(str(config.get("daily_fee_per_carton_ngn", _DEFAULT_DAILY_RATE_NGN)))
-    today = datetime.now(UTC).date()
 
     active_notes = _get_active_release_notes(tenant_id)
     fees_accrued = 0
@@ -248,17 +248,10 @@ def _get_active_tenants() -> list[dict[str, Any]]:
     )
 
 
-def _get_storage_fee_config(tenant_id: str) -> dict[str, Any]:
-    rows = execute_with_tenant(
-        tenant_id,
-        """
-        SELECT config_value FROM tenant_config
-        WHERE tenant_id = %s AND config_key = 'storage_fee'
-        LIMIT 1
-        """,
-        (tenant_id,),
-    )
-    return rows[0]["config_value"] if rows else {}
+def _get_storage_fee_config(tenant_id: str, as_of_date: date | None = None) -> dict[str, Any]:
+    from shared.tenant_policies import resolve_policy_for_date
+
+    return resolve_policy_for_date(tenant_id, "storage_fee", as_of_date=as_of_date)
 
 
 def _get_active_release_notes(tenant_id: str) -> list[dict[str, Any]]:

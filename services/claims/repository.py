@@ -98,7 +98,15 @@ def get_billing_for_claim(tenant_id: str, customer_id: str, container_id: str) -
 
 
 def get_tenant_config_value(tenant_id: str, config_key: str) -> dict[str, Any] | None:
-    """Return the JSONB config_value dict for a given key, or None."""
+    """Return the JSONB config_value dict for a given key, or None.
+
+    For effective-dated business policies (e.g. ``refund_threshold_usd``),
+    resolves via ``shared.tenant_policies`` so scheduled effective dates apply.
+    """
+    from shared.tenant_policies import POLICY_DEFAULTS, resolve_policy_for_date
+
+    if config_key in POLICY_DEFAULTS:
+        return resolve_policy_for_date(tenant_id, config_key)
     rows = execute_with_tenant(
         tenant_id,
         """

@@ -58,6 +58,7 @@ const SUB_NAV_GROUPS: SubNavGroup[] = [
       { icon: 'coin', label: 'Dollar rate', desc: 'USD → NGN markup', path: '/admin/config/dollar-rate' },
       { icon: 'package', label: 'CBM rate', desc: 'Price per cubic metre', path: '/admin/config/cbm-rate' },
       { icon: 'card', label: 'Charge types', desc: 'Custom misc charges', path: '/admin/config/charge-types' },
+      { icon: 'shield', label: 'Policies', desc: 'Storage fees, limits, reminders', path: '/admin/config/policies' },
     ],
   },
   {

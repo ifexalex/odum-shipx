@@ -82,6 +82,8 @@ const Warehouses = lazyNamed(tenantAdminArea, 'Warehouses')
 const NotificationLog = lazyNamed(tenantAdminArea, 'NotificationLog')
 const NotificationTemplates = lazyNamed(tenantAdminArea, 'NotificationTemplates')
 const PaymentGatewayConfig = lazyNamed(tenantAdminArea, 'PaymentGatewayConfig')
+const PoliciesConfig = lazyNamed(tenantAdminArea, 'PoliciesConfig')
+const ApprovalsInbox = lazyNamed(tenantAdminArea, 'ApprovalsInbox')
 const TenantReports = lazyNamed(tenantAdminArea, 'TenantReports')
 const WebhookConfig = lazyNamed(tenantAdminArea, 'WebhookConfig')
 const AnnouncementsPage = lazyNamed(tenantAdminArea, 'AnnouncementsPage')
@@ -149,6 +151,8 @@ export const GUARDED_SCREENS: Record<string, JSX.Element> = {
   '/admin/config/notifications': <ConfigLayout><NotificationTemplates /></ConfigLayout>,
   '/admin/config/webhooks': <ConfigLayout><WebhookConfig /></ConfigLayout>,
   '/admin/config/payments': <ConfigLayout><PaymentGatewayConfig /></ConfigLayout>,
+  '/admin/config/policies': <ConfigLayout><PoliciesConfig /></ConfigLayout>,
+  '/admin/approvals': <ApprovalsInbox />,
   '/profile': <StaffProfile />,
   '/admin/reports': <TenantReports />,
   '/admin/notifications/log': <NotificationLog />,

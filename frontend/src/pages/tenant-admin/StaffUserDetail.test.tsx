@@ -20,7 +20,17 @@ vi.mock('../../api/tenantManagement', async (importOriginal) => {
   return {
     ...original,
     usersApi: { ...original.usersApi, get: vi.fn(), update: vi.fn(), deactivate: vi.fn(), reactivate: vi.fn() },
-    configApi: { ...original.configApi, activity: vi.fn().mockResolvedValue({ data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } } }) },
+    configApi: {
+      ...original.configApi,
+      activity: vi.fn().mockResolvedValue({ data: [], meta: { pagination: { has_more: false, next_cursor: null, total_count: 0 } } }),
+      getPermissions: vi.fn().mockResolvedValue({
+        roles: {
+          nigeria_office_staff: [{ key: 'payments.confirm', domain: 'Money', label: 'Record payments and review payment claims', allowed: true }],
+          warehouse_attendant: [{ key: 'release_notes.pickup', domain: 'Warehouse', label: 'Record physical cargo pickup at the warehouse', allowed: true }],
+        },
+        capabilities: [],
+      }),
+    },
   }
 })
 

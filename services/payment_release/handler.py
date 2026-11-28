@@ -53,7 +53,9 @@ from . import service
 from . import webhook as wh
 from .models import (
     ConfirmPaymentRequest,
+    CreateCreditReleaseRequest,
     CreateWarehouseRequest,
+    DecideCreditReleaseRequest,
     GenerateReleaseNoteRequest,
     RecordPickupRequest,
     RejectPaymentClaimRequest,
@@ -77,6 +79,7 @@ _RELEASE_CREATE_ROLES = (
     UserRole.TENANT_ADMIN,
     UserRole.NIGERIA_OFFICE_STAFF,
 )
+_CREDIT_APPROVE_ROLES = (UserRole.TENANT_ADMIN,)
 _RELEASE_READ_ROLES = (
     UserRole.TENANT_ADMIN,
     UserRole.NIGERIA_OFFICE_STAFF,
@@ -443,6 +446,61 @@ def _release_note_routes(
         if method == "GET":
             ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.WAREHOUSE_ATTENDANT)
             return success(service.get_release_note_stats(ctx.tenant_id), request_id=request_id)
+
+    elif note_id == "credit-requests":
+        credit_req_id = parts[3] if len(parts) > 3 else None
+        decision = parts[4] if len(parts) > 4 else None
+        if credit_req_id is None:
+            if method == "POST":
+                ctx.assert_role(*_RELEASE_CREATE_ROLES)
+                req = parse_validated(CreateCreditReleaseRequest, _parse_body(event))
+                result = service.create_credit_release_request(
+                    ctx.tenant_id,
+                    req,
+                    actor_id=ctx.user_id,
+                    ctx=ctx,
+                    request_id=request_id,
+                    ip_address=ip_address,
+                )
+                return created(
+                    result,
+                    location=f"/v1/release-notes/credit-requests/{result['id']}",
+                    request_id=request_id,
+                )
+            if method == "GET":
+                ctx.assert_role(*_RELEASE_CREATE_ROLES)
+                items = service.list_credit_release_requests(
+                    ctx.tenant_id,
+                    status=_qp(event, "status") or None,
+                    billing_id=_qp(event, "billing_id") or None,
+                )
+                return success(items, request_id=request_id)
+        elif decision == "approve" and method == "POST":
+            ctx.assert_role(*_CREDIT_APPROVE_ROLES)
+            req = parse_validated(DecideCreditReleaseRequest, _parse_body(event))
+            result = service.approve_credit_release_request(
+                ctx.tenant_id,
+                credit_req_id,
+                req,
+                actor_id=ctx.user_id,
+                ctx=ctx,
+                request_id=request_id,
+                ip_address=ip_address,
+            )
+            return success(result, request_id=request_id)
+        elif decision == "reject" and method == "POST":
+            ctx.assert_role(*_CREDIT_APPROVE_ROLES)
+            req = parse_validated(DecideCreditReleaseRequest, _parse_body(event))
+            result = service.reject_credit_release_request(
+                ctx.tenant_id,
+                credit_req_id,
+                req,
+                actor_id=ctx.user_id,
+                ctx=ctx,
+                request_id=request_id,
+                ip_address=ip_address,
+            )
+            return success(result, request_id=request_id)
 
     else:
         if action is None:
