@@ -120,6 +120,8 @@ NOT_TENANT_DATA: dict[str, str] = {
     "tenant_onboarding_request": "the platform's sales lead; its tenant_id is set null when the tenant is deleted",
     "tenant_offboarding_export": "the record of this export itself; cascades with the tenant",
     "idempotency_key": "ephemeral 24h POST idempotency cache; not tenant business data",
+    "platform_user": "the platform admin directory; no tenant",
+    "platform_approval": "the platform's two-person approvals; anonymised, not deleted, when the tenant goes",
 }
 
 #: Keys inside ``tenant_config.config_value`` that hold credentials, by config key.

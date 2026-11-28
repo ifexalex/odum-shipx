@@ -65,6 +65,9 @@ interface ApiError {
 | 502 | `EXTERNAL_SERVICE_ERROR` | Retry-able toast ("a third-party service is unavailable, try again shortly") |
 | 503 | `SERVICE_UNAVAILABLE` | Backend's fail-closed response when a security/infra check can't complete. Treat identically to 502 — retry-able, not the user's fault. |
 | 503 | `MAINTENANCE_MODE` | A platform admin has ShipX in maintenance mode (2026-11-28, PA-01). Every tenant request gets it, so the client trips the tenant gate (`auth/tenantGate.ts`, kind `maintenance`) and the layouts show the full-page maintenance screen; `plainErrorMessage` returns the server's text, not the connection message. Never raised on `/v1/platform/*`. |
+| 403 | `STEP_UP_REQUIRED` | A dangerous platform action without a fresh re-authentication (platform audit Phase 1, 2026-11-28). `fetchWithAuth` asks `auth/stepUp.requestStepUp()` (the `StepUpHost` dialog), then retries once with `X-Step-Up-Token`; if the admin cancels, the original 403 is thrown. Platform routes only. |
+| 403 | `STEP_UP_FAILED`, `STEP_UP_MFA_REQUIRED` | Answers of `POST /v1/platform/auth/step-up`: a wrong password or code, or the password was right and the code is now needed. Handled inside the dialog. |
+| 403 | `PLATFORM_ADMIN_NOT_ENROLLED`, `PLATFORM_ADMIN_DISABLED` | A platform-group identity with no active directory row. |
 
 ### Idempotency
 

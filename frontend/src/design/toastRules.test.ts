@@ -40,6 +40,7 @@ const RESULT_SCREENS: Record<string, string> = {
   'pages/platform/PlatformTenantDetail.tsx': 'impersonation opens the tenant',
   'pages/tenant-admin/WebhookConfig.tsx': 'new secret and test result panels',
   'pages/customer/Account.tsx': 'erasure signs the customer out',
+  'shell/StepUpHost.tsx': 're-authentication resumes the action, which shows its own toast',
 }
 
 describe('toast rules (FD-21)', () => {

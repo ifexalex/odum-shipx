@@ -229,3 +229,32 @@ class MaintenanceModeError(ServiceUnavailableError):
             error_code="MAINTENANCE_MODE",
             status_code=503,
         )
+
+
+class PlatformAdminNotEnrolledError(LogisticsBaseError):
+    """403 for a platform-group identity with no active ``platform_user`` row (platform audit Phase 1).
+
+    Membership of the identity provider's ``platform_admin`` group is no longer enough on its own: an owner must invite
+    the person into the directory, which also gives them a role.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="You are not in the platform admin directory. Ask a platform owner to invite you.",
+            error_code="PLATFORM_ADMIN_NOT_ENROLLED",
+            status_code=403,
+        )
+
+
+class StepUpRequiredError(LogisticsBaseError):
+    """403 for a dangerous platform action sent without a fresh re-authentication (platform audit C-29).
+
+    The console answers it by asking the admin to re-authenticate, then retries with the step-up token it receives.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Re-authenticate to confirm this action.",
+            error_code="STEP_UP_REQUIRED",
+            status_code=403,
+        )

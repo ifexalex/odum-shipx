@@ -658,3 +658,11 @@ GDPR portability for the tenant as controller (PRD FR-TN-004). The archive holds
 ## Swallowed failures are counted (audit OPS-04, 2026-11-17)
 
 Rule: a `try/except` that logs and carries on (so a request or a job survives) must also call `shared.observability.record_failure(operation)` when the failure means a customer is not billed or not told, or a record is lost. Add a new operation to `OPERATIONS` only with an alarm for it (or a written reason it needs none), and keep the set small: each value is a billed metric. The metric line carries no message, tenant or personal data; the detail stays in the normal log line next to it. Alarms and responses: `docs/runbook.md`, "Failure alarms".
+
+## Platform admin controls (platform audit Phase 1, 2026-11-28)
+
+- **Directory and roles.** A platform request is served only for an active `platform_user`; its role (owner, admin, support, finance) decides each route through one permission matrix (`shared/platform_roles.py`). New platform routes name their permission in `services/tenant_management/handler._required_platform_permission`; an unnamed write is owner-only.
+- **Step-up.** Irreversible or platform-wide actions (offboard, suspend, gateway keys, maintenance on, admin changes, approval decisions) require a re-authentication the server itself verified within the last 5 minutes (`X-Step-Up-Token`). The step-up sign-in's own tokens are revoked at once, and failures share the sign-in lockout.
+- **Two-person rule.** Offboarding, a gateway secret change and maintenance-on need a second owner or admin; the database refuses self-approval. A sole admin types the target, every owner is emailed, and offboarding waits 24 hours. The payload is hash-checked before it runs; secrets in a request are encrypted and never returned.
+- **Audit.** Platform audit rows carry `before_state` / `after_state` with secrets masked, and the request id.
+

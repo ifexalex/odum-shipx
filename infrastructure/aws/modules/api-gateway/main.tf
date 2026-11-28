@@ -283,6 +283,15 @@ locals {
     "POST /v1/platform/tenants/{id}/offboarding-export"      = "tenant_management"
     "POST /v1/platform/tenants/{id}/offboarding-export/link" = "tenant_management"
     "DELETE /v1/platform/impersonation/{id}"                 = "tenant_management"
+    # Platform admin directory, step-up re-authentication and two-person approvals (platform audit Phase 1)
+    "GET /v1/platform/me"                         = "tenant_management"
+    "POST /v1/platform/auth/step-up"              = "tenant_management"
+    "GET /v1/platform/admins"                     = "tenant_management"
+    "POST /v1/platform/admins"                    = "tenant_management"
+    "PATCH /v1/platform/admins/{id}"              = "tenant_management"
+    "GET /v1/platform/approvals"                  = "tenant_management"
+    "GET /v1/platform/approvals/{id}"             = "tenant_management"
+    "POST /v1/platform/approvals/{id}/{decision}" = "tenant_management" # approve | reject | cancel
 
     # --- Notifications: delivery log, in-app bells, announcements -----------
     # Served by the VPC-attached notification_api Lambda (http_handler) — these
@@ -393,7 +402,7 @@ resource "aws_apigatewayv2_api" "main" {
   cors_configuration {
     allow_origins  = var.cors_allow_origins
     allow_methods  = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_headers  = ["Content-Type", "Authorization", "X-Amz-Date", "X-Api-Key"]
+    allow_headers  = ["Content-Type", "Authorization", "X-Amz-Date", "X-Api-Key", "X-Step-Up-Token"]
     expose_headers = ["X-Request-Id"]
     max_age        = 3600
     # Required for the browser to send/receive the /v1/auth/* httpOnly session

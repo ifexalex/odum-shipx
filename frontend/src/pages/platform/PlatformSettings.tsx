@@ -14,6 +14,7 @@ import { useState, type JSX } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { platformSettingsKeys } from '../../api/keys'
+import { describeOutcome, isProtectedOutcome } from '../../api/platformSecurity'
 import {
   platformSettingsApi,
   type GatewayKind,
@@ -68,15 +69,26 @@ function GeneralSettings(): JSX.Element {
       if (platformName.trim()) text.platform_name = platformName.trim()
       if (supportEmail.trim()) text.support_email = supportEmail.trim()
       if (emailFrom.trim()) text.platform_email_from = emailFrom.trim()
+      // Turning maintenance on needs a second admin (decision D4) and is sent on its own, after the other fields.
+      const enabling = maintenance && !settings?.maintenance_mode
       const updated = await platformSettingsApi.update({
         ...text,
         max_tenants: Number(maxTenants) || 0,
         ...(trialDays.trim() !== '' ? { default_trial_days: Number(trialDays) } : {}),
-        maintenance_mode: maintenance,
+        ...(enabling ? {} : { maintenance_mode: maintenance }),
       })
       qc.setQueryData(platformSettingsKeys.general(), updated)
       setConfirmMaintenance(false)
-      toast.success('Platform settings saved')
+      if (enabling) {
+        const outcome = await platformSettingsApi.enableMaintenance('maintenance')
+        if (outcome.outcome === 'executed') toast.success('Maintenance mode is on', describeOutcome(outcome))
+        else {
+          setMaintenance(false)
+          toast.success('Settings saved; maintenance sent for approval', describeOutcome(outcome))
+        }
+      } else {
+        toast.success('Platform settings saved')
+      }
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Could not save settings.')
     } finally {
@@ -162,12 +174,13 @@ function GeneralSettings(): JSX.Element {
         title="Enable maintenance mode?"
         confirmLabel="Enable maintenance mode"
         undo="You can turn maintenance mode off again from this page at any time."
+        typeToConfirm="maintenance"
         busy={saving}
         error={saveError}
         onConfirm={() => void commitSave()}
         onCancel={() => setConfirmMaintenance(false)}
       >
-        Every tenant goes offline at once. All tenant staff and customers, including those signed in now, get a maintenance screen instead of the app until you turn this off. Platform admins keep working.
+        Every tenant goes offline at once. All tenant staff and customers, including those signed in now, get a maintenance screen instead of the app until you turn this off. Platform admins keep working. Another platform admin must approve it first; if there is no one else, it starts now and the owners are emailed.
       </ConfirmDialog>
     </Card>
   )
@@ -228,10 +241,16 @@ function ProviderCard({ spec, initial }: { spec: ProviderSpec; initial: Record<s
     setSaving(true)
     setResult(null)
     try {
-      await platformSettingsApi.updateGateway(spec.kind, values)
-      setSavedValues({ ...values })
-      toast.success('Gateway settings saved')
-      setResult({ kind: 'success', msg: 'Configuration saved.' })
+      const saved = await platformSettingsApi.updateGateway(spec.kind, values)
+      if (isProtectedOutcome(saved) && saved.outcome !== 'executed') {
+        // A new secret key needs a second admin (decision D4): nothing changed yet.
+        toast.success('Sent for approval', describeOutcome(saved))
+        setResult({ kind: 'success', msg: describeOutcome(saved) })
+      } else {
+        setSavedValues({ ...values })
+        toast.success('Gateway settings saved')
+        setResult({ kind: 'success', msg: 'Configuration saved.' })
+      }
     } catch (err) {
       setResult({ kind: 'error', msg: err instanceof ApiError ? err.message : 'Save failed.' })
     } finally {

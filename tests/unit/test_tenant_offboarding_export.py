@@ -215,8 +215,13 @@ def _event(method: str, path: str) -> dict:
 
 
 def _ctx(role: UserRole) -> TenantContext:
+    platform = role == UserRole.PLATFORM_ADMIN
     return TenantContext(
-        tenant_id=PLATFORM_TENANT_ID if role == UserRole.PLATFORM_ADMIN else TENANT, user_id="admin-1", role=role
+        tenant_id=PLATFORM_TENANT_ID if platform else TENANT,
+        user_id="admin-1",
+        role=role,
+        platform_user_id="pu-1" if platform else None,
+        platform_role="owner" if platform else None,
     )
 
 

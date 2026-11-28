@@ -58,6 +58,8 @@ const ReleaseNoteDetail = lazyNamed(nigeriaArea, 'ReleaseNoteDetail')
 const ReleaseNoteList = lazyNamed(nigeriaArea, 'ReleaseNoteList')
 const SeizedItemList = lazyNamed(nigeriaArea, 'SeizedItemList')
 const PlatformAuditLog = lazyNamed(platformArea, 'PlatformAuditLog')
+const PlatformAdmins = lazyNamed(platformArea, 'PlatformAdmins')
+const PlatformApprovals = lazyNamed(platformArea, 'PlatformApprovals')
 const CreateTenantPage = lazyNamed(platformArea, 'CreateTenantPage')
 const OnboardingRequests = lazyNamed(platformArea, 'OnboardingRequests')
 const PlatformSettings = lazyNamed(platformArea, 'PlatformSettings')
@@ -155,6 +157,8 @@ export const GUARDED_SCREENS: Record<string, JSX.Element> = {
   // Platform-admin
   '/platform/dashboard': <PlatformDashboard />,
   '/platform/audit-log': <PlatformAuditLog />,
+  '/platform/admins': <PlatformAdmins />,
+  '/platform/approvals': <PlatformApprovals />,
   '/platform/settings': <PlatformSettings />,
   '/platform/settings/notifications': <PlatformSettings />,
   '/platform/settings/plans': <PlatformSettings />,

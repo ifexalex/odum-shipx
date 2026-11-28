@@ -146,7 +146,7 @@ jobs:
             notif-email
             # Non-VPC auth session Lambda (1)
             auth
-            # VPC EventBridge scheduled Lambdas (8)
+            # VPC EventBridge scheduled Lambdas (9)
             storage-fee
             dispute-escalation
             sla-check
@@ -155,6 +155,7 @@ jobs:
             usage-aggregation
             release-expiry
             offboarding-export
+            platform-approvals
           )
 
           MAX_PARALLEL=6

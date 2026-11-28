@@ -894,6 +894,25 @@ def seed_tenant_demo(cur) -> dict:
     return {"tenant": tenant, "admin": admin, "customers": [cust1, cust2, cust3, cust4, cust5]}
 
 
+# The local platform admin's subject: scripts/local_server.py maps every platform_admin request to this id.
+LOCAL_PLATFORM_ADMIN_SUBJECT = "00000000-0000-0000-0000-000000000000"
+
+
+def seed_platform_admins(cur) -> None:
+    """The platform admin directory (migration 076): the local owner, plus a second admin so two-person approvals
+    can be tried locally. Sign in as the second with X-User-ID 00000000-0000-0000-0000-000000000002."""
+    _exec(
+        cur,
+        """
+        INSERT INTO platform_user (subject, email, name, role, status) VALUES
+            (%s, 'platform-admin@shipx.co', 'Ada Nwachukwu', 'owner', 'active'),
+            ('00000000-0000-0000-0000-000000000002', 'platform-ops@shipx.co', 'Tunde Bakare', 'admin', 'active')
+        RETURNING id
+        """,
+        (LOCAL_PLATFORM_ADMIN_SUBJECT,),
+    )
+
+
 def main() -> None:
     print("Connecting to database...")
     conn = _connect()
@@ -905,6 +924,7 @@ def main() -> None:
             result_a = seed_tenant_a(cur)
             result_b = seed_tenant_b(cur)
             result_c = seed_tenant_demo(cur)
+            seed_platform_admins(cur)
 
         conn.commit()
         print("\n=== Seed complete ===")

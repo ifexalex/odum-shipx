@@ -29,6 +29,7 @@ JOBS: tuple[str, ...] = (
     "data_cleanup",
     "dispute_escalation",
     "offboarding_export",
+    "platform_approvals",
     "release_expiry",
     "sla_check",
     "storage_fee",

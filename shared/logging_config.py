@@ -102,6 +102,11 @@ def bind_log_context(
         _user_id.set(user_id)
 
 
+def current_request_id() -> str | None:
+    """Return the request id bound for this execution context, if any (e.g. to stamp an audit row)."""
+    return _request_id.get()
+
+
 def clear_log_context() -> None:
     """Reset all bound trace identifiers.
 

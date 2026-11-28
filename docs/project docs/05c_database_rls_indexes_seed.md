@@ -360,3 +360,7 @@ Canonical `tenant_isolation` policy (`FOR ALL`, PLATFORM-aware, USING and WITH C
 ## `platform_audit_log` is append-only for the app role (migration 075, 2026-11-28)
 
 `logistics_app` may `SELECT` and `INSERT` on `platform_audit_log`, nothing more: `UPDATE` was revoked in migration 074 and `DELETE` in 075. The only change it can make is through `anonymise_platform_audit_for_tenant(uuid)`, a `SECURITY DEFINER` function owned by the migrating role. The function blanks `target_tenant_id` and `details` on one tenant's rows when the 90-day cleanup deletes that tenant, refuses to run unless `app.current_tenant_id` is `PLATFORM`, and cannot be executed by `PUBLIC`. Owner-run scripts such as `scripts/purge_tenant.py` are unaffected.
+
+## `platform_user` and `platform_approval` (migration 076, 2026-11-28)
+
+Both are `ENABLE` + `FORCE ROW LEVEL SECURITY` with the `platform_only` policy (`app.current_tenant_id = 'PLATFORM'` for `USING` and `WITH CHECK`), like `platform_audit_log`. `logistics_app` has `SELECT, INSERT, UPDATE`; `DELETE` is revoked explicitly, since the default privileges from 059 would otherwise grant it. A tenant-scoped request can neither read the directory nor see an approval. The seed (`scripts/seed.py`) inserts the local owner and a second admin.

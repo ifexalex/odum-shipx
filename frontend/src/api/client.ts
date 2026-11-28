@@ -3,6 +3,7 @@ import { getSessionActions } from '../auth/sessionBridge'
 import { ruleForPath } from './cacheInvalidation'
 import { reportTenantBlocked } from '../auth/tenantGate'
 import { getActiveTokenType, getAuthHeaders } from '../auth/tokenStore'
+import { getStepUpToken, requestStepUp, STEP_UP_HEADER } from '../auth/stepUp'
 
 // RFC 7807 problem+json shape (shared/responses.py) — field names are exact,
 // not camelCased, because they come straight off the wire.
@@ -123,6 +124,9 @@ async function doFetch(opts: RequestOptions): Promise<Response> {
   const headers: Record<string, string> = { ...getAuthHeaders() }
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
   if (opts.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey
+  // Platform routes only: the step-up token proves a recent re-authentication (auth/stepUp.ts).
+  const stepUpToken = opts.path.startsWith('/v1/platform/') ? getStepUpToken() : null
+  if (stepUpToken) headers[STEP_UP_HEADER] = stepUpToken
 
   try {
     return await fetch(buildUrl(opts.path, opts.query), {
@@ -223,11 +227,31 @@ async function recoverFrom401(opts: RequestOptions): Promise<Response> {
   return retried
 }
 
+/** Reads the error code off a clone, so the original body is still there for `parseError`. */
+async function isStepUpRequired(response: Response): Promise<boolean> {
+  try {
+    const shape = (await response.clone().json()) as Partial<ApiErrorShape>
+    return shape.error_code === 'STEP_UP_REQUIRED'
+  } catch {
+    return false
+  }
+}
+
 async function fetchWithAuth(opts: RequestOptions): Promise<Response> {
   let response = await doFetch(opts)
 
   if (response.status === 401) {
     response = await recoverFrom401(opts)
+  }
+
+  if (response.status === 403 && opts.path.startsWith('/v1/platform/') && (await isStepUpRequired(response))) {
+    // A dangerous platform action: re-authenticate once, then send it again with the step-up token.
+    try {
+      await requestStepUp()
+    } catch {
+      throw await parseError(response, opts.path)
+    }
+    response = await doFetch(opts)
   }
 
   if (!response.ok) {

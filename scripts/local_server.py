@@ -80,7 +80,7 @@ os.environ.setdefault("ALLOWED_ORIGINS", ",".join(_FRONTEND_ORIGINS))
 CORS(
     app,
     origins=_FRONTEND_ORIGINS,
-    allow_headers=["Content-Type", "X-Tenant-ID", "X-Role", "X-User-ID", "Idempotency-Key", "Authorization"],
+    allow_headers=["Content-Type", "X-Tenant-ID", "X-Role", "X-User-ID", "Idempotency-Key", "Authorization", "X-Step-Up-Token"],
     supports_credentials=True,
 )
 
@@ -301,6 +301,10 @@ def _build_event() -> dict:
             or _resolve_user_id_by_role(tenant_id, role_from_groups)
             or sub
         )
+        # Moto's random sub matches no platform directory row (migration 076); every local platform admin is the
+        # seeded owner, the same id the header path below uses.
+        if "platform_admin" in groups_str.split(","):
+            resolved_sub = _PLATFORM_ADMIN_UUID
         claims_out = {
             "sub": resolved_sub,
             "custom:tenant_id": tenant_id,

@@ -25,9 +25,10 @@ function actionVariant(action: string): BadgeVariant {
   return 'info'
 }
 
-/** Who acted: a platform admin's identity subject, shortened, or a platform job. Names come with the admin directory. */
-function actorLabel(actorId: string | null): string {
-  return actorId ? `${actorId.slice(0, 8)}…` : 'Platform job'
+/** Who acted: the admin's directory name (Phase 1), else their identity subject shortened, or a platform job. */
+function actorLabel(entry: Pick<PlatformAuditEntry, 'actor_id' | 'actor_name'>): string {
+  if (entry.actor_name) return entry.actor_name
+  return entry.actor_id ? `${entry.actor_id.slice(0, 8)}…` : 'Platform job'
 }
 
 export function PlatformAuditLog(): JSX.Element {
@@ -165,13 +166,19 @@ export function PlatformAuditLog(): JSX.Element {
               <span key="tenant" style={{ fontSize: 'var(--text-sm)' }}>
                 {tenantName(e)}
               </span>,
-              <Mono key="actor" color="var(--color-ink-3)">
-                <span title={e.actor_id ?? undefined}>{actorLabel(e.actor_id)}</span>
-              </Mono>,
+              e.actor_name ? (
+                <span key="actor" style={{ fontSize: 'var(--text-sm)' }} title={e.actor_role ?? undefined}>
+                  {e.actor_name}
+                </span>
+              ) : (
+                <Mono key="actor" color="var(--color-ink-3)">
+                  <span title={e.actor_id ?? undefined}>{actorLabel(e)}</span>
+                </Mono>
+              ),
               <Mono key="ip" color="var(--color-ink-4)">
                 {e.ip_address ?? '—'}
               </Mono>,
-              e.details ? (
+              e.details || e.before_state || e.after_state ? (
                 <Button
                   key="details"
                   variant="ghost"
@@ -209,7 +216,7 @@ export function PlatformAuditLog(): JSX.Element {
           <>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2) var(--space-4)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
               <span>Tenant: <strong style={{ color: 'var(--color-ink)' }}>{tenantName(activeEntry)}</strong></span>
-              <span>Actor: <Mono>{activeEntry.actor_id ?? 'Platform job'}</Mono></span>
+              <span>Actor: <strong style={{ color: 'var(--color-ink)' }}>{actorLabel(activeEntry)}</strong>{activeEntry.actor_role ? ` (${activeEntry.actor_role})` : ''}</span>
               <span>When: <Mono>{formatDateTime(activeEntry.created_at)}</Mono></span>
               {activeEntry.ip_address && <span>IP: <Mono>{activeEntry.ip_address}</Mono></span>}
             </div>
@@ -228,6 +235,20 @@ export function PlatformAuditLog(): JSX.Element {
             >
               {JSON.stringify(activeEntry.details ?? {}, null, 2)}
             </pre>
+            {(activeEntry.before_state || activeEntry.after_state) && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+                {(['before_state', 'after_state'] as const).map((key) => (
+                  <div key={key}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, marginBottom: 'var(--space-1)' }}>
+                      {key === 'before_state' ? 'Before' : 'After'}
+                    </div>
+                    <pre style={{ margin: 0, padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-muted)', fontSize: 'var(--text-xs)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' }}>
+                      {JSON.stringify(activeEntry[key] ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </Modal>

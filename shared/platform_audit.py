@@ -1,4 +1,4 @@
-"""The platform's own audit trail (``platform_audit_log``): what platform admins and platform jobs did to a tenant.
+"""The platform's own audit trail (``platform_audit_log``): what platform admins and platform jobs did.
 
 Distinct from ``shared.audit.log_audit``, which writes a tenant's own trail. Platform scope.
 """
@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Any
 
 from shared.db import execute_write_with_tenant
+from shared.logging_config import current_request_id
 from shared.observability import record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
 
@@ -37,6 +38,22 @@ class PlatformAuditAction(StrEnum):
     SETTINGS_UPDATED = "SETTINGS_UPDATED"
     GATEWAY_SETTINGS_UPDATED = "GATEWAY_SETTINGS_UPDATED"
     ONBOARDING_REQUEST_UPDATED = "ONBOARDING_REQUEST_UPDATED"
+    # Platform admin directory (Phase 1, C-28)
+    PLATFORM_ADMIN_ENROLLED = "PLATFORM_ADMIN_ENROLLED"
+    PLATFORM_ADMIN_INVITED = "PLATFORM_ADMIN_INVITED"
+    PLATFORM_ADMIN_ROLE_CHANGED = "PLATFORM_ADMIN_ROLE_CHANGED"
+    PLATFORM_ADMIN_DISABLED = "PLATFORM_ADMIN_DISABLED"
+    PLATFORM_ADMIN_ENABLED = "PLATFORM_ADMIN_ENABLED"
+    STEP_UP_VERIFIED = "STEP_UP_VERIFIED"
+    # Two-person approvals (Phase 1, C-30)
+    APPROVAL_REQUESTED = "APPROVAL_REQUESTED"
+    APPROVAL_APPROVED = "APPROVAL_APPROVED"
+    APPROVAL_REJECTED = "APPROVAL_REJECTED"
+    APPROVAL_CANCELLED = "APPROVAL_CANCELLED"
+    APPROVAL_SCHEDULED = "APPROVAL_SCHEDULED"
+    APPROVAL_EXECUTED = "APPROVAL_EXECUTED"
+    APPROVAL_FAILED = "APPROVAL_FAILED"
+    APPROVAL_EXPIRED = "APPROVAL_EXPIRED"
 
 
 def insert_platform_audit(
@@ -45,38 +62,43 @@ def insert_platform_audit(
     target_tenant_id: str | None,
     details: dict[str, Any] | None = None,
     ip_address: str | None = None,
+    *,
+    before_state: dict[str, Any] | None = None,
+    after_state: dict[str, Any] | None = None,
 ) -> None:
     """Record one platform action. ``actor_id`` is ``None`` for a platform job.
+
+    ``before_state`` / ``after_state`` are what changed, with secrets already masked by the caller. The request id is
+    taken from the bound log context, so no caller threads it.
 
     Raises on failure (a caller such as the export download link must not proceed without the record); the failure is
     counted here, once, as ``audit_write`` (audit OPS-04), whatever the caller then does with it.
     """
     try:
-        _insert(action, actor_id, target_tenant_id, details, ip_address)
+        execute_write_with_tenant(
+            PLATFORM_TENANT_ID,
+            """
+            INSERT INTO platform_audit_log
+                (action, actor_id, target_tenant_id, details, ip_address, before_state, after_state, request_id)
+            VALUES (%(action)s, %(actor_id)s, %(target_tenant_id)s, %(details)s::jsonb, %(ip_address)s,
+                    %(before_state)s::jsonb, %(after_state)s::jsonb, %(request_id)s)
+            RETURNING id
+            """,
+            {
+                "action": str(action),
+                "actor_id": actor_id,
+                "target_tenant_id": target_tenant_id,
+                "details": _json(details),
+                "ip_address": ip_address,
+                "before_state": _json(before_state),
+                "after_state": _json(after_state),
+                "request_id": current_request_id(),
+            },
+        )
     except Exception:
         record_failure("audit_write")
         raise
 
 
-def _insert(
-    action: str,
-    actor_id: str | None,
-    target_tenant_id: str | None,
-    details: dict[str, Any] | None,
-    ip_address: str | None,
-) -> None:
-    execute_write_with_tenant(
-        PLATFORM_TENANT_ID,
-        """
-        INSERT INTO platform_audit_log (action, actor_id, target_tenant_id, details, ip_address)
-        VALUES (%(action)s, %(actor_id)s, %(target_tenant_id)s, %(details)s::jsonb, %(ip_address)s)
-        RETURNING id
-        """,
-        {
-            "action": action,
-            "actor_id": actor_id,
-            "target_tenant_id": target_tenant_id,
-            "details": json.dumps(details) if details else None,
-            "ip_address": ip_address,
-        },
-    )
+def _json(value: dict[str, Any] | None) -> str | None:
+    return json.dumps(value, default=str) if value else None

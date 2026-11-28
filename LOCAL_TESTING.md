@@ -1092,6 +1092,8 @@ Fixed `tenant_user.id` UUIDs in `scripts/seed.py` match these emails 1:1 with th
 
 **Impersonation ("Impersonate" on a platform tenant-detail page)** works in both auth modes — the backend mints a real HS256 token signed with `IMPERSONATION_SECRET` (set in `.env.local`; production uses `IMPERSONATION_SECRET_ARN` → Secrets Manager), and `local_server.py` maps the token's claims the same way the production REQUEST authorizer does. Impersonated sessions are read-only (mutations 422) and expire after 30 minutes.
 
+**Platform admin roles, re-authentication and approvals (platform audit Phase 1, 2026-11-28).** `make stack` seeds the platform directory: the local platform admin (`X-User-ID` unset or `00000000-0000-0000-0000-000000000000`, also any Moto-Cognito `platform_admin` login) is the **owner** Ada Nwachukwu, and `00000000-0000-0000-0000-000000000002` is a second **admin**, Tunde Bakare. To try a two-person approval, offboard a tenant as Ada, then send the approve request as Tunde (header path: `X-Tenant-ID: PLATFORM`, `X-Role: platform_admin`, `X-User-ID: 00000000-0000-0000-0000-000000000002`). Dangerous actions ask you to re-authenticate: in `ENVIRONMENT=local` or `test`, set `STEP_UP_LOCAL_PASSWORD` (`.env.local.sample` uses `local-step-up`) and type it in the "Confirm it's you" dialog; it is ignored in every other environment. Without it, the step-up signs in against Cognito (Moto). `scripts/platform_admins.py list|add` reads or seeds the directory. Approval and owner emails go through the usual non-production allowlist (`NOTIFICATION_ALLOWLIST`).
+
 **Platform admin login** — one cross-tenant account, no tenant scope:
 
 | Email | Password | Cognito group |

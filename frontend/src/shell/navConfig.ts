@@ -83,6 +83,8 @@ export const navConfig: Record<UserRole, NavLinkGroup[]> = {
         { icon: 'grid', label: 'Dashboard', path: '/platform/dashboard' },
         { icon: 'mail', label: 'Onboarding requests', path: '/platform/onboarding-requests' },
         { icon: 'building', label: 'Tenants', path: '/platform/tenants' },
+        { icon: 'check', label: 'Approvals', path: '/platform/approvals' },
+        { icon: 'users', label: 'Platform admins', path: '/platform/admins' },
         { icon: 'settings', label: 'Settings', path: '/platform/settings' },
         { icon: 'log', label: 'Audit log', path: '/platform/audit-log' },
       ],

@@ -25,6 +25,7 @@ Read this before the rest: the design below dates from March 2026, and the produ
 - **Payments:** Paystack checkout per tenant (own encrypted key; webhook and direct verify; NGN only, BE-08) and bank-transfer payment claims with evidence.
 - **Multiple warehouses per tenant**; release notes carry a one-time pickup code (ADR-008).
 - **The frontend runs on a React Router data router** (one catch-all route over the existing `<Routes>`), so forms can hold navigation while they have unsaved input (ADR-009).
+- **Platform admins are a directory with roles** (owner, admin, support, finance), and offboarding, gateway secrets and maintenance-on need a second admin plus a server-verified re-authentication (ADR-010, 2026-11-28).
 - **Customers** self-register, are invited, imported or created by staff; the customer portal covers shipments, invoices, payments, claims, refunds and release notes.
 - **Metering and plan quotas** are enforced (429); tiers Starter, Business, Enterprise.
 - **Tenant subdomains and white-label custom domains** (migration 023); public lead form for new shipping companies; offboarding produces a data export before deletion (BE-10).
@@ -735,6 +736,7 @@ sequenceDiagram
 | **Transport** | TLS 1.2+ everywhere | API Gateway enforces HTTPS; Aurora SSL connections |
 | **Authentication** | JWT-based (OAuth 2.0) | Cognito user pool with `custom:tenant_id` claim; MFA optional for admin roles |
 | **Authorization** | RBAC + Tenant Scope | Cognito groups → Lambda checks `cognito:groups` + `custom:tenant_id` claims |
+| **Platform admin authorization** | Directory roles, step-up, two-person rule | `platform_user` role per admin decides each platform route; dangerous actions need a re-authentication the server verified in the last 5 minutes, and the irreversible ones a second admin (ADR-010) |
 | **Tenant Isolation (App)** | Mandatory tenant_id scoping | All repository functions require `tenant_id` parameter; no query executes without it (FR-TN-005) |
 | **Tenant Isolation (DB)** | PostgreSQL RLS | Row-Level Security policies enforce `tenant_id` match at database level (defense-in-depth) |
 | **Tenant Isolation (Storage)** | S3 prefix partitioning | All files stored under `{tenant-id}/` prefix; presigned URLs scoped to tenant prefix (FR-TN-008) |

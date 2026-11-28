@@ -93,6 +93,8 @@ def platform_admin():
         tenant_id=PLATFORM_TENANT_ID,
         user_id="user-platform",
         role=UserRole.PLATFORM_ADMIN,
+        platform_user_id="pu-test-owner",
+        platform_role="owner",
     )
 
 
@@ -313,6 +315,9 @@ def _active_user_check_stubbed(request, monkeypatch):
     if "tests/db/" not in path:
         monkeypatch.setattr("shared.auth._check_user_active", lambda user_id, tenant_id: None)
         monkeypatch.setattr("shared.auth._check_maintenance_mode", lambda: None)
+        # Every platform caller is an owner in the directory (platform audit Phase 1); the directory itself is
+        # covered by tests/unit/test_platform_admin_phase1.py.
+        monkeypatch.setattr("shared.auth._resolve_platform_caller", lambda subject, email, name: ("pu-test-owner", "owner"))
     yield
 
 

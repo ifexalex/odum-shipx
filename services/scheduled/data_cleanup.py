@@ -25,7 +25,7 @@ import boto3
 
 from shared import tenant_export
 from shared.audit import log_audit
-from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
+from shared.db import execute_with_tenant, execute_write_with_tenant, execute_write_with_tenant_many, tenant_transaction
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing, record_failure
 from shared.providers import get_storage_provider
@@ -117,6 +117,20 @@ def _delete_tenant(tenant_id: str, tenant: dict[str, Any]) -> None:
         execute_write_with_tenant(
             PLATFORM_TENANT_ID,
             "SELECT anonymise_platform_audit_for_tenant(%(tenant_id)s) AS anonymised",
+            params,
+        )
+        # Two-person approvals about the tenant (migration 076) keep who asked, who decided and when, and lose what
+        # they were about. ``execute_write_with_tenant_many``: a tenant may have none.
+        execute_write_with_tenant_many(
+            PLATFORM_TENANT_ID,
+            """
+            UPDATE platform_approval
+            SET payload = '{}'::jsonb, secret_payload = NULL, reason = NULL, target_tenant_id = NULL,
+                target_label = 'deleted tenant ' || id::text,
+                status = CASE WHEN status IN ('pending', 'scheduled') THEN 'cancelled' ELSE status END
+            WHERE target_tenant_id = %(tenant_id)s
+            RETURNING id
+            """,
             params,
         )
         if (
