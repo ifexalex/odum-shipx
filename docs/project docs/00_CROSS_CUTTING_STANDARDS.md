@@ -666,3 +666,4 @@ Rule: a `try/except` that logs and carries on (so a request or a job survives) m
 - **Two-person rule.** Offboarding, a gateway secret change and maintenance-on need a second owner or admin; the database refuses self-approval. A sole admin types the target, every owner is emailed, and offboarding waits 24 hours. The payload is hash-checked before it runs; secrets in a request are encrypted and never returned.
 - **Audit.** Platform audit rows carry `before_state` / `after_state` with secrets masked, and the request id.
 
+- **MFA for platform admins (Phase 1b).** On AWS platform admins sign in only to the platform Cognito pool, which requires TOTP of every user, and API Gateway's `/v1/platform/*` authorizer accepts only that pool. On Entra a Conditional Access policy requires MFA for the `platform_admin` group, and the backend checks `amr`/`acrs`. `PLATFORM_MFA_REQUIRED` makes the backend refuse any platform request without it.

@@ -34,7 +34,7 @@ describe('sessionApi', () => {
       expect(url).toBe('https://api.test.shipx.co/v1/auth/session')
       expect(init.method).toBe('POST')
       expect(init.credentials).toBe('include')
-      expect(JSON.parse(init.body as string)).toEqual({ refresh_token: 'a-cognito-refresh-token' })
+      expect(JSON.parse(init.body as string)).toEqual({ refresh_token: 'a-cognito-refresh-token', pool: 'tenant' })
     })
 
     it('throws when the backend rejects the request', async () => {

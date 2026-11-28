@@ -218,6 +218,7 @@ targets a service key with no deployed Lambda, or a route key is duplicated.
 
 - Routes added 2026-11-17 (audit BE-10): `GET` and `POST /v1/platform/tenants/{id}/offboarding-export`, `POST /v1/platform/tenants/{id}/offboarding-export/link` → tenant_management.
 - Routes added 2026-11-28 (platform audit Phase 1): `GET /v1/platform/me`, `POST /v1/platform/auth/step-up`, `GET`/`POST /v1/platform/admins`, `PATCH /v1/platform/admins/{id}`, `GET /v1/platform/approvals`, `GET /v1/platform/approvals/{id}`, `POST /v1/platform/approvals/{id}/{decision}` (approve, reject, cancel) → tenant_management. CORS `allow_headers` gains `X-Step-Up-Token`.
+- Second JWT authorizer, `aws_apigatewayv2_authorizer.platform` (2026-11-28, platform audit Phase 1b): audience = the platform pool's client, issuer = the platform pool. Every route whose path starts `/v1/platform` uses it; all others keep `cognito`. New module variables `platform_cognito_client_id`, `platform_cognito_issuer_url`.
 
 **Tenant logo routes (FD-29, 2026-11-21):** `POST /v1/tenant/config/logo/upload-url`, `PUT /v1/tenant/config/logo` and `DELETE /v1/tenant/config/logo` → `tenant_management` (added to `infrastructure/aws/modules/api-gateway/main.tf`). JWT-authorised like the other tenant-admin routes; the handler asserts `tenant_admin`.
 

@@ -79,3 +79,7 @@ Groups are created dynamically by the Tenant Management Lambda when users are pr
 - [x] Token validity: 1h access, 1h id, 30d refresh
 - [x] Password policy: min 8 chars, upper+lower+numbers required
 - [ ] `terraform plan` succeeds — **`terraform validate` passes (audited 2026-11-11); a real `plan` needs AWS credentials this environment does not have, so the stronger claim is unverified.** Same caveat as `04c_terraform_api_gateway.md`.
+
+## Platform admins' pool (platform audit Phase 1b, 2026-11-28)
+
+`aws_cognito_user_pool.platform` (`{project}-platform-admins-{env}`) and `aws_cognito_user_pool_client.platform_web`, both in `modules/cognito`. MFA `ON` with software tokens only; password policy 14 characters with upper, lower, number and symbol, temporary passwords valid 2 days; admin-created users only; `deletion_protection = ACTIVE`. The client is public (no secret) with `ALLOW_USER_SRP_AUTH` (console sign-in), `ALLOW_USER_PASSWORD_AUTH` (the server-side step-up) and `ALLOW_REFRESH_TOKEN_AUTH`; ID and access tokens last 15 minutes, the refresh token 8 hours; token revocation on. Outputs `platform_user_pool_id`, `platform_user_pool_arn`, `platform_client_id`; the root exposes `cognito_platform_user_pool_id` and `cognito_platform_client_id` for the SPA's `VITE_COGNITO_PLATFORM_*`. The pool keeps `custom:tenant_id` and `custom:role` only so the shared provisioning code works; the backend never reads them from a platform-pool token.

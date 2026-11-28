@@ -230,8 +230,8 @@ class TestCookieEndpointsRefuseForeignRequests:
                 "R",
                 (),
                 {
-                    "revoke_refresh_token": staticmethod(lambda token: None),
-                    "refresh_id_token": staticmethod(lambda token: {"id_token": "a.b.c", "expires_in": 3600}),
+                    "revoke_refresh_token": staticmethod(lambda token, **_: None),
+                    "refresh_id_token": staticmethod(lambda token, **_: {"id_token": "a.b.c", "expires_in": 3600}),
                 },
             ),
         )

@@ -178,3 +178,9 @@ variable "notification_allowlist" {
   type        = string
   default     = ""
 }
+
+variable "platform_mfa_required" {
+  description = "Refuse platform admin requests not signed in through the MFA-required platform pool (platform audit Phase 1b). Set false only for the window while admins are moved (scripts/platform_admins.py move-to-platform-pool)."
+  type        = bool
+  default     = true
+}

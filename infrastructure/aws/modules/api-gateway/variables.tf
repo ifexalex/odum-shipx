@@ -23,6 +23,16 @@ variable "cognito_issuer_url" {
   type        = string
 }
 
+variable "platform_cognito_client_id" {
+  description = "Platform admins' Cognito app client ID: the audience of the /v1/platform/* authorizer (platform audit Phase 1b)"
+  type        = string
+}
+
+variable "platform_cognito_issuer_url" {
+  description = "Platform admins' Cognito issuer URL; /v1/platform/* routes accept only tokens from this pool (MFA required)"
+  type        = string
+}
+
 variable "lambda_arns" {
   description = "Map of service_name → Lambda invoke ARN. Integrations and routes are only created for keys present in this map."
   type        = map(string)

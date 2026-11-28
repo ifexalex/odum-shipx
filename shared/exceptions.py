@@ -258,3 +258,17 @@ class StepUpRequiredError(LogisticsBaseError):
             error_code="STEP_UP_REQUIRED",
             status_code=403,
         )
+
+
+class PlatformMfaRequiredError(LogisticsBaseError):
+    """403 for a platform request whose sign-in did not use multi-factor authentication (platform audit Phase 1b, D3).
+
+    On AWS that means the token came from the tenant pool instead of the platform admins' pool, which requires MFA.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Platform admins must sign in with multi-factor authentication. Use the platform admin sign-in.",
+            error_code="PLATFORM_MFA_REQUIRED",
+            status_code=403,
+        )

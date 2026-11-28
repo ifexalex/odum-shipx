@@ -7,7 +7,12 @@ export interface SessionContextValue {
   session: Session | null
   status: SessionStatus
   /** Resolves with the new Session so callers can redirect by role without racing a re-render. */
-  login: (email: string, password: string) => Promise<Session>
+  login: (email: string, password: string, options?: { pool?: 'tenant' | 'platform' }) => Promise<Session>
+  /**
+   * Cognito, platform admins' pool (platform audit Phase 1b): finish a sign-in that stopped at the authenticator code
+   * (`code`) or at authenticator setup (`setup`). Optional: the local shim and Entra have no such step.
+   */
+  completeMfa?: (step: 'code' | 'setup', code: string) => Promise<Session>
   /**
    * Entra interactive login: redirects the browser to Entra (never resolves —
    * the page unloads). Optional because only the Entra provider + the

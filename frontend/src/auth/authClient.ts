@@ -14,6 +14,8 @@ import * as entra from './EntraClient'
 export type { CognitoTokens } from './CognitoClient'
 // A real error class (instanceof checks in LoginScreen); Entra never throws it.
 export { NewPasswordRequiredError } from './CognitoClient'
+// Multi-factor sign-in for the platform admins' Cognito pool (platform audit Phase 1b); Cognito only.
+export { MfaCodeRequiredError, MfaSetupRequiredError, hasPlatformPool, type CognitoPoolKind } from './CognitoClient'
 
 const provider = (import.meta.env.VITE_AUTH_PROVIDER || 'cognito').toLowerCase()
 
@@ -30,6 +32,12 @@ export const completeNewPassword = impl.completeNewPassword
 export const confirmForgotPassword = impl.confirmForgotPassword
 export const hasPendingNewPasswordChallenge = impl.hasPendingNewPasswordChallenge
 
+/** Cognito only: answer the authenticator-code challenge, or finish authenticator setup. Entra rejects. */
+export const submitMfaCode: (code: string) => Promise<CognitoTokens> =
+  authProvider === 'entra' ? () => Promise.reject(new Error('Not used on Entra')) : cognito.submitMfaCode
+export const verifyMfaSetup: (code: string) => Promise<CognitoTokens> =
+  authProvider === 'entra' ? () => Promise.reject(new Error('Not used on Entra')) : cognito.verifyMfaSetup
+
 // Entra logs in via an interactive redirect (auth-code + PKCE), not an in-app
 // email/password form. These drive that flow; `isInteractiveLogin` lets the UI
 // render a redirect button instead of the credential form. Cognito keeps the
@@ -45,3 +53,7 @@ export const completeInteractiveLogin: (code: string, state: string) => Promise<
   authProvider === 'entra'
     ? entra.completeLogin
     : () => Promise.reject(new Error('Interactive login is only used on Entra'))
+
+// Entra step-up re-authentication for platform admins (platform audit Phase 1b): a fresh sign-in in a small window.
+export { beginStepUpSignIn, isStepUpState } from './EntraClient'
+

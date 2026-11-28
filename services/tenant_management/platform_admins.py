@@ -15,7 +15,7 @@ from shared.exceptions import (
 from shared.platform_audit import PlatformAuditAction, insert_platform_audit
 from shared.platform_directory import evict_platform_caller
 from shared.platform_roles import PlatformRole, permissions_for
-from shared.providers import get_identity_provider
+from shared.providers import get_identity_provider, get_platform_identity_provider
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
 
 from . import platform_repository as prepo
@@ -58,7 +58,8 @@ def invite_admin(ctx: TenantContext, req: InvitePlatformAdminRequest, ip_address
     if prepo.get_platform_user_by_email(req.email):
         raise DuplicateResourceError("platform admin", req.email)
 
-    idp = get_identity_provider()
+    # The platform pool on AWS (MFA required for every user, Phase 1b); the one directory on Entra.
+    idp = get_platform_identity_provider()
     subject = idp.create_user(email=req.email, full_name=req.name, tenant_id=PLATFORM_TENANT_ID, role=UserRole.PLATFORM_ADMIN)
     idp.create_group_if_not_exists(_PLATFORM_GROUP)
     idp.add_user_to_group(req.email, _PLATFORM_GROUP)
@@ -108,7 +109,7 @@ def update_admin(
     if changes.get("status") == "disabled":
         _cut_off(target)
     elif "status" in changes:
-        get_identity_provider().enable_user(target["email"])
+        _for_each_provider(target, "enable_user")
 
     updated = prepo.update_platform_user(platform_user_id, **changes)
     if updated is None:
@@ -152,14 +153,29 @@ def _target_status(target: dict[str, Any], disabled: bool | None) -> str | None:
 
 
 def _cut_off(target: dict[str, Any]) -> None:
-    """Disable the identity-provider account and end its sessions. The directory status is what denies a live token;
-    the sign-out stops the session being renewed, so it is best effort."""
-    idp = get_identity_provider()
-    idp.disable_user(target["email"])
-    try:
-        idp.global_sign_out(target["email"])
-    except Exception as exc:
-        logger.warning("Session sign-out failed for platform admin %s: %s", target["id"], exc)
+    """Disable the identity-provider account and end its sessions.
+
+    The directory status is what denies a live token (checked on every request, cached at most 30 seconds), so the
+    identity-provider calls are best effort; they stop the session being renewed.
+    """
+    _for_each_provider(target, "disable_user")
+    _for_each_provider(target, "global_sign_out")
+
+
+def _providers() -> list[Any]:
+    """The platform pool's provider, then the tenant pool's when different: while admins move to the platform pool
+    (``scripts/platform_admins.py move-to-platform-pool``), an admin may still have a sign-in in either."""
+    platform_idp = get_platform_identity_provider()
+    tenant_idp = get_identity_provider()
+    return [platform_idp] if platform_idp is tenant_idp else [platform_idp, tenant_idp]
+
+
+def _for_each_provider(target: dict[str, Any], method: str) -> None:
+    for idp in _providers():
+        try:
+            getattr(idp, method)(target["email"])
+        except Exception as exc:
+            logger.warning("%s failed for platform admin %s in one identity pool: %s", method, target["id"], exc)
 
 
 def _audit(

@@ -477,6 +477,21 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
   }
 }
 
+# The platform console's routes (/v1/platform/*) accept only the platform admins' pool, which requires MFA for every
+# user (platform audit Phase 1b, decision D3). A tenant-pool token, even one in the platform_admin group, is refused
+# here before it reaches a Lambda.
+resource "aws_apigatewayv2_authorizer" "platform" {
+  api_id           = aws_apigatewayv2_api.main.id
+  authorizer_type  = "JWT"
+  identity_sources = ["$request.header.Authorization"]
+  name             = "${local.name_prefix}-platform-authorizer"
+
+  jwt_configuration {
+    audience = [var.platform_cognito_client_id]
+    issuer   = var.platform_cognito_issuer_url
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Lambda integrations — one per unique service ARN
 # ---------------------------------------------------------------------------
@@ -502,7 +517,8 @@ resource "aws_apigatewayv2_route" "routes" {
   target    = "integrations/${aws_apigatewayv2_integration.lambda[each.value].id}"
 
   authorization_type = "JWT"
-  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  # "METHOD /v1/platform/..." → the platform pool's authorizer; everything else → the tenant pool's.
+  authorizer_id = startswith(split(" ", each.key)[1], "/v1/platform") ? aws_apigatewayv2_authorizer.platform.id : aws_apigatewayv2_authorizer.cognito.id
 }
 
 # ---------------------------------------------------------------------------

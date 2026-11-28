@@ -100,7 +100,7 @@ describe('SessionProvider', () => {
     // The refresh token is handed to the backend to persist as an httpOnly
     // cookie — and never touches any variable this test (or the app) could
     // read back out afterward.
-    expect(establishServerSession).toHaveBeenCalledWith('r')
+    expect(establishServerSession).toHaveBeenCalledWith('r', 'tenant')
   })
 
   it('still completes login when persisting the server session fails (current-tab session is not held hostage)', async () => {

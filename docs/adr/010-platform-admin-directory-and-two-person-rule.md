@@ -43,5 +43,10 @@ mistaken click could therefore take every tenant down.
 * Platform audit rows can name their actor and show before and after states.
 * Every new dangerous platform route must name its permission, require step-up, and decide whether it is a protected
   action.
-* MFA itself (decision D3: a separate Cognito pool with MFA required, Entra conditional access) is Phase 1b. Until then
-  the step-up asks for the TOTP code only when the pool already requires one for that user.
+* MFA (decision D3, Phase 1b): on AWS platform admins sign in only to a separate Cognito pool that requires TOTP of
+  every user, recognised by its verified issuer, and API Gateway's `/v1/platform/*` authorizer accepts only that pool.
+  Per-user MFA in the tenant pool was rejected: with MFA `OPTIONAL` a user can turn it off themselves, and Cognito ID
+  tokens carry no `amr` the backend could check. On Entra, Conditional Access requires MFA for the `platform_admin`
+  group and the backend checks `amr`/`acrs`. `PLATFORM_MFA_REQUIRED` makes the backend refuse a platform request
+  without it. Moving to a new pool changes each admin's subject; `platform_user.previous_subjects` keeps their audit
+  history named.
