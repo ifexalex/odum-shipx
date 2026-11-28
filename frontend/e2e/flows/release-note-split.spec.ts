@@ -41,15 +41,15 @@ test.describe('release note — split', () => {
       const creditCheckbox = dialog.getByLabel(/release on credit/i)
       if (await creditCheckbox.isVisible().catch(() => false)) {
         await creditCheckbox.check()
-        await dialog.getByLabel(/credit granted by/i).fill('Chidi Okafor')
         await dialog.getByLabel(/approval notes/i).fill('e2e test — split release note setup')
       }
       const generateSubmit = dialog.getByRole('button', { name: /^generate release note$/i })
       await expect(generateSubmit).toBeEnabled()
       await generateSubmit.click()
+      const submitError = dialog.getByRole('alert').filter({ hasNotText: /releasing with unpaid balance/i })
       await Promise.race([
         expect(dialog).not.toBeVisible({ timeout: 10_000 }),
-        expect(dialog.getByRole('alert')).toBeVisible({ timeout: 10_000 }),
+        expect(submitError).toBeVisible({ timeout: 10_000 }),
       ])
       // Unlike release-note-migration-fields.spec.ts, this test keeps going
       // after this block — a re-run hitting the duplicate-tag guard (tags
