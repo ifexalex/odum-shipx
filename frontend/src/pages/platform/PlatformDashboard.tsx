@@ -2,7 +2,7 @@
  * 2.1 — Platform Dashboard (Section 2 of the prototype, platform-screens.jsx).
  *
  * Platform admin's landing page: cross-tenant aggregates, tier mix, a
- * tenant-health table (with users x/limit from the list endpoint), a recent
+ * tenant-health table (staff seats x/limit, every tenant: the list is followed page by page), a recent
  * activity feed (from the platform audit log), and quick-action tiles.
  *
  * Deliberately absent (AUDIT_GAPS): per-tenant "containers x/limit" column
@@ -61,7 +61,7 @@ export function PlatformDashboard(): JSX.Element {
   const onboarding = useOnboardingRequests()
 
   const stats = dashboard.data ?? null
-  const tenants = useMemo(() => tenantList.data?.data ?? [], [tenantList.data])
+  const tenants = useMemo(() => tenantList.data ?? [], [tenantList.data])
   const pendingLeads = useMemo(
     () => (onboarding.data ?? []).filter((r) => r.status === 'new' || r.status === 'contacted' || r.status === 'approved').length,
     [onboarding.data],
@@ -85,10 +85,6 @@ export function PlatformDashboard(): JSX.Element {
       : 'Could not load the platform dashboard.'
     : null
 
-  const tenantName = useMemo(() => {
-    const map = new Map(tenants.map((t) => [t.id, t.company_name]))
-    return (id: string | null) => (id ? (map.get(id) ?? `${id.slice(0, 8)}…`) : 'Platform')
-  }, [tenants])
 
   if (loading) return <PageSkeleton kind="list" label="Loading platform dashboard" />
 
@@ -189,7 +185,7 @@ export function PlatformDashboard(): JSX.Element {
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-1) var(--space-2)' }}>
-                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink)', fontWeight: 600 }}>{tenantName(e.target_tenant_id)}</div>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink)', fontWeight: 600 }}>{e.target_tenant_name ?? (e.target_tenant_id ? `${e.target_tenant_id.slice(0, 8)}…` : 'Platform')}</div>
                     <Badge variant={actionVariant(e.action)} size="sm" dot={false}>{e.action.replace(/_/g, ' ')}</Badge>
                   </div>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-4)', marginTop: 'var(--space-0-5)' }}>{relativeTime(e.created_at)}</div>

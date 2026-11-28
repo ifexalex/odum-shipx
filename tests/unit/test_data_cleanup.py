@@ -110,7 +110,9 @@ class TestDeletingATenant:
         calls = self._delete()
         tenant_delete = calls.index("DELETE FROM tenant WHERE id = %(tenant_id)s RETURNING id")
         assert calls.index("DELETE FROM impersonation_session WHERE target_tenant_id = %(tenant_id)s RETURNING 1") < tenant_delete
-        assert any(c.startswith("UPDATE platform_audit_log SET target_tenant_id = NULL") for c in calls[:tenant_delete])
+        # Through migration 075's SECURITY DEFINER function: the app role may not UPDATE platform_audit_log itself.
+        assert "SELECT anonymise_platform_audit_for_tenant(%(tenant_id)s) AS anonymised" in calls[:tenant_delete]
+        assert not any(c.startswith("UPDATE platform_audit_log") for c in calls)
 
     def test_files_go_first(self):
         assert self._delete()[0] == "storage"

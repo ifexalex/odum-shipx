@@ -64,6 +64,7 @@ interface ApiError {
 | 429 | `USAGE_LIMIT_EXCEEDED` | Show the quota-limit-reached modal (see Task 07 — Quota Enforcement screens already designed in `screens/quota/quota-screens.jsx`), not a generic error toast |
 | 502 | `EXTERNAL_SERVICE_ERROR` | Retry-able toast ("a third-party service is unavailable, try again shortly") |
 | 503 | `SERVICE_UNAVAILABLE` | Backend's fail-closed response when a security/infra check can't complete. Treat identically to 502 — retry-able, not the user's fault. |
+| 503 | `MAINTENANCE_MODE` | A platform admin has ShipX in maintenance mode (2026-11-28, PA-01). Every tenant request gets it, so the client trips the tenant gate (`auth/tenantGate.ts`, kind `maintenance`) and the layouts show the full-page maintenance screen; `plainErrorMessage` returns the server's text, not the connection message. Never raised on `/v1/platform/*`. |
 
 ### Idempotency
 

@@ -17,7 +17,7 @@ vi.mock('../../api/tenantManagement', async (importOriginal) => {
     platformApi: {
       ...original.platformApi,
       dashboard: vi.fn(),
-      listTenants: vi.fn(),
+      listAllTenants: vi.fn(),
       auditLog: vi.fn(),
       listOnboardingRequests: vi.fn().mockResolvedValue([]),
     },
@@ -50,13 +50,10 @@ describe('PlatformDashboard (B1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(platformApi.dashboard).mockResolvedValue(STATS as never)
-    vi.mocked(platformApi.listTenants).mockResolvedValue({
-      data: TENANTS,
-      meta: { pagination: { has_more: false, next_cursor: null, total_count: 1 } },
-    } as never)
+    vi.mocked(platformApi.listAllTenants).mockResolvedValue(TENANTS as never)
     vi.mocked(platformApi.auditLog).mockResolvedValue({
       data: [
-        { id: 'a1', action: 'TENANT_SUSPENDED', actor_id: 'p1', target_tenant_id: 'tnt-acme-01', details: null, ip_address: null, created_at: new Date(Date.now() - 3600_000).toISOString() },
+        { id: 'a1', action: 'TENANT_SUSPENDED', actor_id: 'p1', target_tenant_id: 'tnt-gone-99', target_tenant_name: 'Northwind Cargo', details: null, ip_address: null, created_at: new Date(Date.now() - 3600_000).toISOString() },
         { id: 'a2', action: 'TENANT_CREATED', actor_id: 'p1', target_tenant_id: 'tnt-acme-01', details: null, ip_address: null, created_at: new Date(Date.now() - 7200_000).toISOString() },
       ],
       meta: { pagination: { has_more: false, next_cursor: null, total_count: 2 } },
@@ -74,6 +71,8 @@ describe('PlatformDashboard (B1)', () => {
     await screen.findByText('24 / 50')
     await waitFor(() => expect(screen.getByText('TENANT SUSPENDED')).toBeInTheDocument())
     expect(screen.getByText('TENANT CREATED')).toBeInTheDocument()
+    // The row is labelled by the name the server joins on, even for a tenant outside the loaded list (PA-02).
+    expect(screen.getByText('Northwind Cargo')).toBeInTheDocument()
   })
 
   it('quick-action tiles navigate', async () => {

@@ -622,7 +622,7 @@ export interface Tenant {
   created_at: string
   offboarded_at: string | null
   reactivated_at: string | null
-  /** Active staff+customer logins (quota semantics) — list endpoint only (B2). */
+  /** Staff seats in use: active users who are not customer portal accounts (shared/seats.py) — list endpoint only. */
   user_count?: number
   /** Effective users limit (tier ⊕ plan ⊕ tenant override) — list endpoint only. */
   users_limit?: number | null
@@ -658,9 +658,60 @@ export interface OnboardingRequest {
   created_at: string
 }
 
+/** Server-side filters of GET /v1/platform/tenants (audit PA-02). */
+export interface TenantListParams {
+  status?: TenantStatus
+  tier?: SubscriptionTier
+  q?: string
+  cursor?: string
+  limit?: number
+}
+
+/** Page size the fetch-all helper asks for: the API's maximum. */
+const TENANT_PAGE_LIMIT = 100
+/** Stops a runaway loop if the API ever kept returning a cursor: 50 pages of 100 is far past any real tenant count. */
+const MAX_TENANT_PAGES = 50
+
+/** PATCH /v1/platform/tenants/{id}/reactivate (services/tenant_management/tenants.py reactivate_tenant). */
+export interface TenantReactivation {
+  tenant: Tenant
+  /** Notices the platform admin must relay to the tenant before processing resumes, each "CODE: sentence". */
+  notices: string[]
+}
+
 export const platformApi = {
-  listTenants: () =>
-    apiRequestList<Tenant>({ method: 'GET', path: '/v1/platform/tenants' }),
+  /** One page of tenants, filtered and searched on the server. */
+  listTenants: (params: TenantListParams = {}) =>
+    apiRequestList<Tenant>({
+      method: 'GET',
+      path: '/v1/platform/tenants',
+      query: params as Record<string, string | number | undefined>,
+    }),
+
+  /**
+   * Every tenant, following the cursor page by page. For views that need the whole set at once (the dashboard's
+   * health table, the audit log's tenant filter); the Tenants page itself pages on the server.
+   */
+  listAllTenants: async (): Promise<Tenant[]> => {
+    const all: Tenant[] = []
+    let cursor: string | undefined
+    for (let page = 0; page < MAX_TENANT_PAGES; page += 1) {
+      const result = await platformApi.listTenants({ limit: TENANT_PAGE_LIMIT, ...(cursor ? { cursor } : {}) })
+      all.push(...result.data)
+      const { has_more: hasMore, next_cursor: next } = result.meta.pagination
+      if (!hasMore || !next) return all
+      cursor = next
+    }
+    return all
+  },
+
+  /** Edit a tenant's name, contact or plan (PATCH /v1/platform/tenants/{id}). */
+  updateTenant: (id: string, body: { company_name?: string; primary_contact_email?: string; subscription_tier?: SubscriptionTier }) =>
+    apiRequest<Tenant>({ method: 'PATCH', path: `/v1/platform/tenants/${id}`, body }),
+
+  /** Bring an offboarded tenant back within its 90 days, under a new agreement. */
+  reactivateTenant: (id: string) =>
+    apiRequest<TenantReactivation>({ method: 'PATCH', path: `/v1/platform/tenants/${id}/reactivate`, body: {} }),
 
   getTenant: (id: string) =>
     apiRequest<Tenant>({ method: 'GET', path: `/v1/platform/tenants/${id}` }),
@@ -824,6 +875,9 @@ export interface PlatformSettingsMap {
   max_tenants?: number
   maintenance_mode?: boolean
   platform_email_from?: string
+  platform_name?: string
+  support_email?: string
+  default_trial_days?: number
   [key: string]: unknown
 }
 
@@ -877,8 +931,11 @@ export const platformSettingsApi = {
 export interface PlatformAuditEntry {
   id: string
   action: string
+  /** The platform admin's identity subject; null for a platform job. Names arrive with the admin directory (Phase 1). */
   actor_id: string | null
   target_tenant_id: string | null
+  /** The tenant's name, joined by the server, so a row never needs the whole tenant list to be labelled. */
+  target_tenant_name?: string | null
   details: Record<string, unknown> | null
   ip_address: string | null
   created_at: string

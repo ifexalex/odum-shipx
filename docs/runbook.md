@@ -1173,3 +1173,9 @@ Cancelling an invoice now returns the credit it used and reopens the balances it
 2. Record it, so the normal cancel gives it back: `INSERT INTO billing_credit_application (tenant_id, billing_id, refund_request_id, amount_ngn, created_at) VALUES (…)` for each credit, as the tenant (`SET app.current_tenant_id`).
 3. Cancel from the app. Check the credits' `credit_applied_ngn` fell by those amounts.
 
+
+## Maintenance mode and the 90-day tenant cleanup (2026-11-28)
+
+**Maintenance mode** (Platform settings → General) takes ShipX offline for every tenant. While it is on, every authenticated tenant request, from staff and customers alike, gets a 503 with `error_code: MAINTENANCE_MODE`, and the apps show "ShipX is down for maintenance". Platform admins and impersonation sessions are not blocked. The flag is cached for 5 seconds (`shared/auth._maintenance_cache`, evicted when the setting is saved), so turning it off takes effect at once on the instance that saved it and within 5 seconds elsewhere. There is no schedule or auto-off yet (platform audit Phase 3), so whoever turns it on must turn it off.
+
+**Offboarded tenant still present after 90 days.** Before migration 075 the cleanup job could not anonymise `platform_audit_log` rows: migration 074 had revoked `UPDATE` from `logistics_app`, so every deletion attempt failed with `permission denied for table platform_audit_log` and rolled back. After deploying 075, tenants past their 90 days are deleted on the job's next daily run; nothing needs re-running by hand. To confirm the function exists: `SELECT has_function_privilege('logistics_app', 'anonymise_platform_audit_for_tenant(uuid)', 'EXECUTE');` should return `t`.

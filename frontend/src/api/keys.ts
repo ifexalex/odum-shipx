@@ -220,7 +220,9 @@ export const announcementKeys = {
 // ─── Platform tenants ─────────────────────────────────────────────────────────
 export const platformTenantKeys = {
   all: ['platform-tenants'] as const,
+  // Every tenant, all pages followed (dashboard, audit-log filter). The Tenants page pages on the server under `page`.
   list: () => [...platformTenantKeys.all, 'list'] as const,
+  page: (params: Record<string, unknown>) => [...platformTenantKeys.all, 'page', params] as const,
   detail: (id: string) => [...platformTenantKeys.all, 'detail', id] as const,
   // GET /v1/platform/tenants/{id}/usage — a child of platformTenantKeys.all,
   // which the /v1/platform/tenants/ invalidation rule already covers (and

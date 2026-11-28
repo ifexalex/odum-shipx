@@ -9,7 +9,6 @@ Supports two trigger modes detected at runtime:
 
 2. **API handler** — triggered by API Gateway for Platform Admin usage endpoints:
      GET /v1/platform/tenants/{id}/usage    — per-tenant usage breakdown
-     GET /v1/platform/dashboard             — aggregated platform metrics
 """
 
 import logging
@@ -155,16 +154,6 @@ def _dispatch_api(
         result = service.get_tenant_usage(target_tenant_id, period)
         return success(result, request_id=request_id)
 
-    # /v1/platform/dashboard
-    if len(parts) == 3 and parts[:3] == ["v1", "platform", "dashboard"] and method == "GET":
-        ctx.assert_role(UserRole.PLATFORM_ADMIN)
-        result = _build_dashboard()
-        return success(result, request_id=request_id)
-
+    # /v1/platform/dashboard is served by tenant_management (API Gateway and shared/http_routing.py both send it there);
+    # the placeholder that used to sit here never ran (audit PA-10).
     raise ResourceNotFoundError("route", path)
-
-
-def _build_dashboard() -> dict[str, Any]:
-    """Return platform-wide aggregated metrics (minimal — expandable)."""
-    # A lightweight summary; full aggregation would query all tenants in production.
-    return {"message": "Platform dashboard — aggregate metrics available per-tenant via /v1/platform/tenants/{id}/usage"}

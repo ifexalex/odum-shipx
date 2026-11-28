@@ -84,6 +84,7 @@ Every error code used across all services:
 |---|---|---|
 | `AUTHENTICATION_REQUIRED` | 401 | shared/auth.py |
 | `TENANT_SUSPENDED` | 403 | shared/auth.py |
+| `MAINTENANCE_MODE` | 503 | shared/auth.py (`MaintenanceModeError`, platform maintenance switch) |
 | `TENANT_OFFBOARDED` | 410 | shared/auth.py (tenant closed, data erasure scheduled) |
 | `INSUFFICIENT_PERMISSIONS` | 403 | shared/auth.py, all services |
 | `RESOURCE_NOT_FOUND` | 404 | all services |

@@ -16,6 +16,7 @@ from shared.db import execute_transaction, execute_with_tenant, execute_write_wi
 from shared.platform_audit import (
     insert_platform_audit as insert_platform_audit,  # re-exported: callers use repo.insert_platform_audit
 )
+from shared.seats import staff_seat_condition
 from shared.tenant_context import PLATFORM_TENANT_ID
 
 logger = logging.getLogger(__name__)
@@ -164,26 +165,72 @@ def get_tenant_by_id(tenant_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
-def list_tenants(limit: int = 50, cursor: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def _like_pattern(text: str) -> str:
+    """``%text%`` for ``ILIKE ... ESCAPE '\\'``, with the user's own ``%``, ``_`` and ``\\`` matched literally."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _tenant_list_filters(status: str | None, tier: str | None, q: str | None) -> tuple[str, dict[str, Any]]:
+    """WHERE conditions (on alias ``t``) and their parameters for the platform tenant list and its count."""
+    conditions = ""
+    params: dict[str, Any] = {}
+    if status:
+        conditions += " AND t.status = %(status)s"
+        params["status"] = status
+    if tier:
+        conditions += " AND t.subscription_tier = %(tier)s"
+        params["tier"] = tier
+    if q:
+        conditions += (
+            " AND (t.company_name ILIKE %(q)s ESCAPE '\\' OR t.slug ILIKE %(q)s ESCAPE '\\'"
+            " OR t.primary_contact_email ILIKE %(q)s ESCAPE '\\' OR t.id::text ILIKE %(q)s ESCAPE '\\')"
+        )
+        params["q"] = _like_pattern(q)
+    return conditions, params
+
+
+def list_tenants(
+    limit: int = 50,
+    cursor: dict[str, Any] | None = None,
+    status: str | None = None,
+    tier: str | None = None,
+    q: str | None = None,
+) -> tuple[list[dict[str, Any]], str | None, bool, int]:
+    """One page of tenants, newest first, with each tenant's staff-seat count.
+
+    Returns:
+        ``(page, next_cursor, has_more, total_count)``; ``total_count`` counts every tenant matching the filters.
+    """
     from shared.pagination import build_paginated_query, extract_page
 
-    # user_count matches the quota semantics exactly (active tenant_user rows —
-    # see metering's count_active_tenant_users) so the platform tenant list can
-    # show "users x/limit" without a per-tenant usage round-trip (audit gap B2).
-    base = """
+    conditions, extra = _tenant_list_filters(status, tier, q)
+    # user_count uses the same seat rule as the quota check (shared.seats), so "users x/limit" on the platform list
+    # matches what the tenant sees on its own plan page (audit PA-03).
+    inner = f"""
         SELECT t.*, u.user_count
         FROM tenant t
         LEFT JOIN LATERAL (
             SELECT COUNT(*) AS user_count
             FROM tenant_user tu
-            WHERE tu.tenant_id = t.id AND tu.status = 'active'
+            WHERE tu.tenant_id = t.id AND {staff_seat_condition("tu")}
         ) u ON TRUE
-        WHERE 1=1
+        WHERE 1=1{conditions}
     """
+    # Wrapped so the pagination cursor compares unambiguous outer columns.
+    base = f"SELECT * FROM ({inner}) AS paged WHERE 1=1"
     query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
+    params.update(extra)
     rows = execute_with_tenant(PLATFORM_TENANT_ID, query, params)
-    page, _, _ = extract_page(rows, limit)
-    return page
+    page, next_cursor, has_more = extract_page(rows, limit)
+
+    count_rows = execute_with_tenant(
+        PLATFORM_TENANT_ID,
+        f"SELECT COUNT(*) AS cnt FROM tenant t WHERE 1=1{conditions}",
+        extra,
+    )
+    total = int(count_rows[0]["cnt"]) if count_rows else 0
+    return page, next_cursor, has_more, total
 
 
 def update_tenant(tenant_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
@@ -474,18 +521,10 @@ def set_user_status(tenant_id: str, user_id: str, status: str) -> dict[str, Any]
 
 
 def count_active_users(tenant_id: str) -> int:
-    """Count active staff/admin users (excludes customer-only portal accounts from staff seat quota)."""
+    """Count the tenant's staff seats (``shared.seats``: customer portal accounts excluded)."""
     rows = execute_with_tenant(
         tenant_id,
-        """
-        SELECT COUNT(DISTINCT tu.id)::int AS cnt
-        FROM tenant_user tu
-        LEFT JOIN tenant_user_role tur
-          ON tur.tenant_user_id = tu.id AND tur.tenant_id = tu.tenant_id
-        WHERE tu.tenant_id = %s
-          AND tu.status = 'active'
-          AND (tu.role <> 'customer' OR (tur.role IS NOT NULL AND tur.role <> 'customer'))
-        """,
+        f"SELECT COUNT(*) AS cnt FROM tenant_user WHERE tenant_id = %s AND {staff_seat_condition()}",
         (tenant_id,),
     )
     return int(rows[0]["cnt"]) if rows else 0
@@ -1037,9 +1076,10 @@ def get_dashboard_stats() -> dict[str, Any]:
     )
     tenant_stats: dict[str, Any] = rows[0] if rows else {}
 
+    # Staff seats only (shared.seats), not customer portal accounts (audit PA-03).
     user_rows = execute_with_tenant(
         PLATFORM_TENANT_ID,
-        "SELECT COUNT(*) AS total_users FROM tenant_user WHERE status = 'active'",
+        f"SELECT COUNT(*) AS total_users FROM tenant_user WHERE {staff_seat_condition()}",
         None,
     )
     container_rows = execute_with_tenant(
@@ -1154,14 +1194,22 @@ def list_platform_audit_log(
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
     from shared.pagination import build_paginated_query, extract_page
 
-    base = "SELECT * FROM platform_audit_log WHERE 1=1"
+    conditions = ""
     extra: dict[str, Any] = {}
     if target_tenant_id:
-        base += " AND target_tenant_id = %(target_tenant_id)s"
+        conditions += " AND pal.target_tenant_id = %(target_tenant_id)s"
         extra["target_tenant_id"] = target_tenant_id
     if action:
-        base += " AND action = %(action)s"
+        conditions += " AND pal.action = %(action)s"
         extra["action"] = action
+    # Each row carries its tenant's name, so the console never needs the whole tenant list to label a row (PA-02).
+    inner = f"""
+        SELECT pal.*, t.company_name AS target_tenant_name
+        FROM platform_audit_log pal
+        LEFT JOIN tenant t ON t.id = pal.target_tenant_id
+        WHERE 1=1{conditions}
+    """
+    base = f"SELECT * FROM ({inner}) AS paged WHERE 1=1"
     query, params = build_paginated_query(base, cursor, limit, sort_field="created_at")
     params.update(extra)
     rows = execute_with_tenant(PLATFORM_TENANT_ID, query, params)

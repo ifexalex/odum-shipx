@@ -78,7 +78,6 @@ Triggered by API Gateway for Platform Admin usage endpoints.
 | Method | Path | Roles |
 |---|---|---|
 | GET | `/v1/platform/tenants/{id}/usage` | platform_admin |
-| GET | `/v1/platform/dashboard` | platform_admin (aggregated metrics) |
 
 **GET /platform/tenants/{id}/usage response:**
 ```json
@@ -286,3 +285,5 @@ but this fix removes the actual trigger. Covered by `tests/unit/test_metering.py
 - [x] Platform Admin can query per-tenant usage via API
 - [x] `record_usage()` helper available for all services
 - [x] Usage aggregation unique constraint migration created
+
+**Staff seats, and the dead dashboard placeholder (2026-11-28, platform audit PA-03 and PA-10).** `count_active_tenant_users` counted every active `tenant_user`, customer portal accounts included, so the platform Usage tab's "Staff users" bar disagreed with the quota check and the tenant's own plan page, which exclude customers. It now uses `shared.seats.staff_seat_condition()`, like every other seat count. The handler's `GET /v1/platform/dashboard` branch returned a placeholder message and could never run: API Gateway and `shared/http_routing.py` send that path to tenant_management. It was deleted, and metering now answers that path with 404.

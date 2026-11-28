@@ -115,6 +115,38 @@ class SuspendTenantRequest(BaseModel):
     reason: str = Field(min_length=1)
 
 
+class OffboardTenantRequest(BaseModel):
+    """Body of ``DELETE /v1/platform/tenants/{id}``: why the tenant is being offboarded.
+
+    Stored on the ``TENANT_OFFBOARDED`` platform audit row. Before 2026-11-28 the console asked for a reason and the
+    route never read it (audit PA-04).
+    """
+
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("reason must not be blank")
+        return stripped
+
+
+class TenantListQuery(BaseModel):
+    """Query string of ``GET /v1/platform/tenants`` (paging is parsed separately)."""
+
+    status: TenantStatus | None = None
+    tier: SubscriptionTier | None = None
+    q: str | None = Field(default=None, max_length=200)
+
+    @field_validator("q")
+    @classmethod
+    def _blank_q_is_none(cls, value: str | None) -> str | None:
+        stripped = value.strip() if value is not None else None
+        return stripped or None
+
+
 class CreateTenantUserRequest(BaseModel):
     """Create a staff/customer tenant_user.
 

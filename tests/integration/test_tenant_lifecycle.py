@@ -69,7 +69,7 @@ class TestTenantHandlerDispatch:
             patch("services.tenant_management.handler.service") as mock_svc,
             patch("shared.metering.record_usage"),
         ):
-            mock_svc.list_tenants.return_value = ([], None, False)
+            mock_svc.list_tenants.return_value = ([], None, False, 0)
             resp = handler.lambda_handler(_platform_event("GET", "/v1/tenants"), {})
         assert resp["statusCode"] == 200
 

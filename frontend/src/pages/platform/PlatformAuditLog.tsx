@@ -4,9 +4,10 @@
  * Cross-tenant audit trail: tenant lifecycle events, impersonation sessions,
  * settings changes. Filters by tenant and action; expandable JSON details.
  */
-import { useCallback, useMemo, useState, type JSX } from 'react'
+import { useMemo, useState, type JSX } from 'react'
 import { ApiError } from '../../api/client'
-import { platformApi } from '../../api/tenantManagement'
+import { PLATFORM_AUDIT_ACTIONS } from '../../api/platformAuditActions'
+import { platformApi, type PlatformAuditEntry } from '../../api/tenantManagement'
 import { platformAuditKeys } from '../../api/keys'
 import { useCursorPagination } from '../../hooks/useCursorPagination'
 import { usePlatformTenantList } from '../../hooks/usePlatformTenants'
@@ -24,17 +25,10 @@ function actionVariant(action: string): BadgeVariant {
   return 'info'
 }
 
-const COMMON_ACTIONS = [
-  'TENANT_CREATED',
-  'TENANT_SUSPENDED',
-  'TENANT_ACTIVATED',
-  'TENANT_OFFBOARDED',
-  'IMPERSONATION_STARTED',
-  'IMPERSONATION_ENDED',
-  'QUOTA_OVERRIDE_SET',
-  'PLAN_UPDATED',
-  'SETTINGS_UPDATED',
-]
+/** Who acted: a platform admin's identity subject, shortened, or a platform job. Names come with the admin directory. */
+function actorLabel(actorId: string | null): string {
+  return actorId ? `${actorId.slice(0, 8)}…` : 'Platform job'
+}
 
 export function PlatformAuditLog(): JSX.Element {
   const [tenantFilter, setTenantFilter] = useState('')
@@ -65,32 +59,21 @@ export function PlatformAuditLog(): JSX.Element {
       : 'Could not load the audit log.'
     : null
 
-  // The filter dropdown degrades to truncated raw IDs if this fails — non-fatal,
-  // so the query's error is deliberately not surfaced.
+  // Only the tenant filter needs the whole list; a row is labelled by the name the server joins onto it (PA-02).
+  // Non-fatal: without the list the filter offers "All tenants" only.
   const { data: tenantList } = usePlatformTenantList()
-  // Memoised because `?? []` would be a fresh array every render, which would
-  // re-create the `tenantName` callback below on every render.
-  const tenants = useMemo(() => tenantList?.data ?? [], [tenantList])
+  const tenants = useMemo(() => tenantList ?? [], [tenantList])
 
-  const tenantName = useCallback(
-    (id: string | null): string => {
-      if (!id) return 'Platform'
-      return tenants.find((t) => t.id === id)?.company_name ?? id.slice(0, 8)
-    },
-    [tenants],
-  )
+  const tenantName = (entry: PlatformAuditEntry): string => {
+    if (!entry.target_tenant_id) return 'Platform'
+    return entry.target_tenant_name ?? `${entry.target_tenant_id.slice(0, 8)}…`
+  }
 
   const activeEntry = useMemo(
     () => (expandedId ? entries.find((e) => e.id === expandedId) ?? null : null),
     [entries, expandedId],
   )
 
-  const actionOptions = useMemo(() => {
-    const set = new Set<string>(COMMON_ACTIONS)
-    for (const e of entries) set.add(e.action)
-    if (actionFilter) set.add(actionFilter)
-    return Array.from(set)
-  }, [entries, actionFilter])
 
   return (
     <>
@@ -142,7 +125,7 @@ export function PlatformAuditLog(): JSX.Element {
                   onChange={(e) => setActionFilter(e.target.value)}
                 >
                   <option value="">All actions</option>
-                  {actionOptions.map((a) => (
+                  {PLATFORM_AUDIT_ACTIONS.map((a) => (
                     <option key={a} value={a}>
                       {a.replace(/_/g, ' ')}
                     </option>
@@ -169,6 +152,7 @@ export function PlatformAuditLog(): JSX.Element {
             { title: 'Timestamp', type: 'date' },
             { title: 'Action' },
             { title: 'Tenant' },
+            { title: 'Actor', type: 'reference' },
             { title: 'IP', type: 'reference' },
             { title: '', type: 'action', width: '90px' },
           ]}
@@ -179,8 +163,11 @@ export function PlatformAuditLog(): JSX.Element {
                 {e.action.replace(/_/g, ' ')}
               </Badge>,
               <span key="tenant" style={{ fontSize: 'var(--text-sm)' }}>
-                {tenantName(e.target_tenant_id)}
+                {tenantName(e)}
               </span>,
+              <Mono key="actor" color="var(--color-ink-3)">
+                <span title={e.actor_id ?? undefined}>{actorLabel(e.actor_id)}</span>
+              </Mono>,
               <Mono key="ip" color="var(--color-ink-4)">
                 {e.ip_address ?? '—'}
               </Mono>,
@@ -221,7 +208,8 @@ export function PlatformAuditLog(): JSX.Element {
         {activeEntry && (
           <>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2) var(--space-4)', marginBottom: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-ink-3)' }}>
-              <span>Tenant: <strong style={{ color: 'var(--color-ink)' }}>{tenantName(activeEntry.target_tenant_id)}</strong></span>
+              <span>Tenant: <strong style={{ color: 'var(--color-ink)' }}>{tenantName(activeEntry)}</strong></span>
+              <span>Actor: <Mono>{activeEntry.actor_id ?? 'Platform job'}</Mono></span>
               <span>When: <Mono>{formatDateTime(activeEntry.created_at)}</Mono></span>
               {activeEntry.ip_address && <span>IP: <Mono>{activeEntry.ip_address}</Mono></span>}
             </div>

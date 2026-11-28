@@ -4,12 +4,40 @@ Distinct from ``shared.audit.log_audit``, which writes a tenant's own trail. Pla
 """
 
 import json
+from enum import StrEnum
 from typing import Any
 
 from shared.audit import _mask_sensitive
 from shared.db import execute_write_with_tenant
 from shared.observability import record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
+
+
+class PlatformAuditAction(StrEnum):
+    """Every ``action`` value written to ``platform_audit_log``.
+
+    The platform console's audit filter offers exactly these (``frontend/src/api/platformAuditActions.ts``);
+    ``tests/unit/test_platform_audit_actions.py`` fails when the code writes a value missing here, or when the two lists
+    differ. Before 2026-11-28 three filter options matched nothing (audit PA-05).
+    """
+
+    TENANT_CREATED = "TENANT_CREATED"
+    TENANT_UPDATED = "TENANT_UPDATED"
+    TENANT_SUSPENDED = "TENANT_SUSPENDED"
+    TENANT_ACTIVATED = "TENANT_ACTIVATED"
+    TENANT_OFFBOARDED = "TENANT_OFFBOARDED"
+    TENANT_REACTIVATED = "TENANT_REACTIVATED"
+    TENANT_EXPORT_QUEUED = "TENANT_EXPORT_QUEUED"
+    TENANT_DATA_EXPORTED = "TENANT_DATA_EXPORTED"
+    TENANT_EXPORT_LINK_ISSUED = "TENANT_EXPORT_LINK_ISSUED"
+    IMPERSONATION_START = "IMPERSONATION_START"
+    IMPERSONATION_END = "IMPERSONATION_END"
+    QUOTA_OVERRIDE_SET = "QUOTA_OVERRIDE_SET"
+    QUOTA_OVERRIDE_CLEARED = "QUOTA_OVERRIDE_CLEARED"
+    PLAN_LIMITS_UPDATED = "PLAN_LIMITS_UPDATED"
+    SETTINGS_UPDATED = "SETTINGS_UPDATED"
+    GATEWAY_SETTINGS_UPDATED = "GATEWAY_SETTINGS_UPDATED"
+    ONBOARDING_REQUEST_UPDATED = "ONBOARDING_REQUEST_UPDATED"
 
 
 def insert_platform_audit(

@@ -447,7 +447,7 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/platform/tenants?limit=20",
+              "raw": "{{base_url}}/v1/platform/tenants?limit=50",
               "host": [
                 "{{base_url}}"
               ],
@@ -459,10 +459,36 @@
               "query": [
                 {
                   "key": "limit",
-                  "value": "20"
+                  "value": "50",
+                  "description": "1-100, default 50"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "active | suspended | offboarded",
+                  "disabled": true
+                },
+                {
+                  "key": "tier",
+                  "value": "business",
+                  "description": "starter | business | enterprise",
+                  "disabled": true
+                },
+                {
+                  "key": "q",
+                  "value": "acme",
+                  "description": "Name, slug, contact email or tenant ID",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "description": "meta.pagination.next_cursor from the previous page",
+                  "disabled": true
                 }
               ]
-            }
+            },
+            "description": "Paginated since 2026-11-28 (platform audit PA-02): server-side status, tier and q filters; response meta.pagination carries next_cursor, has_more and total_count. user_count counts staff seats only."
           }
         },
         {
@@ -660,6 +686,10 @@
               {
                 "key": "X-User-ID",
                 "value": "{{user_id}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
             "url": {
@@ -674,7 +704,16 @@
                 "{{tenant_id}}"
               ]
             },
-            "description": "Offboarding also queues the tenant data export (audit BE-10), in the same transaction; see the three \"Offboarding Export\" requests."
+            "description": "Body {\"reason\"} required since 2026-11-28 (platform audit PA-04); stored on the TENANT_OFFBOARDED audit row. Queues the data export in the same transaction.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Contract ended; tenant asked to leave\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           }
         },
         {
@@ -1980,7 +2019,7 @@
                 "reactivate"
               ]
             },
-            "description": "POST /v1/tenant/users/{id}/reactivate \u2014 undo a deactivation; re-enables the identity and sets status back to active, returning the updated row (tenant_admin). 422 if the user is not deactivated; 429 if the tenant is at its tier seat limit."
+            "description": "POST /v1/tenant/users/{id}/reactivate — undo a deactivation; re-enables the identity and sets status back to active, returning the updated row (tenant_admin). 422 if the user is not deactivated; 429 if the tenant is at its tier seat limit."
           }
         }
       ]

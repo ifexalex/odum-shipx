@@ -29,6 +29,8 @@ export function plainErrorMessage(status: number, serverText: string, errorCode?
   if (status === 403) return "You don't have permission to do this. Ask your admin if you need it."
   if (status === 404) return "We couldn't find that. It may have been removed, or the link is out of date."
   if (status === 429) return 'Too many requests just now. Wait a moment and try again.'
+  // Maintenance answers every request with 503; say so rather than blaming the user's connection (audit PA-01).
+  if (errorCode === 'MAINTENANCE_MODE') return serverText
   if (status === 0 || status === 502 || status === 503 || status === 504) {
     return "We couldn't reach the server. Check your connection and try again."
   }

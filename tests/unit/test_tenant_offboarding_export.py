@@ -66,11 +66,11 @@ class TestOffboardingQueuesTheExport:
             patch.object(service.repo, "list_users", return_value=[]),
             patch.object(service.repo, "insert_platform_audit") as audit,
         ):
-            service.offboard_tenant(TENANT, actor_id="admin-1")
+            service.offboard_tenant(TENANT, actor_id="admin-1", reason="Contract ended")
 
         assert order == ["begin", "status", "queue", "commit"]
         queue.assert_called_once_with(TENANT, requested_by="admin-1")
-        assert audit.call_args.kwargs["details"] == {"export_id": EXPORT}
+        assert audit.call_args.kwargs["details"] == {"reason": "Contract ended", "export_id": EXPORT}
 
     def test_reactivation_drops_an_export_that_has_not_been_written(self):
         with (

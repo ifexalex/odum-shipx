@@ -13,6 +13,7 @@ from shared import rate_limit
 from shared.distributed_cache import DistributedCache
 from shared.exceptions import (
     AuthenticationRequiredError,
+    MaintenanceModeError,
     ResourceNotFoundError,
     ServiceUnavailableError,
     TenantOffboardedError,
@@ -51,7 +52,7 @@ def _check_maintenance_mode() -> None:
     cached = _maintenance_cache.get("enabled")
     if cached is not None:
         if cached == "1":
-            raise ServiceUnavailableError("ShipX is currently undergoing scheduled maintenance. Please try again shortly.")
+            raise MaintenanceModeError()
         return
 
     try:
@@ -71,7 +72,7 @@ def _check_maintenance_mode() -> None:
     enabled = raw_val is True or str(raw_val).strip().lower() == "true"
     _maintenance_cache.set("enabled", "1" if enabled else "0")
     if enabled:
-        raise ServiceUnavailableError("ShipX is currently undergoing scheduled maintenance. Please try again shortly.")
+        raise MaintenanceModeError()
 
 
 def evict_maintenance_cache() -> None:

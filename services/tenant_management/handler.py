@@ -45,11 +45,13 @@ from .models import (
     CreateTenantUserRequest,
     CustomerRegistrationRequest,
     LogoUploadRequest,
+    OffboardTenantRequest,
     OnboardingRequestStatusUpdate,
     PaystackConfigRequest,
     SelfRegistrationUpdateRequest,
     SetLogoRequest,
     SuspendTenantRequest,
+    TenantListQuery,
     UpdateCbmRateRequest,
     UpdateDollarRateMarkupRequest,
     UpdateTenantConfigRequest,
@@ -600,11 +602,21 @@ def _platform_routes(
                     location=f"/v1/platform/tenants/{tenant_id_new}",
                     request_id=request_id,
                 )
-            # GET /v1/platform/tenants
+            # GET /v1/platform/tenants?status=&tier=&q=&cursor=&limit= — paginated (audit PA-02)
             if method == "GET":
-                _, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
-                tenants = service.list_tenants(limit=limit)
-                return success(tenants, request_id=request_id)
+                cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
+                filters = parse_validated(
+                    TenantListQuery,
+                    {"status": _qp(event, "status"), "tier": _qp(event, "tier"), "q": _qp(event, "q")},
+                )
+                page, next_cursor, has_more, total = service.list_tenants(
+                    limit=limit,
+                    cursor=cursor,
+                    status=filters.status,
+                    tier=filters.tier,
+                    q=filters.q,
+                )
+                return paginated(page, next_cursor, has_more, total_count=total, request_id=request_id)
 
         else:
             # PATCH /v1/platform/tenants/{id}/suspend
@@ -673,9 +685,15 @@ def _platform_routes(
                     result = service.update_tenant(tenant_id, req, actor_id=ctx.user_id, ip_address=ip_address)
                     return success(result, request_id=request_id)
 
-                # DELETE /v1/platform/tenants/{id}
+                # DELETE /v1/platform/tenants/{id} — body {"reason": "..."} (audit PA-04)
                 if method == "DELETE":
-                    result = service.offboard_tenant(tenant_id, actor_id=ctx.user_id, ip_address=ip_address)
+                    offboard_req = parse_validated(OffboardTenantRequest, _parse_body(event))
+                    result = service.offboard_tenant(
+                        tenant_id,
+                        actor_id=ctx.user_id,
+                        reason=offboard_req.reason,
+                        ip_address=ip_address,
+                    )
                     return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))

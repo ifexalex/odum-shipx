@@ -25,6 +25,8 @@ vi.mock('../../api/tenantManagement', async (importOriginal) => {
       offboardingExport: vi.fn(),
       queueOffboardingExport: vi.fn(),
       offboardingExportLink: vi.fn(),
+      updateTenant: vi.fn(),
+      reactivateTenant: vi.fn(),
     },
   }
 })
@@ -184,5 +186,33 @@ describe('PlatformTenantDetail tabs read through hooks (FE-05)', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Audit log' }))
     expect(await screen.findByText('TENANT EXPORT LINK ISSUED')).toBeInTheDocument()
     expect(platformApi.auditLog).toHaveBeenCalledWith({ tenant_id: TENANT.id, limit: 50 })
+  })
+})
+
+describe('PlatformTenantDetail edit and reactivate (PA-09)', () => {
+  it('changes a tenant\'s plan, sending only what changed', async () => {
+    const active = { ...TENANT, status: 'active' as const, offboarded_at: null }
+    vi.mocked(platformApi.updateTenant).mockResolvedValue({ ...active, subscription_tier: 'enterprise' })
+    renderPage(active)
+    await userEvent.click(await screen.findByRole('button', { name: 'More tenant actions' }))
+    await userEvent.click(await screen.findByText('Edit tenant'))
+    await userEvent.selectOptions(screen.getByLabelText('Plan'), 'enterprise')
+    expect(screen.getByText(/limits apply at once/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(platformApi.updateTenant).toHaveBeenCalledWith(TENANT.id, { subscription_tier: 'enterprise' })
+  })
+
+  it('reactivates an offboarded tenant and lists what to tell them', async () => {
+    vi.mocked(platformApi.offboardingExport).mockResolvedValue(exportInfo({}))
+    vi.mocked(platformApi.reactivateTenant).mockResolvedValue({
+      tenant: { ...TENANT, status: 'active', reactivated_at: '2026-11-28T10:00:00Z' },
+      notices: ['CONSENT_REVERIFICATION_REQUIRED: Tenant admin must re-verify consent from all users under the new agreement.'],
+    })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Reactivate tenant' }))
+    const confirm = await screen.findAllByRole('button', { name: 'Reactivate tenant' })
+    await userEvent.click(confirm.at(-1)!)
+    expect(platformApi.reactivateTenant).toHaveBeenCalledWith(TENANT.id)
+    expect(await screen.findByText('Tenant admin must re-verify consent from all users under the new agreement.')).toBeInTheDocument()
   })
 })

@@ -37,6 +37,50 @@ beforeEach(() => {
   for (const fn of Object.values(platformSettingsApi)) vi.mocked(fn).mockReset()
 })
 
+describe('PlatformSettings — what the page promises (PA-01, PA-08, PA-09)', () => {
+  it('states that maintenance takes every tenant offline, in the text and the confirmation', async () => {
+    vi.mocked(platformSettingsApi.get).mockResolvedValue({ platform_email_from: 'ops@shipx.test', max_tenants: 40, maintenance_mode: false })
+    renderAt('/platform/settings')
+    expect(await screen.findByText(/Takes ShipX offline for every tenant/)).toBeInTheDocument()
+    expect(screen.queryByText(/Existing sessions keep working/)).toBeNull()
+    await userEvent.click(screen.getByRole('switch', { name: 'Maintenance mode' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(await screen.findByText(/Every tenant goes offline at once/)).toBeInTheDocument()
+    expect(platformSettingsApi.update).not.toHaveBeenCalled()
+  })
+
+  it('edits the platform name, support email and default trial days', async () => {
+    vi.mocked(platformSettingsApi.get).mockResolvedValue({
+      platform_name: 'ShipX', support_email: 'help@shipx.test', platform_email_from: 'ops@shipx.test',
+      max_tenants: 40, default_trial_days: 14, maintenance_mode: false,
+    })
+    vi.mocked(platformSettingsApi.update).mockResolvedValue({})
+    renderAt('/platform/settings')
+    const name = await screen.findByDisplayValue('ShipX')
+    expect(screen.getByDisplayValue('help@shipx.test')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('14')).toBeInTheDocument()
+    await userEvent.clear(name)
+    await userEvent.type(name, 'ShipX Africa')
+    await userEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+    await waitFor(() =>
+      expect(platformSettingsApi.update).toHaveBeenCalledWith({
+        platform_name: 'ShipX Africa', support_email: 'help@shipx.test', platform_email_from: 'ops@shipx.test',
+        max_tenants: 40, default_trial_days: 14, maintenance_mode: false,
+      }),
+    )
+  })
+
+  it('says the gateway check sends nothing', async () => {
+    vi.mocked(platformSettingsApi.getGateways).mockResolvedValue({ sms: { api_key: '****', sender_id: 'ShipX' }, whatsapp: {}, email: {} })
+    vi.mocked(platformSettingsApi.testGateway).mockResolvedValue({ success: true, error: null })
+    renderAt('/platform/settings/notifications')
+    const [smsCheck] = await screen.findAllByRole('button', { name: 'Check fields' })
+    await userEvent.click(smsCheck!)
+    expect(await screen.findByText(/it sends no message/)).toBeInTheDocument()
+    expect(screen.queryByText(/Configuration valid/)).toBeNull()
+  })
+})
+
 describe('PlatformSettings — General', () => {
   it('fills the form from the saved settings', async () => {
     vi.mocked(platformSettingsApi.get).mockResolvedValue({ platform_email_from: 'ops@shipx.test', max_tenants: 40, maintenance_mode: false })

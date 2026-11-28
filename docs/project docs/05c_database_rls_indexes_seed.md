@@ -356,3 +356,7 @@ Canonical `tenant_isolation` policy (`FOR ALL`, PLATFORM-aware, USING and WITH C
 - `misc_charge.ck_misc_charge_amount_positive`: `CHECK (amount_ngn > 0) NOT VALID`.
 - `uq_staff_notification_active_banner_per_role`: partial unique index on `staff_notification (tenant_id, target_role) WHERE banner_active = TRUE AND target_role IS NOT NULL`.
 - `uq_carryover_active_per_source_billing`: partial unique index on `carryover_ledger (tenant_id, source_billing_id) WHERE status IN ('outstanding', 'applied')`.
+
+## `platform_audit_log` is append-only for the app role (migration 075, 2026-11-28)
+
+`logistics_app` may `SELECT` and `INSERT` on `platform_audit_log`, nothing more: `UPDATE` was revoked in migration 074 and `DELETE` in 075. The only change it can make is through `anonymise_platform_audit_for_tenant(uuid)`, a `SECURITY DEFINER` function owned by the migrating role. The function blanks `target_tenant_id` and `details` on one tenant's rows when the 90-day cleanup deletes that tenant, refuses to run unless `app.current_tenant_id` is `PLATFORM`, and cannot be executed by `PUBLIC`. Owner-run scripts such as `scripts/purge_tenant.py` are unaffected.

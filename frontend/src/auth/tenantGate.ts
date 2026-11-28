@@ -5,7 +5,8 @@
  * `TENANT_OFFBOARDED` or 403 `TENANT_SUSPENDED` (shared/exceptions.py, raised
  * by shared/auth.py's fail-closed tenant-status check on *every* request) —
  * individual per-page error banners are the wrong shape: every screen would
- * fail identically. The API client reports the code here, and the layouts
+ * fail identically. The same holds for 503 `MAINTENANCE_MODE`, returned on every
+ * request while a platform admin has ShipX in maintenance mode (audit PA-01). The API client reports the code here, and the layouts
  * render a single full-page state (TenantBlockedScreen) instead of routed
  * content.
  *
@@ -15,7 +16,13 @@
  */
 import { useSyncExternalStore } from 'react'
 
-export type TenantBlockedKind = 'offboarded' | 'suspended'
+export type TenantBlockedKind = 'offboarded' | 'suspended' | 'maintenance'
+
+const KIND_BY_CODE: Record<string, TenantBlockedKind> = {
+  TENANT_OFFBOARDED: 'offboarded',
+  TENANT_SUSPENDED: 'suspended',
+  MAINTENANCE_MODE: 'maintenance',
+}
 
 let blocked: TenantBlockedKind | null = null
 const listeners = new Set<() => void>()
@@ -26,8 +33,7 @@ function emit(): void {
 
 /** Called by api/client.ts when a response carries a tenant-level block code. */
 export function reportTenantBlocked(errorCode: string): void {
-  const next: TenantBlockedKind | null =
-    errorCode === 'TENANT_OFFBOARDED' ? 'offboarded' : errorCode === 'TENANT_SUSPENDED' ? 'suspended' : null
+  const next: TenantBlockedKind | null = KIND_BY_CODE[errorCode] ?? null
   if (next && next !== blocked) {
     blocked = next
     emit()
