@@ -404,6 +404,12 @@ def resolve_claim(
             allowed=list(_RESOLVABLE_STATES),
         )
 
+    # Four-eyes / SoD: non-admin staff cannot resolve a claim they filed themselves.
+    if not ctx.has_role(UserRole.TENANT_ADMIN) and claim.get("submitted_by") and str(claim["submitted_by"]) == str(actor_id):
+        from shared.exceptions import SelfApprovalForbiddenError
+
+        raise SelfApprovalForbiddenError()
+
     resolution_type = req.resolution_type.value if hasattr(req.resolution_type, "value") else str(req.resolution_type)
     settlement_usd = getattr(req, "settlement_amount_usd", None)
     raw_amount_ngn = getattr(req, "amount_ngn", None)

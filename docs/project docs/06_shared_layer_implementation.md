@@ -396,6 +396,6 @@ Changed behaviour: container documents no longer accept `application/octet-strea
 
 ## `shared/` additions — platform admin audit Phase 0 (2026-11-28)
 
-- **`shared/seats.py`**, `staff_seat_condition(alias="tenant_user")`: the one SQL rule for a staff seat (an active user who is not a customer portal account). It is used by the quota check, the tenant's plan page, the platform tenant list, the platform dashboard and metering's Usage tab (PA-03). `alias` must be a plain identifier, or it raises `ValueError`.
+- **`shared/seats.py`**, `staff_seat_condition(alias="tenant_user")`: the one SQL rule for a staff seat: an active user with any staff role, primary or assigned in `tenant_user_role` (so a multi-role user whose primary role is customer still counts, as #195's quota check does), written as an `EXISTS` so nobody counts twice. It is used by the quota check, the tenant's plan page, the platform tenant list, the platform dashboard and metering's Usage tab (PA-03). `alias` must be a plain identifier, or it raises `ValueError`.
 - **`shared/exceptions.py`**, `MaintenanceModeError`: a 503 with `error_code="MAINTENANCE_MODE"`, raised by `shared/auth._check_maintenance_mode` so the apps can show a maintenance screen (PA-01). It subclasses `ServiceUnavailableError`, so existing handling is unchanged.
 - **`shared/platform_audit.py`**, `PlatformAuditAction` (StrEnum): every `action` value written to `platform_audit_log`. `tests/unit/test_platform_audit_actions.py` keeps it in step with the code and with `frontend/src/api/platformAuditActions.ts` (PA-05).

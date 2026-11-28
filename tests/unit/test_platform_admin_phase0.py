@@ -154,7 +154,10 @@ class TestTenantListQuery:
 
 class TestStaffSeats:
     def test_the_condition_excludes_customers_and_inactive_users(self):
-        assert staff_seat_condition("tu") == "tu.status = 'active' AND tu.role <> 'customer'"
+        condition = staff_seat_condition("tu")
+        assert condition.startswith("tu.status = 'active' AND (tu.role <> 'customer' OR EXISTS (")
+        # A multi-role user whose primary role is customer still holds a seat through a staff role (#195).
+        assert "seat_role.tenant_user_id = tu.id" in condition and "seat_role.role <> 'customer'" in condition
 
     def test_a_non_identifier_alias_is_refused(self):
         with pytest.raises(ValueError):

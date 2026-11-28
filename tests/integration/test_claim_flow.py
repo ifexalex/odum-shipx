@@ -161,9 +161,9 @@ class TestClaimResolutionCreatesRefund:
         ):
             ctx = TenantContext(
                 tenant_id=TENANT_ID,
-                user_id="user-nigeria",
+                user_id="user-nigeria-reviewer",
                 role=UserRole.NIGERIA_OFFICE_STAFF,
             )
-            service.resolve_claim(TENANT_ID, "claim-001", req, actor_id="user-nigeria", ctx=ctx)
+            service.resolve_claim(TENANT_ID, "claim-001", req, actor_id="user-nigeria-reviewer", ctx=ctx)
             # A refund request must be created for 'refund' resolution type
             mock_create_refund.assert_called_once()

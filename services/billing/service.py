@@ -1629,6 +1629,20 @@ def resolve_dispute(
             allowed=list(_DISPUTE_ALLOWED_SOURCE_STATES),
         )
 
+    is_admin = ctx.has_role(UserRole.TENANT_ADMIN)
+    # Four-eyes / SoD: non-admin staff cannot resolve a dispute they raised themselves.
+    if not is_admin and dispute.get("raised_by") and str(dispute["raised_by"]) == str(actor_id):
+        from shared.exceptions import SelfApprovalForbiddenError
+
+        raise SelfApprovalForbiddenError()
+    # China office staff may only resolve disputes explicitly escalated to China.
+    if (
+        ctx.has_role(UserRole.CHINA_OFFICE_STAFF)
+        and not ctx.has_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+        and current != "escalated_china"
+    ):
+        raise InsufficientPermissionsError("China office staff can only resolve disputes in 'escalated_china' status")
+
     target = req.status.value if hasattr(req.status, "value") else str(req.status)
     if target not in _DISPUTE_ALLOWED_TARGET_STATES:
         raise BusinessRuleViolationError(

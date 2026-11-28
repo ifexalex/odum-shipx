@@ -58,7 +58,6 @@ logger = logging.getLogger(__name__)
 
 # Roles that can read packing lists
 _READ_ROLES = (
-    UserRole.PLATFORM_ADMIN,
     UserRole.TENANT_ADMIN,
     UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,

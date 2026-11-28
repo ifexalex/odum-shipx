@@ -66,9 +66,8 @@ init_tracing()
 
 logger = logging.getLogger(__name__)
 
-# Roles allowed to manage customers
+# Roles allowed to manage customers (platform_admin must impersonate a tenant_admin)
 _STAFF_ROLES = (
-    UserRole.PLATFORM_ADMIN,
     UserRole.TENANT_ADMIN,
     UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,
@@ -878,7 +877,19 @@ def _tenant_admin_routes(
                     request_id=request_id,
                 )
             if method == "GET":
-                return success(service.list_users(tenant_id), request_id=request_id)
+                users = service.list_users(tenant_id)
+                if not ctx.has_role(UserRole.TENANT_ADMIN):
+                    users = [
+                        {
+                            "id": u.get("id"),
+                            "full_name": u.get("full_name"),
+                            "role": u.get("role"),
+                            "roles": u.get("roles"),
+                            "status": u.get("status"),
+                        }
+                        for u in users
+                    ]
+                return success(users, request_id=request_id)
         else:
             action = parts[4] if len(parts) > 4 else None
             if action == "resend-invite" and method == "POST":

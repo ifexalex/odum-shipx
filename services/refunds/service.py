@@ -106,6 +106,17 @@ def create_refund(
         customer_id = req.customer_id
 
     refund_type = req.refund_type.value if hasattr(req.refund_type, "value") else str(req.refund_type)
+    if is_customer:
+        if refund_type != "overpayment":
+            raise BusinessRuleViolationError(
+                "Customers may only submit overpayment refund requests directly",
+                rule_id="CUSTOMER_REFUND_TYPE_FORBIDDEN",
+            )
+        if not req.billing_id:
+            raise BusinessRuleViolationError(
+                "A billing_id is required for customer refund requests",
+                rule_id="BILLING_ID_REQUIRED",
+            )
 
     if req.billing_id:
         billing = repo.get_billing_by_id(tenant_id, req.billing_id)
@@ -394,9 +405,10 @@ def approve_refund(
         # overpayment or small compensation — manager level, subject to USD threshold
         required_level = "manager"
 
-    # Enforce refund_threshold_usd.staff_limit for ALL non-tenant_admin callers (fail-closed).
+    # Enforce refund_threshold_usd.staff_limit for ALL non-tenant_admin callers (fail-closed)
+    # against max(requested, approved) so splitting/reducing cannot bypass the limit.
     if not is_admin:
-        _check_staff_usd_threshold(tenant_id, amount_approved)
+        _check_staff_usd_threshold(tenant_id, max(amount_ngn, amount_approved))
 
     # Determine final status based on customer_choice
     customer_choice = refund.get("customer_choice") or ""

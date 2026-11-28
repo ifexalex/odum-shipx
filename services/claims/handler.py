@@ -62,7 +62,7 @@ _CLAIM_READ_ROLES = (
     UserRole.TENANT_ADMIN,
     UserRole.CUSTOMER,
 )
-_INSPECT_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
+_INSPECT_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 _RESOLVE_ROLES = (
     UserRole.NIGERIA_OFFICE_STAFF,
     UserRole.TENANT_ADMIN,
@@ -70,8 +70,9 @@ _RESOLVE_ROLES = (
 _UPLOAD_ROLES = (
     UserRole.CUSTOMER,
     UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.TENANT_ADMIN,
 )
-_STAFF_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
+_STAFF_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 
 
 # ---------------------------------------------------------------------------
