@@ -64,7 +64,18 @@ def _parse_iso_date(value: Any) -> date | None:
     return None
 
 
+_SHIPMENT_STAFF_ROLES = (
+    UserRole.TENANT_ADMIN,
+    UserRole.CHINA_OFFICE_STAFF,
+    UserRole.NIGERIA_OFFICE_STAFF,
+    UserRole.WAREHOUSE_ATTENDANT,
+)
+
+
 def _is_customer_only(ctx: Any) -> bool:
+    must_scope = getattr(ctx, "must_scope_to_customer", None)
+    if callable(must_scope):
+        return bool(must_scope(*_SHIPMENT_STAFF_ROLES))
     return bool(getattr(ctx, "is_customer_only", ctx.role == UserRole.CUSTOMER))
 
 

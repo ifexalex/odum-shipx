@@ -136,6 +136,7 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
                 raise AuthenticationRequiredError()
             tenant_id, db_role = resolved[0], resolved[1]
             db_roles = _cached_db_roles(user_id)
+            user_id = _canonical_user_id(user_id)
 
         roles = _parse_roles(claims, tenant_id)
         role = _parse_primary_role(claims, roles)
@@ -172,6 +173,7 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
             checked = _check_user_active(user_id, tenant_id)
             if checked is not None and not impersonated_by:
                 active_primary, active_roles = checked
+                user_id = _canonical_user_id(user_id)
                 if active_roles:
                     roles = active_roles
                     role = (
@@ -273,21 +275,34 @@ def _parse_primary_role(claims: dict[str, Any], roles: frozenset[UserRole]) -> U
     return min(roles)
 
 
+# Process-local fallback for roles & canonical user_id populated on every DB lookup
+# in `_active_identity()`, so role-downgrade enforcement and Entra multi-role staff
+# resolution NEVER fail open when Redis is disabled (`enable_redis = false`) or evicts keys.
+_local_identity_roles: dict[str, frozenset[UserRole]] = {}
+_local_canonical_ids: dict[str, str] = {}
+_local_sub_aliases: dict[str, set[str]] = {}
+
+
+def _canonical_user_id(user_id: str) -> str:
+    return _local_canonical_ids.get(user_id, user_id)
+
+
 def _cached_db_roles(user_id: str) -> frozenset[UserRole] | None:
-    """Return the cached authoritative DB role set for `user_id`, or None if unpopulated."""
+    """Return the authoritative DB role set for `user_id` (Redis first, then process-local fallback)."""
     raw = _identity_roles_cache.get(user_id)
-    if not raw:
-        return None
-    parsed = frozenset(UserRole(r) for r in str(raw).split(",") if r in _VALID_ROLES)
-    return parsed or None
+    if raw:
+        parsed = frozenset(UserRole(r) for r in str(raw).split(",") if r in _VALID_ROLES)
+        if parsed:
+            return parsed
+    return _local_identity_roles.get(user_id)
 
 
 def _active_identity(user_id: str) -> tuple[str, str] | None:
     """Return (tenant_id, primary_role) from the user's ACTIVE `tenant_user` row, or None when there is none.
 
-    Also populates `_identity_roles_cache` with the full assigned role set from
-    `tenant_user_role` in the same query so multi-role staff on Azure Entra and
-    role-downgrade revocations work without a second round-trip.
+    Matches both ``tu.id`` and ``tu.cognito_sub`` (supporting Entra-migrated users) and stores the
+    full assigned role set in both Redis and the process-local fallback so role downgrades and
+    multi-role staff resolution work even when Redis is disabled.
     """
     cached = _identity_cache.get(user_id)
     if cached is not None:
@@ -301,29 +316,38 @@ def _active_identity(user_id: str) -> tuple[str, str] | None:
     rows = execute_with_tenant(
         tenant_id=PLATFORM_TENANT_ID,  # spans tenants, like the status check
         query=(
-            "SELECT tu.tenant_id, tu.role, "
+            "SELECT tu.id, tu.tenant_id, tu.role, "
             "COALESCE(ARRAY_AGG(tur.role) FILTER (WHERE tur.role IS NOT NULL), ARRAY[tu.role]) AS roles "
             "FROM tenant_user tu "
             "LEFT JOIN tenant_user_role tur ON tur.tenant_user_id = tu.id "
-            "WHERE tu.id = %s AND tu.status = 'active' "
+            "WHERE (tu.id::text = %s OR tu.cognito_sub = %s) AND tu.status = 'active' "
             "GROUP BY tu.id, tu.tenant_id, tu.role "
             "LIMIT 1"
         ),
-        params=(user_id,),
+        params=(user_id, user_id),
     )
     if not rows:
         _identity_cache.set(user_id, "")
         _identity_roles_cache.delete(user_id)
+        _local_identity_roles.pop(user_id, None)
+        _local_canonical_ids.pop(user_id, None)
         return None
+    canonical_uid = str(rows[0].get("id") or user_id)
     tenant_id = str(rows[0]["tenant_id"])
     role = str(rows[0]["role"])
     raw_roles = rows[0].get("roles") or [role]
     valid_role_strs = sorted({str(r) for r in raw_roles if str(r) in _VALID_ROLES})
     if role in _VALID_ROLES and role not in valid_role_strs:
         valid_role_strs.append(role)
+    role_set = frozenset(UserRole(r) for r in valid_role_strs)
     _identity_cache.set(user_id, f"{tenant_id}:{role}")
     if valid_role_strs:
         _identity_roles_cache.set(user_id, ",".join(valid_role_strs))
+        _local_identity_roles[user_id] = role_set
+        _local_identity_roles[canonical_uid] = role_set
+    _local_canonical_ids[user_id] = canonical_uid
+    if canonical_uid != user_id:
+        _local_sub_aliases.setdefault(canonical_uid, set()).add(user_id)
     return tenant_id, role
 
 
@@ -336,18 +360,37 @@ def resolve_identity_from_db(user_id: str) -> tuple[str, str] | None:
         return None
 
 
-def evict_identity_cache(user_id: str) -> None:
-    """Forget the cached identity and roles of a user whose row just changed."""
-    _identity_cache.delete(user_id)
-    _identity_roles_cache.delete(user_id)
+def resolve_identity_roles_from_db(user_id: str) -> tuple[str, str, list[str]] | None:
+    """Resolve ``(tenant_id, primary_role, roles_list)`` for an IdP subject from ``tenant_user``."""
+    resolved = resolve_identity_from_db(user_id)
+    if resolved is None:
+        return None
+    tenant_id, primary_role = resolved
+    role_set = _cached_db_roles(user_id)
+    roles_list = sorted(r.value for r in role_set) if role_set else [primary_role]
+    return tenant_id, primary_role, roles_list
+
+
+def evict_identity_cache(*identifiers: str | None) -> None:
+    """Forget the cached identity and roles for one or more user identifiers (plus tracked sub aliases)."""
+    keys: set[str] = set()
+    for ident in identifiers:
+        if ident:
+            key = str(ident)
+            keys.add(key)
+            keys.update(_local_sub_aliases.pop(key, set()))
+    for key in keys:
+        _identity_cache.delete(key)
+        _identity_roles_cache.delete(key)
+        _local_identity_roles.pop(key, None)
+        _local_canonical_ids.pop(key, None)
 
 
 def _check_user_active(user_id: str, tenant_id: str) -> tuple[str, frozenset[UserRole]] | None:
     """Deny a token whose user has no active `tenant_user` row in the token's tenant.
 
-    Returns `(primary_role, roles)` from the live DB row when available so
-    `get_tenant_context` enforces immediate role downgrades rather than waiting
-    for JWT expiry.
+    Returns ``(primary_role, roles)`` from the live DB row so ``get_tenant_context``
+    enforces immediate role downgrades even when Redis is disabled.
     """
     try:
         identity = _active_identity(user_id)

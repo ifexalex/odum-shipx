@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react'
+import { platformApi } from '../api/tenantManagement'
 import {
   beginInteractiveLogin,
   completeInteractiveLogin,
@@ -195,7 +196,15 @@ export function SessionProvider({
   }
 
   function logout(): void {
+    const activeSessionId = session?.readOnly ? session.sessionId : undefined
+    const previous = previousRef.current
     clearTimers()
+    // Best-effort server-side impersonation revocation before clearing tokens so the
+    // 30-min HS256 token cannot outlive logout and IMPERSONATION_END is audited.
+    if (activeSessionId && previous?.idToken) {
+      setActiveTokens({ idToken: previous.idToken, tokenType: 'cognito' })
+      void platformApi.endImpersonation(activeSessionId).catch(() => {})
+    }
     cognitoSignOut()
     clearActiveTokens()
     previousRef.current = null
@@ -206,9 +215,12 @@ export function SessionProvider({
 
   function startImpersonation(idToken: string, tenantName?: string): void {
     if (!session) throw new Error('Cannot start impersonation without an active session')
-    previousRef.current = {
-      session,
-      idToken: getActiveIdToken() ?? '',
+    // Preserve the original platform admin session even if startImpersonation is called twice.
+    if (!previousRef.current) {
+      previousRef.current = {
+        session,
+        idToken: getActiveIdToken() ?? '',
+      }
     }
     clearTimers()
     const impSession = sessionFromIdToken(idToken)
@@ -230,6 +242,7 @@ export function SessionProvider({
   }
 
   function exitImpersonation(): void {
+    const activeSessionId = session?.readOnly ? session.sessionId : undefined
     clearTimers()
     const previous = previousRef.current
     previousRef.current = null
@@ -241,7 +254,14 @@ export function SessionProvider({
     }
     setActiveTokens({ idToken: previous.idToken, tokenType: 'cognito' })
     applySession(previous.session)
-    scheduleRefresh(previous.session)
+    if (activeSessionId) {
+      void platformApi.endImpersonation(activeSessionId).catch(() => {})
+    }
+    if (previous.session.expiresAt <= Date.now()) {
+      void refreshNow().catch(() => {})
+    } else {
+      scheduleRefresh(previous.session)
+    }
   }
 
   // Client-side-only active-role toggle — never touches the token or fires a

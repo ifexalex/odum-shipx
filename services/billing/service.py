@@ -497,7 +497,7 @@ def get_billing(tenant_id: str, billing_id: str, ctx: Any) -> dict[str, Any]:
     if not row:
         raise ResourceNotFoundError("billing", billing_id)
 
-    if ctx is not None and ctx.is_customer_only:
+    if ctx is not None and ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(row.get("customer_id")):
             raise InsufficientPermissionsError("Customers may only view their own billing records")
@@ -523,7 +523,7 @@ def get_billing_for_customer(
 
     CUSTOMER role: verified against ctx.user_id — can only see their own billing.
     """
-    if ctx.is_customer_only:
+    if ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != customer_id:
             raise InsufficientPermissionsError("Customers may only view their own billing records")
@@ -748,7 +748,7 @@ def list_misc_charges(
     if not billing:
         raise ResourceNotFoundError("billing", billing_id)
 
-    if ctx.is_customer_only:
+    if ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(billing["customer_id"]):
             raise InsufficientPermissionsError("Customers may only view charges on their own billing records")
@@ -817,7 +817,7 @@ def list_storage_fees(
     if not billing:
         raise ResourceNotFoundError("billing", billing_id)
 
-    if ctx.is_customer_only:
+    if ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(billing["customer_id"]):
             raise InsufficientPermissionsError("Customers may only view storage fees on their own billing records")
@@ -913,7 +913,7 @@ def list_billing(
     — any customer_id they pass is overridden, not merely validated, so
     there's no way to request someone else's records.
     """
-    if ctx is not None and ctx.is_customer_only:
+    if ctx is not None and ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer:
             return [], None, False
@@ -1469,7 +1469,7 @@ def file_cbm_dispute(
         raise ResourceNotFoundError("billing", billing_id)
 
     # CUSTOMER: verify they own this billing
-    if ctx.is_customer_only:
+    if ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(billing["customer_id"]):
             raise InsufficientPermissionsError("Customers may only dispute their own billing records")
@@ -1526,7 +1526,7 @@ def file_cbm_dispute(
 
 def list_billing_disputes(tenant_id: str, billing_id: str, ctx: Any) -> list[dict[str, Any]]:
     """List all disputes for a billing record."""
-    if ctx.is_customer_only:
+    if ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         billing = repo.get_billing_by_id(tenant_id, billing_id)
         if not billing:
             raise ResourceNotFoundError("billing", billing_id)

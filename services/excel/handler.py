@@ -201,7 +201,11 @@ def _parse_body(event: dict[str, Any]) -> dict[str, Any]:
         return {}
 
 
-def _customer_user_id(ctx: Any) -> str | None:
+def _customer_user_id(ctx: Any, *allowed_roles: UserRole) -> str | None:
+    staff_roles = tuple(r for r in allowed_roles if r != UserRole.CUSTOMER)
+    must_scope = getattr(ctx, "must_scope_to_customer", None)
+    if callable(must_scope):
+        return str(ctx.user_id) if must_scope(*staff_roles) else None
     is_customer_only = bool(getattr(ctx, "is_customer_only", ctx.role == UserRole.CUSTOMER))
     return str(ctx.user_id) if is_customer_only else None
 
@@ -266,7 +270,7 @@ def _dispatch(
     if resource == "packing-lists" and len(parts) == 4 and parts[3] == "documents" and method == "GET":
         ctx.assert_role(*_PL_PDF_ROLES)
         qs = event.get("queryStringParameters") or {}
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_PL_PDF_ROLES)
         result = service.get_packing_list_documents(
             tenant_id,
             parts[2],
@@ -301,7 +305,7 @@ def _dispatch(
     ):
         ctx.assert_role(*_PL_PDF_ROLES)
         qs = event.get("queryStringParameters") or {}
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_PL_PDF_ROLES)
         result = service.export_loading_receipt_pdf(
             tenant_id,
             parts[2],
@@ -322,7 +326,7 @@ def _dispatch(
     ):
         ctx.assert_role(*_PL_PDF_ROLES)
         qs = event.get("queryStringParameters") or {}
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_PL_PDF_ROLES)
         result = service.export_loading_receipt_image(
             tenant_id,
             parts[2],
@@ -337,7 +341,7 @@ def _dispatch(
     if resource == "packing-lists" and len(parts) == 4 and parts[3] == "image" and method == "GET":
         ctx.assert_role(*_PL_PDF_ROLES)
         qs = event.get("queryStringParameters") or {}
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_PL_PDF_ROLES)
         result = service.export_packing_list_image(
             tenant_id,
             parts[2],
@@ -352,7 +356,7 @@ def _dispatch(
     if resource == "packing-lists" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_PL_PDF_ROLES)
         qs = event.get("queryStringParameters") or {}
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_PL_PDF_ROLES)
         result = service.export_packing_list_pdf(
             tenant_id,
             parts[2],
@@ -366,7 +370,7 @@ def _dispatch(
     # GET /v1/billing/{id}/pdf — the invoice (FD-39); a customer gets their own only
     if resource == "billing" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_BILLING_SINGLE_EXPORT_ROLES)
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_BILLING_SINGLE_EXPORT_ROLES)
         result = service.export_invoice_pdf(
             tenant_id, parts[2], actor_id=ctx.user_id, actor_role=str(ctx.role), customer_user_id=customer_user_id
         )
@@ -381,7 +385,7 @@ def _dispatch(
     # GET /v1/release-notes/{id}/pdf
     if resource == "release-notes" and len(parts) == 4 and parts[3] == "pdf" and method == "GET":
         ctx.assert_role(*_RELEASE_NOTE_PDF_ROLES)
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_RELEASE_NOTE_PDF_ROLES)
         result = service.export_release_note_pdf(
             tenant_id,
             parts[2],
@@ -394,7 +398,7 @@ def _dispatch(
     # GET /v1/payments/{id}/receipt/pdf
     if resource == "payments" and len(parts) == 5 and parts[3] == "receipt" and parts[4] == "pdf" and method == "GET":
         ctx.assert_role(*_RECEIPT_PDF_ROLES)
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_RECEIPT_PDF_ROLES)
         result = service.export_receipt_pdf(
             tenant_id,
             parts[2],
@@ -464,7 +468,7 @@ def _dispatch(
     # GET /v1/billing/{id}/export — the customer's downloadable invoice
     if resource == "billing" and len(parts) == 4 and parts[3] == "export" and method == "GET":
         ctx.assert_role(*_BILLING_SINGLE_EXPORT_ROLES)
-        customer_user_id = _customer_user_id(ctx)
+        customer_user_id = _customer_user_id(ctx, *_BILLING_SINGLE_EXPORT_ROLES)
         result = service.export_billing(
             tenant_id,
             parts[2],

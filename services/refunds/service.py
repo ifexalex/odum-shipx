@@ -96,7 +96,7 @@ def create_refund(
     record being refunded, the same pattern services/claims/service.py
     uses for filing a claim.
     """
-    is_customer = ctx.is_customer_only
+    is_customer = ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
     if is_customer:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer:
@@ -224,7 +224,7 @@ def get_refund(tenant_id: str, refund_id: str, ctx: Any) -> dict[str, Any]:
     if not refund:
         raise ResourceNotFoundError("refund_request", refund_id)
 
-    if ctx.is_customer_only:
+    if ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(refund["customer_id"]):
             # 404 (not 403) so customers cannot enumerate whether another customer's refund ID exists.

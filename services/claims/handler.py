@@ -212,7 +212,9 @@ def _claim_routes(
             ctx.assert_role(*_CLAIM_ROLES)
             body = _parse_body(event)
             req = parse_validated(FileDamageClaimRequest, body)
-            customer_id_override = body.get("customer_id") if not ctx.is_customer_only else None
+            customer_id_override = (
+                body.get("customer_id") if not ctx.must_scope_to_customer(UserRole.NIGERIA_OFFICE_STAFF) else None
+            )
             result = service.file_claim(
                 tenant_id,
                 req,

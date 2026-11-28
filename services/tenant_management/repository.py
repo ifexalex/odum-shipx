@@ -60,12 +60,14 @@ _CUSTOMER_UPDATE_FIELDS = frozenset(
         "address",
         "delivery_address",
         "contract_details",
-        "user_id",  # Link customer to a tenant_user (portal account)
         "notification_consent",  # GDPR Art. 6 — channel opt-in list (e.g. ['sms', 'email'])
         "consent_given_at",  # Timestamp of explicit consent
         "locale",  # Notification language (migration 029) — read by tracking→notification flow
     }
 )
+# Internal-only fields never writable directly from raw HTTP API payloads:
+#   - user_id: linked only by invite acceptance / self-registration
+_CUSTOMER_INTERNAL_UPDATE_FIELDS = _CUSTOMER_UPDATE_FIELDS | frozenset({"user_id"})
 
 _CHARGE_TYPE_UPDATE_FIELDS = frozenset(
     {
@@ -683,12 +685,19 @@ def list_customers(
     return extract_page(rows, limit)
 
 
-def update_customer(tenant_id: str, customer_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+def update_customer(
+    tenant_id: str,
+    customer_id: str,
+    updates: dict[str, Any],
+    *,
+    allow_internal: bool = False,
+) -> dict[str, Any] | None:
     prepared = dict(updates)
     for json_col in ("delivery_address",):
         if json_col in prepared and isinstance(prepared[json_col], (dict, list)):
             prepared[json_col] = json.dumps(prepared[json_col])
-    set_clause, params = _build_set_clause(prepared, _CUSTOMER_UPDATE_FIELDS)
+    allowed_fields = _CUSTOMER_INTERNAL_UPDATE_FIELDS if allow_internal else _CUSTOMER_UPDATE_FIELDS
+    set_clause, params = _build_set_clause(prepared, allowed_fields)
     params["tenant_id"] = tenant_id
     params["id"] = customer_id
     return execute_write_with_tenant(

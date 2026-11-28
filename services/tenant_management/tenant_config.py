@@ -96,16 +96,29 @@ def get_default_transit_days(tenant_id: str) -> int:
     return DEFAULT_TRANSIT_DAYS
 
 
-def get_tenant_config(tenant_id: str) -> dict[str, Any]:
-    """Return tenant config as a flat dict keyed by config_key.
+_CUSTOMER_VISIBLE_CONFIG_KEYS: frozenset[str] = frozenset(
+    {
+        "branding_config",
+        "bank_transfer_config",
+        "default_transit_days",
+        "paystack_config",
+    }
+)
+_STAFF_VISIBLE_CONFIG_KEYS: frozenset[str] = _CUSTOMER_VISIBLE_CONFIG_KEYS | frozenset({"warehouse_address"})
 
-    The webhook_config.secret is masked to '****' — use the rotate-secret
-    endpoint to retrieve a new secret in plaintext. paystack_config.
-    secret_key_encrypted is stripped entirely — it is never returned to any
-    client, encrypted or not (contrast with webhook secret rotation, which
-    does show the plaintext once — a tenant's Paystack key isn't generated
-    by ShipX, so there is no "show it once" moment to offer).
+
+def get_tenant_config(tenant_id: str, *, ctx: Any = None) -> dict[str, Any]:
+    """Return tenant config as a flat dict keyed by config_key, scoped by caller role.
+
+    - ``TENANT_ADMIN`` (or internal callers with ``ctx=None``): full config with
+      ``webhook_config.secret`` masked and ``paystack_config.secret_key_encrypted`` stripped.
+    - Non-admin staff: branding, bank transfer, transit days, warehouse address, and
+      ``paystack_config.enabled`` only.
+    - ``CUSTOMER``: branding, bank transfer, transit days, and ``paystack_config.enabled`` only
+      (never internal FX markup, CBM rates, approval thresholds, or webhook URLs).
     """
+    from shared.tenant_context import UserRole
+
     rows = repo.get_all_configs(tenant_id)
     config_map = {row["config_key"]: row["config_value"] for row in rows}
     # The logo is shown through a short-lived link, never its storage key (FD-29).
@@ -113,7 +126,21 @@ def get_tenant_config(tenant_id: str) -> dict[str, Any]:
         config_map["branding_config"] = with_logo_url(tenant_id, config_map["branding_config"])
     # Always expose the effective default transit duration (45 days unless overridden).
     config_map["default_transit_days"] = _parse_transit_days(config_map.get("default_transit_days"))
-    return _mask_paystack_config(_mask_webhook_config(config_map))
+    masked = _mask_paystack_config(_mask_webhook_config(config_map))
+
+    if ctx is None or ctx.has_role(UserRole.TENANT_ADMIN):
+        return masked
+
+    is_staff = ctx.has_role(
+        UserRole.CHINA_OFFICE_STAFF,
+        UserRole.NIGERIA_OFFICE_STAFF,
+        UserRole.WAREHOUSE_ATTENDANT,
+    )
+    allowed_keys = _STAFF_VISIBLE_CONFIG_KEYS if is_staff else _CUSTOMER_VISIBLE_CONFIG_KEYS
+    filtered = {k: v for k, v in masked.items() if k in allowed_keys}
+    if "paystack_config" in filtered and isinstance(filtered["paystack_config"], dict):
+        filtered["paystack_config"] = {"enabled": bool(filtered["paystack_config"].get("enabled"))}
+    return filtered
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")

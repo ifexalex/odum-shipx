@@ -30,7 +30,9 @@ function AuthPreview(): JSX.Element {
   )
 }
 
-const IS_LOCAL = import.meta.env.VITE_ENVIRONMENT === 'local'
+// Defense in depth: LocalAuthProvider and RoleSwitcher must NEVER be compiled into
+// production builds even if a .env.local file or CI variable sets VITE_ENVIRONMENT=local.
+const IS_LOCAL = import.meta.env.DEV && import.meta.env.VITE_ENVIRONMENT === 'local'
 
 // Against the Flask dev server (make stack/make up), skip Cognito entirely
 // and drive the whole real route tree off LocalAuthProvider's role switcher

@@ -77,7 +77,15 @@ def _validate_evidence_file_key(tenant_id: str, billing_id: str, file_key: str) 
         )
 
 
-def _is_customer_only(ctx: Any) -> bool:
+_PAYMENT_STAFF_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+_RELEASE_NOTE_STAFF_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.WAREHOUSE_ATTENDANT)
+
+
+def _is_customer_only(ctx: Any, *staff_roles: UserRole) -> bool:
+    roles_to_check = staff_roles or _RELEASE_NOTE_STAFF_ROLES
+    must_scope = getattr(ctx, "must_scope_to_customer", None)
+    if callable(must_scope):
+        return bool(must_scope(*roles_to_check))
     return bool(getattr(ctx, "is_customer_only", ctx.role == UserRole.CUSTOMER))
 
 
@@ -208,7 +216,7 @@ def confirm_payment(
 
 
 def _customer_owns_billing(tenant_id: str, ctx: Any, billing: dict[str, Any]) -> bool:
-    if not _is_customer_only(ctx):
+    if not _is_customer_only(ctx, *_PAYMENT_STAFF_ROLES):
         return True
     customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
     return customer is not None and str(billing["customer_id"]) == str(customer["id"])

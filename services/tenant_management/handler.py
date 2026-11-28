@@ -812,7 +812,7 @@ def _tenant_admin_routes(
 
         if config_sub is None:
             if method == "GET":
-                return success(service.get_tenant_config(tenant_id), request_id=request_id)
+                return success(service.get_tenant_config(tenant_id, ctx=ctx), request_id=request_id)
             if method == "PUT":
                 body = _parse_body(event)
                 req = parse_validated(UpdateTenantConfigRequest, body)
@@ -1031,25 +1031,30 @@ def _customer_routes(
     tenant_id = ctx.tenant_id
     customer_id = parts[2] if len(parts) > 2 else None
     action = parts[3] if len(parts) > 3 else None
-    is_customer_role = ctx.is_customer_only
+    customer_read_staff = (
+        UserRole.TENANT_ADMIN,
+        UserRole.CHINA_OFFICE_STAFF,
+        UserRole.NIGERIA_OFFICE_STAFF,
+        UserRole.WAREHOUSE_ATTENDANT,
+    )
+    customer_write_staff = (
+        UserRole.TENANT_ADMIN,
+        UserRole.CHINA_OFFICE_STAFF,
+        UserRole.NIGERIA_OFFICE_STAFF,
+    )
 
     # GET /v1/customers/stats — tenant-wide customer aggregates for the list
     # stats row (SQL-computed). Staff only; checked before the {id} branch.
     if customer_id == "stats" and action is None:
         if method == "GET":
-            ctx.assert_role(*_STAFF_ROLES)
+            ctx.assert_role(*customer_read_staff)
             return success(service.get_customer_stats(tenant_id), request_id=request_id)
         raise ResourceNotFoundError("route", "/".join(parts))
 
     if not customer_id:
-        # POST /v1/customers — staff only
+        # POST /v1/customers — office staff & tenant admin only
         if method == "POST":
-            ctx.assert_role(
-                UserRole.PLATFORM_ADMIN,
-                UserRole.TENANT_ADMIN,
-                UserRole.CHINA_OFFICE_STAFF,
-                UserRole.NIGERIA_OFFICE_STAFF,
-            )
+            ctx.assert_role(*customer_write_staff)
             body = _parse_body(event)
             result = service.create_customer(
                 tenant_id,
@@ -1069,10 +1074,10 @@ def _customer_routes(
         # their own record (this doubles as the portal's "who am I" lookup —
         # there is no separate /v1/customers/me endpoint).
         if method == "GET":
-            if is_customer_role:
+            ctx.assert_role(*customer_read_staff, UserRole.CUSTOMER)
+            if ctx.must_scope_to_customer(*customer_read_staff):
                 own = service.get_customer_for_user(tenant_id, ctx.user_id)
                 return paginated([own] if own else [], None, False, request_id=request_id)
-            ctx.assert_role(*_STAFF_ROLES)
             q = _qp(event, "q")
             cursor, limit = parse_pagination_params(event.get("queryStringParameters"), default_limit=50)
             page, next_cursor, has_more = service.list_customers(tenant_id, q=q, limit=limit, cursor=cursor)
@@ -1082,19 +1087,21 @@ def _customer_routes(
         if action is None:
             # GET /v1/customers/{id}
             if method == "GET":
+                ctx.assert_role(*customer_read_staff, UserRole.CUSTOMER)
                 result = service.get_customer(
                     tenant_id,
                     customer_id,
                     requesting_user_id=ctx.user_id,
-                    is_customer_role=is_customer_role,
+                    is_customer_role=ctx.must_scope_to_customer(*customer_read_staff),
                 )
                 return success(result, request_id=request_id)
 
-            # PATCH /v1/customers/{id} — staff (full field set) or the customer
-            # themselves (own record, restricted self-service fields only)
+            # PATCH /v1/customers/{id} — office staff/admin (full field set, excluding user_id)
+            # or the customer themselves (own record, restricted self-service fields only)
             if method == "PATCH":
+                ctx.assert_role(*customer_write_staff, UserRole.CUSTOMER)
                 body = _parse_body(event)
-                if is_customer_role:
+                if ctx.must_scope_to_customer(*customer_write_staff):
                     # Ownership check — 404s when the record is not theirs.
                     service.get_customer(
                         tenant_id,
@@ -1107,8 +1114,6 @@ def _customer_routes(
                     # contract_details, or user_id.
                     allowed = {"phone", "whatsapp", "delivery_address", "notification_consent", "locale"}
                     body = {k: v for k, v in body.items() if k in allowed}
-                else:
-                    ctx.assert_role(*_STAFF_ROLES)
                 result = service.update_customer(
                     tenant_id,
                     customer_id,
@@ -1124,40 +1129,42 @@ def _customer_routes(
             # forgotten (ownership verified; billing/shipment rows are kept but
             # de-linked by the anonymise routine).
             if method == "DELETE":
-                if is_customer_role:
+                ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.CUSTOMER)
+                is_self_erasure = ctx.must_scope_to_customer(UserRole.TENANT_ADMIN)
+                if is_self_erasure:
                     service.get_customer(
                         tenant_id,
                         customer_id,
                         requesting_user_id=ctx.user_id,
                         is_customer_role=True,
                     )
-                else:
-                    ctx.assert_role(UserRole.TENANT_ADMIN)
                 anonymised = service.anonymise_customer(
                     tenant_id,
                     customer_id,
                     actor_id=ctx.user_id,
-                    actor_role=ctx.role.value,
+                    actor_role="customer" if is_self_erasure else "tenant_admin",
                     ip_address=ip_address,
                 )
                 return success(anonymised or {}, request_id=request_id)
 
         else:
-            # POST /v1/customers/{id}/invite — staff only; issues a new invite,
-            # or resends (which invalidates any prior unconsumed one).
+            # POST /v1/customers/{id}/invite — office staff & tenant admin only;
+            # issues a new invite, or resends (which invalidates any prior unconsumed one).
             if action == "invite" and method == "POST":
-                ctx.assert_role(*_STAFF_ROLES)
+                ctx.assert_role(*customer_write_staff)
                 result = service.issue_customer_invite(tenant_id, customer_id, actor_id=ctx.user_id, request_id=request_id)
                 return created(result, location=f"/v1/customers/{customer_id}", request_id=request_id)
 
             # GET /v1/customers/{id}/export — tenant_admin or the customer themselves
             if action == "export" and method == "GET":
                 ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.CUSTOMER)
+                is_customer_export = ctx.must_scope_to_customer(UserRole.TENANT_ADMIN)
                 result = service.export_customer_data(
                     tenant_id,
                     customer_id,
                     requesting_user_id=ctx.user_id,
-                    is_customer_role=is_customer_role,
+                    is_customer_role=is_customer_export,
+                    ip_address=ip_address,
                 )
                 return success(result, request_id=request_id)
 
