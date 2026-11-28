@@ -6,6 +6,7 @@ Distinct from ``shared.audit.log_audit``, which writes a tenant's own trail. Pla
 import json
 from typing import Any
 
+from shared.audit import _mask_sensitive
 from shared.db import execute_write_with_tenant
 from shared.observability import record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
@@ -37,6 +38,7 @@ def _insert(
     details: dict[str, Any] | None,
     ip_address: str | None,
 ) -> None:
+    masked_details = _mask_sensitive(details) if details else None
     execute_write_with_tenant(
         PLATFORM_TENANT_ID,
         """
@@ -48,7 +50,7 @@ def _insert(
             "action": action,
             "actor_id": actor_id,
             "target_tenant_id": target_tenant_id,
-            "details": json.dumps(details) if details else None,
+            "details": json.dumps(masked_details) if masked_details else None,
             "ip_address": ip_address,
         },
     )

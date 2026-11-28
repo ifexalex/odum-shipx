@@ -744,11 +744,17 @@ def generate_release_note(
     packages_released = req.packages_released if is_count_based else None
     count_released = int(packages_released) if packages_released is not None else 0
 
-    if req.release_with_outstanding and not req.approval_notes:
-        raise BusinessRuleViolationError(
-            "approval_notes is required when releasing with outstanding balance",
-            rule_id="APPROVAL_NOTES_REQUIRED",
-        )
+    if req.release_with_outstanding:
+        if ctx is not None and not ctx.has_role(UserRole.TENANT_ADMIN):
+            raise InsufficientPermissionsError(
+                action="release_with_outstanding",
+                required_role="tenant_admin",
+            )
+        if not req.approval_notes:
+            raise BusinessRuleViolationError(
+                "approval_notes is required when releasing with outstanding balance",
+                rule_id="APPROVAL_NOTES_REQUIRED",
+            )
 
     requested_warehouse_id = getattr(req, "warehouse_id", None)
     warehouse_row = repo.get_warehouse_by_id(tenant_id, requested_warehouse_id) if requested_warehouse_id else None
@@ -2132,11 +2138,25 @@ def initialize_online_payment(
             rule_id="BR-PAY-INIT-003",
         )
 
-    if callback_url and not callback_url.startswith(("https://", "http://")):
-        raise BusinessRuleViolationError(
-            "callback_url must be an http(s) URL.",
-            rule_id="BR-PAY-INIT-004",
-        )
+    if callback_url:
+        if not callback_url.startswith(("https://", "http://")):
+            raise BusinessRuleViolationError(
+                "callback_url must be an http(s) URL.",
+                rule_id="BR-PAY-INIT-004",
+            )
+        from urllib.parse import urlparse
+
+        from shared.origin_guard import trusted_origins
+
+        allowed = trusted_origins()
+        if allowed:
+            parsed = urlparse(callback_url)
+            origin = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+            if origin not in allowed:
+                raise BusinessRuleViolationError(
+                    "callback_url origin is not allowed.",
+                    rule_id="BR-PAY-INIT-005",
+                )
 
     # Multi-tenant Paystack (2026-07-19): each tenant connects their own
     # secret key so payments land in their own account — no platform-wide
@@ -2195,7 +2215,7 @@ def confirm_online_payment(
 
     customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
     if not customer or str(customer["id"]) != str(billing["customer_id"]):
-        raise InsufficientPermissionsError(action="confirm_online_payment", required_role="owner")
+        raise ResourceNotFoundError("billing", billing_id)
 
     # The reference must actually belong to this billing record — paystack.py
     # mints it as "{billing_id}.{nonce}" precisely so this can be checked;
@@ -2233,7 +2253,12 @@ def confirm_online_payment(
             "This payment was not made in naira, so it has not been applied to your invoice. Please contact the office.",
             rule_id="BR-PAY-VERIFY-002",
         )
-    gateway_transaction_id = str(data.get("id", ""))
+    gateway_transaction_id = str(data.get("id", "")).strip()
+    if not gateway_transaction_id:
+        raise BusinessRuleViolationError(
+            "Payment gateway did not return a transaction identifier.",
+            rule_id="BR-PAY-VERIFY-003",
+        )
 
     result = process_webhook_payment(
         tenant_id=tenant_id,

@@ -474,10 +474,18 @@ def set_user_status(tenant_id: str, user_id: str, status: str) -> dict[str, Any]
 
 
 def count_active_users(tenant_id: str) -> int:
-    """Count active staff/admin users (excludes customer portal accounts from staff seat quota)."""
+    """Count active staff/admin users (excludes customer-only portal accounts from staff seat quota)."""
     rows = execute_with_tenant(
         tenant_id,
-        "SELECT COUNT(*) AS cnt FROM tenant_user WHERE tenant_id = %s AND status = 'active' AND role <> 'customer'",
+        """
+        SELECT COUNT(DISTINCT tu.id)::int AS cnt
+        FROM tenant_user tu
+        LEFT JOIN tenant_user_role tur
+          ON tur.tenant_user_id = tu.id AND tur.tenant_id = tu.tenant_id
+        WHERE tu.tenant_id = %s
+          AND tu.status = 'active'
+          AND (tu.role <> 'customer' OR (tur.role IS NOT NULL AND tur.role <> 'customer'))
+        """,
         (tenant_id,),
     )
     return int(rows[0]["cnt"]) if rows else 0

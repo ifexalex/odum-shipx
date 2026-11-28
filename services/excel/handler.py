@@ -59,13 +59,11 @@ init_tracing()
 logger = logging.getLogger(__name__)
 
 _EXPORT_ROLES = (
-    UserRole.PLATFORM_ADMIN,
     UserRole.TENANT_ADMIN,
     UserRole.CHINA_OFFICE_STAFF,
     UserRole.NIGERIA_OFFICE_STAFF,
 )
 _BILLING_EXPORT_ROLES = (
-    UserRole.PLATFORM_ADMIN,
     UserRole.TENANT_ADMIN,
     UserRole.NIGERIA_OFFICE_STAFF,
 )

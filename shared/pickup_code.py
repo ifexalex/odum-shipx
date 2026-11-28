@@ -38,8 +38,11 @@ def _pepper() -> bytes | None:
 
 
 def is_configured() -> bool:
-    """True once a usable pepper is set. Until then no codes are issued and none are required."""
-    return _pepper() is not None
+    """True once a usable pepper is set. Fails closed in production if missing."""
+    configured = _pepper() is not None
+    if not configured and os.environ.get("ENVIRONMENT", "").strip().lower() in ("prod", "production"):
+        raise RuntimeError("PICKUP_CODE_PEPPER must be configured in production")
+    return configured
 
 
 def new_code() -> str:
