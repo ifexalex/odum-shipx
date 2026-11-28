@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type JSX } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
 import { usersApi, type TenantUser, type TenantUserRole } from '../../api/tenantManagement'
 import { staffKeys } from '../../api/keys'
@@ -64,6 +64,7 @@ export function StaffUserDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>()
   const { session } = useSession()
   const location = useLocation()
+  const navigate = useNavigate()
   const stateUser = (location.state as { user?: TenantUser } | null)?.user ?? null
 
   const qc = useQueryClient()
@@ -351,7 +352,23 @@ export function StaffUserDetail(): JSX.Element {
         </div>
       </Section>
 
-      <Section title="Recent activity" sub="What this user has done across the tenant">
+      <Section
+        title="Recent activity"
+        sub="What this user has done across the tenant"
+        action={
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              navigate(
+                `/admin/activity-log?actor_id=${encodeURIComponent(user.id)}&actor_name=${encodeURIComponent(user.full_name)}`,
+              )
+            }
+          >
+            View full activity log
+          </Button>
+        }
+      >
         <ActivityFeed actorId={user.id} limit={10} showActor={false} />
       </Section>
 

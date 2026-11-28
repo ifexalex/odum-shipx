@@ -782,7 +782,8 @@ def generate_release_note(
 
     is_on_credit = bool(req.release_with_outstanding)
     credit_granted_by = actor_id if is_on_credit else None
-    credit_granted_by_name = req.credit_granted_by_name if is_on_credit else None
+    # Derive approver display name from the authenticated admin record — never trust a typed name (TA-02 / TC-03).
+    credit_granted_by_name = (repo.get_tenant_user_name(tenant_id, actor_id) or actor_id) if is_on_credit else None
 
     tenant_short = repo.get_tenant_short(tenant_id)
 

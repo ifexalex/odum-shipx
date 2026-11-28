@@ -448,9 +448,9 @@ export function Dashboard(): JSX.Element {
             />
             <QuickActionCard
               icon="coin"
-              title="Update dollar rate"
-              sub="Set today's USD → NGN conversion rate"
-              cta="Update rate"
+              title="Review dollar markup"
+              sub="Adjust your markup over the live USD → NGN base rate"
+              cta="Review markup"
               onAction={() => navigate('/admin/config/dollar-rate')}
             />
           </div>

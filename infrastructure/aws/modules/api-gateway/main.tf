@@ -205,8 +205,10 @@ locals {
     "POST /v1/billing/{billing-id}/storage-fees/waive" = "billing"
 
     # --- Claims: missing / seized item logging ------------------------------
-    "POST /v1/claims/missing-items" = "claims"
-    "POST /v1/claims/seized-items"  = "claims"
+    "POST /v1/claims/missing-items"       = "claims"
+    "PATCH /v1/claims/missing-items/{id}" = "claims"
+    "POST /v1/claims/seized-items"        = "claims"
+    "PATCH /v1/claims/seized-items/{id}"  = "claims"
 
     # --- Packing lists: bulk workflow actions -------------------------------
     "POST /v1/packing-lists/bulk-submit"  = "packing_list"
@@ -266,6 +268,7 @@ locals {
     "POST /v1/tenant/users/{id}/resend-invite"                = "tenant_management"
     "POST /v1/tenant/users/{id}/resend-activation"            = "tenant_management"
     "POST /v1/tenant/users/{id}/reset-password"               = "tenant_management"
+    "POST /v1/tenant/users/{id}/reactivate"                   = "tenant_management"
     "POST /v1/customers/{id}/invite"                          = "tenant_management"
 
     # --- Platform admin: plans, gateways, per-tenant ops, impersonation -----
