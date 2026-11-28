@@ -135,6 +135,14 @@
     {
       "key": "platform_admin_id",
       "value": ""
+    },
+    {
+      "key": "refresh_token",
+      "value": ""
+    },
+    {
+      "key": "app_origin",
+      "value": "http://localhost:5173"
     }
   ],
   "item": [
@@ -237,6 +245,80 @@
               ]
             },
             "description": "Public customer self-registration against the company with slug {{tenant_slug}}. Answers 202 with {\"data\": {\"status\": \"received\"}} and no Location header WHETHER OR NOT the email already has an account, so it cannot be used to find out who is a customer (audit SEC-04). A new email gets the Cognito temporary-password email; an email that already has an account creates nothing and its owner is emailed instead. Rate limited to 5 per hour per client address (429 RATE_LIMIT_EXCEEDED with Retry-After). notification_consent lists the channels offered for optional messages; an empty list is a recorded choice of none."
+          }
+        },
+        {
+          "name": "Establish Session (platform pool)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "{{app_origin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\",\n  \"pool\": \"platform\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/session",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "session"
+              ]
+            },
+            "description": "Called by the SPA right after a Cognito sign-in. pool (Phase 1b, 2026-11-28): \"platform\" when the refresh token came from the platform admins' pool; the response also sets an httpOnly shipx_rt_pool=platform cookie so /v1/auth/refresh and /v1/auth/logout use that pool's client. Default \"tenant\" clears it. Needs a trusted Origin."
+          }
+        },
+        {
+          "name": "Entra Step-up Authorize URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Origin",
+                "value": "{{app_origin}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"step_up\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/auth/authorize-url",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "authorize-url"
+              ]
+            },
+            "description": "Entra only (Phase 1b). purpose=step_up returns an authorize URL that forces a fresh sign-in (prompt=login, max_age=0) with a state starting su.; the matching POST /v1/auth/callback returns {id_token, purpose: step_up} and sets no session cookie. Send that id_token to POST /v1/platform/auth/step-up."
           }
         }
       ]

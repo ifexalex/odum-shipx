@@ -157,6 +157,9 @@ jobs:
           VITE_API_BASE_URL: ${{ steps.tf.outputs.api_base || secrets.VITE_API_BASE_URL }}
           VITE_COGNITO_USER_POOL_ID: ${{ secrets.VITE_COGNITO_USER_POOL_ID }}
           VITE_COGNITO_CLIENT_ID: ${{ secrets.VITE_COGNITO_CLIENT_ID }}
+          # Platform admins' MFA-required pool (platform audit Phase 1b): terraform output cognito_platform_*.
+          VITE_COGNITO_PLATFORM_USER_POOL_ID: ${{ secrets.VITE_COGNITO_PLATFORM_USER_POOL_ID }}
+          VITE_COGNITO_PLATFORM_CLIENT_ID: ${{ secrets.VITE_COGNITO_PLATFORM_CLIENT_ID }}
           VITE_AUTH_PROVIDER: ${{ steps.tf.outputs.auth_provider || secrets.VITE_AUTH_PROVIDER || 'cognito' }}
           VITE_ENTRA_TOKEN_ENDPOINT: ${{ steps.tf.outputs.entra_token_endpoint || secrets.VITE_ENTRA_TOKEN_ENDPOINT }}
           VITE_ENTRA_CLIENT_ID: ${{ steps.tf.outputs.entra_client_id || secrets.VITE_ENTRA_CLIENT_ID }}

@@ -220,3 +220,10 @@ default `Strict` for AWS's shared-domain setup). Entra app-registration prerequi
 `test_entra_oauth.py` (PKCE challenge, authorize-URL params, `authorization_code_grant`, and the
 `/v1/auth/authorize-url` + `/v1/auth/callback` routes incl. state-mismatch/CSRF rejection),
 `jwt.test.ts` (Entra claim shape → Session). Auth suites green; `npm run typecheck`/`eslint`/`build` clean.
+
+## Platform admin sign-in with MFA (platform audit Phase 1b, 2026-11-28)
+
+- **Where.** `/login?platform=1`, linked from the standard sign-in when the build has `VITE_COGNITO_PLATFORM_USER_POOL_ID` and `VITE_COGNITO_PLATFORM_CLIENT_ID` (Cognito builds only). `login(email, password, { pool: 'platform' })` signs in to the platform admins' pool.
+- **Second step.** `CognitoClient.signIn` rejects with `MfaCodeRequiredError` (enter the TOTP code → `completeMfa('code', code)`, which calls `submitMfaCode`) or, on the first sign-in, `MfaSetupRequiredError` carrying the setup key and an `otpauth://` link (add it to an authenticator app → `completeMfa('setup', code)`, which calls `verifyMfaSetup`). A temporary password goes through `/reset-password?first=1&platform=1` first, which hands the MFA step back to the login screen in navigation state. No QR library is added: the key is shown as text and as an `otpauth://` link.
+- **Session.** Tokens carry `pool`; `establishServerSession(refreshToken, pool)` sends it so the backend refreshes through the right client. A platform-pool token has no tenant or group claims, so the session is built with `PLATFORM` / `platform_admin` (on login here, on refresh from the backend's answer).
+- **Entra step-up.** `auth/EntraClient.beginStepUpSignIn()` opens a small window on the backend's step-up authorize URL, watches it until it is back on our origin (as MSAL's pop-up flow does), reads the code and state, closes it, and exchanges them; the backend returns the fresh ID token without setting the session cookie. `AuthCallback` recognises a step-up `state` (`su.`) and signs nobody in. `StepUpHost` shows "Sign in again" on Entra.

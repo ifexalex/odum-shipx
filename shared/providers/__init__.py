@@ -197,6 +197,31 @@ def get_identity_provider() -> IdentityProvider:
     return _identity_provider
 
 
+_platform_identity_provider: IdentityProvider | None = None
+
+
+def get_platform_identity_provider() -> IdentityProvider:
+    """Return the provider that holds platform admins' sign-ins (platform audit Phase 1b).
+
+    On AWS with a platform pool configured (``COGNITO_PLATFORM_USER_POOL_ID``), a Cognito provider bound to that pool,
+    which requires MFA; otherwise the ordinary provider (Entra keeps platform admins in its one directory).
+    """
+    global _platform_identity_provider
+    if _platform_identity_provider is not None:
+        return _platform_identity_provider
+
+    from shared.platform_identity import platform_pool_id
+
+    pool_id = platform_pool_id()
+    if AUTH_PROVIDER != "azure" and pool_id:
+        from shared.providers.aws.cognito import CognitoIdentityProvider
+
+        _platform_identity_provider = CognitoIdentityProvider(user_pool_id=pool_id)
+    else:
+        _platform_identity_provider = get_identity_provider()
+    return _platform_identity_provider
+
+
 def get_claims_mapper() -> ClaimsMapper:
     """Return the JWT claims mapper for the active AUTH_PROVIDER (cached singleton)."""
     global _claims_mapper

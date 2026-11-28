@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { isStepUpState } from '../../auth/authClient'
 import { homePathForRole } from '../../auth/roleHome'
 import { takeNext } from './returnPath'
 import { useSession } from '../../auth/useSession'
@@ -45,6 +46,9 @@ export function AuthCallback(): JSX.Element {
     if (ran.current) return
     ran.current = true
 
+    // A platform admin's step-up window (Phase 1b): the tab that opened it reads the code and finishes the exchange.
+    if (isStepUpState(state)) return
+
     // Every reason to refuse is already known from the URL at render time and
     // is the initial error above, so there is nothing to set here — only the
     // exchange itself, whose failure is genuinely asynchronous.
@@ -58,6 +62,14 @@ export function AuthCallback(): JSX.Element {
     // Run once on mount — params/completeLogin are stable for this navigation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  if (isStepUpState(state)) {
+    return (
+      <AuthShell>
+        <FormHead title="Signed in" sub="Return to the ShipX tab; this window closes by itself." />
+      </AuthShell>
+    )
+  }
 
   if (error) {
     return (

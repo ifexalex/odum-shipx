@@ -9,17 +9,20 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
-from shared import rate_limit
+from shared import providers, rate_limit
 from shared.distributed_cache import DistributedCache
 from shared.exceptions import (
     AuthenticationRequiredError,
     MaintenanceModeError,
+    PlatformMfaRequiredError,
     ResourceNotFoundError,
     ServiceUnavailableError,
     TenantOffboardedError,
     TenantSuspendedError,
 )
 from shared.logging_config import bind_log_context
+from shared.platform_identity import is_platform_pool_token, token_shows_mfa
+from shared.platform_identity import mfa_required as platform_mfa_required
 from shared.providers import get_claims_mapper
 from shared.tenant_context import PLATFORM_TENANT_ID, TenantContext, UserRole
 
@@ -190,7 +193,12 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
     # whose role then decides what they may do (platform audit Phase 1, C-28). Fail-closed on a lookup failure.
     platform_user_id: str | None = None
     platform_role: str | None = None
+    platform_pool = False
     if tenant_id == PLATFORM_TENANT_ID and UserRole.PLATFORM_ADMIN in roles:
+        # Multi-factor sign-in first (Phase 1b, D3): a password alone never reaches the directory.
+        platform_pool = is_platform_pool_token(claims)
+        if platform_mfa_required() and not token_shows_mfa(claims, providers.AUTH_PROVIDER):
+            raise PlatformMfaRequiredError()
         platform_user_id, platform_role = _resolve_platform_caller(
             user_id,
             str(claims.get("email") or claims.get("preferred_username") or "") or None,
@@ -211,6 +219,7 @@ def get_tenant_context(event: dict[str, Any]) -> TenantContext:
         read_only=read_only,
         platform_user_id=platform_user_id,
         platform_role=platform_role,
+        platform_pool=platform_pool,
     )
 
     # Bind trace context the moment identity is known, from this single

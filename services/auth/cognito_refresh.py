@@ -66,7 +66,19 @@ def _cognito_client() -> Any:
     return _client
 
 
-def refresh_id_token(refresh_token: str) -> RefreshResult:
+def _client_id(pool: str) -> str:
+    """The public app client of the pool that issued the refresh token (platform admins' pool, Phase 1b)."""
+    if pool == "platform":
+        from shared.platform_identity import platform_client_id
+
+        client_id = platform_client_id()
+        if not client_id:
+            raise AuthenticationRequiredError()
+        return client_id
+    return os.environ["COGNITO_CLIENT_ID"]
+
+
+def refresh_id_token(refresh_token: str, pool: str = "tenant") -> RefreshResult:
     """Exchange a Cognito refresh token for a fresh ID/access token pair.
 
     Uses the non-admin `initiate_auth` API (not `admin_initiate_auth`) — the
@@ -84,7 +96,7 @@ def refresh_id_token(refresh_token: str) -> RefreshResult:
         resp = _cognito_client().initiate_auth(
             AuthFlow="REFRESH_TOKEN_AUTH",
             AuthParameters={"REFRESH_TOKEN": refresh_token},
-            ClientId=os.environ["COGNITO_CLIENT_ID"],
+            ClientId=_client_id(pool),
         )
     except ClientError as exc:
         code = exc.response["Error"]["Code"]
@@ -100,7 +112,7 @@ def refresh_id_token(refresh_token: str) -> RefreshResult:
     }
 
 
-def revoke_refresh_token(refresh_token: str) -> None:
+def revoke_refresh_token(refresh_token: str, pool: str = "tenant") -> None:
     """Revoke a refresh token (and every access/ID token issued from it) on logout.
 
     Best-effort — logout must not fail the client just because Cognito's revoke
@@ -110,7 +122,7 @@ def revoke_refresh_token(refresh_token: str) -> None:
     try:
         _cognito_client().revoke_token(
             Token=refresh_token,
-            ClientId=os.environ["COGNITO_CLIENT_ID"],
+            ClientId=_client_id(pool),
         )
-    except ClientError as exc:
+    except (ClientError, AuthenticationRequiredError) as exc:
         logger.warning("Cognito RevokeToken failed (non-fatal, cookie still cleared): %s", exc)

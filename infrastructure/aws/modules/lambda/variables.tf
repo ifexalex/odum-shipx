@@ -73,6 +73,32 @@ variable "cognito_client_id" {
   type        = string
 }
 
+variable "cognito_platform_user_pool_id" {
+  description = "Platform admins' Cognito User Pool ID (platform audit Phase 1b)"
+  type        = string
+}
+
+variable "cognito_platform_user_pool_arn" {
+  description = "Platform admins' Cognito User Pool ARN (tenant_management provisions admins there)"
+  type        = string
+}
+
+variable "cognito_platform_client_id" {
+  description = "Platform admins' public app client ID (console sign-in, session refresh, step-up)"
+  type        = string
+}
+
+variable "platform_cognito_issuer_url" {
+  description = "Platform admins' Cognito issuer URL: how the backend recognises a platform-pool token"
+  type        = string
+}
+
+variable "platform_mfa_required" {
+  description = "Refuse platform requests whose token is not from the MFA-required platform pool. Turn on after moving the admins (scripts/platform_admins.py move-to-platform-pool)."
+  type        = bool
+  default     = true
+}
+
 variable "sqs_queue_arns" {
   description = "Map of queue name → SQS ARN (sms, whatsapp, email, metering)"
   type        = map(string)

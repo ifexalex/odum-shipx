@@ -86,6 +86,18 @@ variable "entra_platform_admin_group_id" {
   default     = ""
 }
 
+variable "platform_mfa_required" {
+  description = "Platform audit Phase 1b: refuse platform admin requests without MFA in the token. Requires the Conditional Access policy in infrastructure/azure/SETUP.md first, or platform admins are locked out."
+  type        = bool
+  default     = false
+}
+
+variable "entra_platform_mfa_acr" {
+  description = "Optional Conditional Access authentication-context id (e.g. c1) that proves MFA in the token's acrs claim."
+  type        = string
+  default     = ""
+}
+
 variable "entra_group_id_map" {
   description = "Optional JSON {guid: canonical role-group name} for extra Entra group-id → role mappings."
   type        = string

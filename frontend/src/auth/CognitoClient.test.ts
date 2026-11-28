@@ -62,6 +62,7 @@ describe('CognitoClient', () => {
       idToken: 'id-token',
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
+      pool: 'tenant',
     })
   })
 
@@ -84,6 +85,7 @@ describe('CognitoClient', () => {
       idToken: 'id-token',
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
+      pool: 'tenant',
     })
   })
 

@@ -40,8 +40,11 @@ module "api_gateway" {
   cognito_user_pool_id = module.cognito.user_pool_id
   cognito_client_id    = module.cognito.client_id
   cognito_issuer_url   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${module.cognito.user_pool_id}"
-  lambda_arns          = module.lambda.api_lambda_arns
-  cors_allow_origins   = var.cors_allow_origins
+  # Platform admins' pool for /v1/platform/* (platform audit Phase 1b)
+  platform_cognito_client_id  = module.cognito.platform_client_id
+  platform_cognito_issuer_url = "https://cognito-idp.${var.aws_region}.amazonaws.com/${module.cognito.platform_user_pool_id}"
+  lambda_arns                 = module.lambda.api_lambda_arns
+  cors_allow_origins          = var.cors_allow_origins
 }
 
 module "s3" {
@@ -114,15 +117,21 @@ module "lambda" {
   cognito_user_pool_id     = module.cognito.user_pool_id
   cognito_user_pool_arn    = module.cognito.user_pool_arn
   cognito_client_id        = module.cognito.client_id
-  sqs_queue_arns           = module.sqs.queue_arns
-  sqs_queue_urls           = module.sqs.queue_urls
-  ses_identity_arn         = module.ses.ses_identity_arn
-  scheduled_rule_arns      = module.eventbridge.scheduled_rule_arns
-  api_execution_arn        = module.api_gateway.execution_arn
-  encryption_kms_key_arn   = module.kms.field_encryption_key_arn
-  redis_host               = module.elasticache.redis_host
-  local_env_overrides      = var.local_env_overrides
-  permissions_boundary_arn = module.iam_oidc.permissions_boundary_arn
+  # Platform admins' pool (platform audit Phase 1b)
+  cognito_platform_user_pool_id  = module.cognito.platform_user_pool_id
+  cognito_platform_user_pool_arn = module.cognito.platform_user_pool_arn
+  cognito_platform_client_id     = module.cognito.platform_client_id
+  platform_cognito_issuer_url    = "https://cognito-idp.${var.aws_region}.amazonaws.com/${module.cognito.platform_user_pool_id}"
+  platform_mfa_required          = var.platform_mfa_required
+  sqs_queue_arns                 = module.sqs.queue_arns
+  sqs_queue_urls                 = module.sqs.queue_urls
+  ses_identity_arn               = module.ses.ses_identity_arn
+  scheduled_rule_arns            = module.eventbridge.scheduled_rule_arns
+  api_execution_arn              = module.api_gateway.execution_arn
+  encryption_kms_key_arn         = module.kms.field_encryption_key_arn
+  redis_host                     = module.elasticache.redis_host
+  local_env_overrides            = var.local_env_overrides
+  permissions_boundary_arn       = module.iam_oidc.permissions_boundary_arn
 
   # Notification channels — see modules/lambda/variables.tf. Empty values mean
   # that channel simply does not send; the notification_config_guard below

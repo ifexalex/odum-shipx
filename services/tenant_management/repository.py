@@ -1208,7 +1208,8 @@ def list_platform_audit_log(
         SELECT pal.*, t.company_name AS target_tenant_name, pu.name AS actor_name, pu.role AS actor_role
         FROM platform_audit_log pal
         LEFT JOIN tenant t ON t.id = pal.target_tenant_id
-        LEFT JOIN platform_user pu ON pu.subject = pal.actor_id::text
+        LEFT JOIN platform_user pu
+            ON pu.subject = pal.actor_id::text OR pal.actor_id::text = ANY(pu.previous_subjects)
         WHERE 1=1{conditions}
     """
     base = f"SELECT * FROM ({inner}) AS paged WHERE 1=1"

@@ -118,8 +118,10 @@ class TestEstablishSession:
         resp = handler.lambda_handler(event, None)
 
         assert resp["statusCode"] == 204
-        (cookie,) = resp["cookies"]
+        cookie, pool_cookie = resp["cookies"]
         assert cookie.startswith(f"shipx_rt={REFRESH_TOKEN}")
+        # A tenant-pool session clears any platform-pool marker left by an earlier sign-in (Phase 1b).
+        assert pool_cookie.startswith("shipx_rt_pool=;") and "Max-Age=0" in pool_cookie
         assert "HttpOnly" in cookie
         assert "Secure" in cookie
         assert "SameSite=Strict" in cookie
@@ -155,7 +157,7 @@ class TestRefreshRoute:
         body = json.loads(resp["body"])
         assert body["data"]["id_token"] == "fresh.id.token"  # noqa: S105 — test fixture, not a real credential
         assert body["data"]["expires_in"] == 3600
-        mock_refresh.assert_called_once_with(REFRESH_TOKEN)
+        mock_refresh.assert_called_once_with(REFRESH_TOKEN, pool="tenant")
 
     def test_missing_cookie_returns_401(self):
         event = _event("POST", "/v1/auth/refresh", cookies=[])
@@ -194,10 +196,11 @@ class TestLogoutRoute:
             resp = handler.lambda_handler(event, None)
 
         assert resp["statusCode"] == 204
-        (cookie,) = resp["cookies"]
+        cookie, pool_cookie = resp["cookies"]
         assert cookie.startswith("shipx_rt=;")
         assert "Max-Age=0" in cookie
-        mock_revoke.assert_called_once_with(REFRESH_TOKEN)
+        assert pool_cookie.startswith("shipx_rt_pool=;")
+        mock_revoke.assert_called_once_with(REFRESH_TOKEN, pool="tenant")
 
     def test_no_cookie_still_clears_and_skips_revoke_call(self):
         event = _event("POST", "/v1/auth/logout", cookies=[])

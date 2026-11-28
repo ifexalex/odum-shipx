@@ -154,7 +154,8 @@ class TestHandlerInteractiveRoutes:
         value = tx_cookie.split("=", 1)[1].split(";", 1)[0]
         assert not any(ch in value for ch in ' ",;{}')
         decoded = handler._verify_tx(value)
-        assert set(decoded) == {"v", "s", "n"}
+        assert set(decoded) == {"v", "s", "n", "p"}
+        assert decoded["p"] == "login"
 
     def test_callback_validates_state_exchanges_and_sets_session(self, monkeypatch):
         monkeypatch.setattr(providers, "AUTH_PROVIDER", "azure")

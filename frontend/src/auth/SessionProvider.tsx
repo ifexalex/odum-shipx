@@ -5,6 +5,10 @@ import {
   completeInteractiveLogin,
   signIn as cognitoSignIn,
   signOut as cognitoSignOut,
+  submitMfaCode,
+  verifyMfaSetup,
+  type CognitoPoolKind,
+  type CognitoTokens,
 } from './authClient'
 import { sessionFromIdToken } from './jwt'
 import { establishServerSession, revokeServerSession, silentRefresh } from './sessionApi'
@@ -183,32 +187,50 @@ export function SessionProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function login(email: string, password: string): Promise<Session> {
+  async function login(email: string, password: string, options: { pool?: CognitoPoolKind } = {}): Promise<Session> {
     setStatus('loading')
     try {
-      const tokens = await cognitoSignIn(email, password)
-      const next = sessionFromIdToken(tokens.idToken, {
-        tenantId: tokens.tenantId,
-        role: tokens.role,
-        roles: tokens.roles,
-      })
-      setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
-      applySession(next)
-      setStatus('authenticated')
-      scheduleRefresh(next)
-      // Persist the refresh token server-side as an httpOnly cookie so a
-      // reload can silently restore the session (see restoreFromCookie
-      // above). Best-effort: the current tab already has a working session
-      // regardless of whether this succeeds — a failure here only means the
-      // user won't survive their next reload, not that login itself failed.
-      void establishServerSession(tokens.refreshToken).catch((err: unknown) => {
-        console.warn('Failed to persist session for reload — will not survive a page refresh', err)
-      })
-      return next
+      return finishCognitoLogin(await cognitoSignIn(email, password, options))
     } catch (err) {
       setStatus('unauthenticated')
       throw err
     }
+  }
+
+  // The second step of a platform admin's sign-in (platform audit Phase 1b): the authenticator code, or the first
+  // code from a newly added authenticator app.
+  async function completeMfa(step: 'code' | 'setup', code: string): Promise<Session> {
+    setStatus('loading')
+    try {
+      return finishCognitoLogin(await (step === 'code' ? submitMfaCode(code) : verifyMfaSetup(code)))
+    } catch (err) {
+      setStatus('unauthenticated')
+      throw err
+    }
+  }
+
+  function finishCognitoLogin(tokens: CognitoTokens): Session {
+    // A platform-pool token carries no tenant or group claims: the pool itself is the platform-admin grant
+    // (shared/platform_identity.py), and the backend directory decides the rest.
+    const platform = tokens.pool === 'platform'
+    const next = sessionFromIdToken(tokens.idToken, {
+      tenantId: platform ? 'PLATFORM' : tokens.tenantId,
+      role: platform ? 'platform_admin' : tokens.role,
+      roles: platform ? ['platform_admin'] : tokens.roles,
+    })
+    setActiveTokens({ idToken: tokens.idToken, tokenType: 'cognito' })
+    applySession(next)
+    setStatus('authenticated')
+    scheduleRefresh(next)
+    // Persist the refresh token server-side as an httpOnly cookie so a
+    // reload can silently restore the session (see restoreFromCookie
+    // above). Best-effort: the current tab already has a working session
+    // regardless of whether this succeeds — a failure here only means the
+    // user won't survive their next reload, not that login itself failed.
+    void establishServerSession(tokens.refreshToken, tokens.pool ?? 'tenant').catch((err: unknown) => {
+      console.warn('Failed to persist session for reload — will not survive a page refresh', err)
+    })
+    return next
   }
 
   // Interactive (Entra) login — a redirect, not an in-app credential exchange.
@@ -363,6 +385,7 @@ export function SessionProvider({
         session,
         status,
         login,
+        completeMfa,
         beginLogin,
         completeLogin,
         logout,

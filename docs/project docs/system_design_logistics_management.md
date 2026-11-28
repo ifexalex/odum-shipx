@@ -734,7 +734,7 @@ sequenceDiagram
 | Layer | Control | Implementation |
 |---|---|---|
 | **Transport** | TLS 1.2+ everywhere | API Gateway enforces HTTPS; Aurora SSL connections |
-| **Authentication** | JWT-based (OAuth 2.0) | Cognito user pool with `custom:tenant_id` claim; MFA optional for admin roles |
+| **Authentication** | JWT-based (OAuth 2.0) | Cognito user pool with `custom:tenant_id` claim; platform admins sign in to a separate pool with MFA required (TOTP), and `/v1/platform/*` accepts only it; on Entra, Conditional Access requires MFA for platform admins (ADR-010, 2026-11-28) |
 | **Authorization** | RBAC + Tenant Scope | Cognito groups → Lambda checks `cognito:groups` + `custom:tenant_id` claims |
 | **Platform admin authorization** | Directory roles, step-up, two-person rule | `platform_user` role per admin decides each platform route; dangerous actions need a re-authentication the server verified in the last 5 minutes, and the irreversible ones a second admin (ADR-010) |
 | **Tenant Isolation (App)** | Mandatory tenant_id scoping | All repository functions require `tenant_id` parameter; no query executes without it (FR-TN-005) |

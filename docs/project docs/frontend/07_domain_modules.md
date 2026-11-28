@@ -262,6 +262,12 @@ Implementation notes / ground-truth gaps found:
 - **Audit log.** Rows show the actor's directory name (`actor_name`, role on hover), falling back to the shortened subject; Details shows Before and After when the row has them.
 - **Statuses.** The registry gains `platformApproval` and `platformAdmin`.
 
+### Platform admin audit Phase 1b (2026-11-28): MFA sign-in
+
+- **Login.** `/login?platform=1` is the platform admin sign-in (link at the foot of `/login` when the platform pool is configured): password, then the authenticator code, or on first sign-in the setup key and the first code. See `04_auth_and_session.md`.
+- **Re-authentication on Entra.** The 1a gap is closed: `StepUpHost` signs in again with Microsoft in a small window and sends the fresh token.
+- **Wire change.** `POST /v1/auth/session` body gains `pool`.
+
 ## 7.10 Reports & Notification Log ✅
 
 Backend: `15_api_notifications.md`. Notification log (`NotificationLog`, `NotifDetailModal`) shows delivery status per channel with a retry action (`POST /v1/notifications/log/{id}/retry`, tenant_admin only) — surface provider error detail (`gateway_response`) on the detail modal for debugging delivery failures, but never the full raw payload if it could contain PII beyond what's already masked server-side.

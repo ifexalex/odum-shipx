@@ -1,6 +1,12 @@
 import { useContext, useState, type FormEvent, type JSX } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
-import { authProvider, isInteractiveLogin } from '../../auth/authClient'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  authProvider,
+  hasPlatformPool,
+  isInteractiveLogin,
+  MfaCodeRequiredError,
+  MfaSetupRequiredError,
+} from '../../auth/authClient'
 import { LocalRoleContext } from '../../auth/LocalRoleContext'
 import { safeNextPath } from '../../auth/returnPath'
 import { homePathForRole } from '../../auth/roleHome'
@@ -35,16 +41,38 @@ function loginErrorMessage(err: unknown): string {
   return 'Something went wrong signing you in. Please try again.'
 }
 
+/** The second step of a platform admin's sign-in (platform audit Phase 1b): a code, or setting up the app first. */
+export interface MfaStep {
+  step: 'code' | 'setup'
+  secret?: string
+  otpauthUri?: string
+}
+
+function mfaStepFrom(err: unknown): MfaStep | null {
+  if (err instanceof MfaSetupRequiredError) return { step: 'setup', secret: err.secret, otpauthUri: err.otpauthUri }
+  if (err instanceof MfaCodeRequiredError) return { step: 'code' }
+  return null
+}
+
 export function LoginScreen(): JSX.Element {
-  const { session, login, beginLogin, status } = useSession()
+  const { session, login, beginLogin, completeMfa, status } = useSession()
   const isLocalDevShim = useContext(LocalRoleContext) !== null
   const navigate = useNavigate()
+  const location = useLocation()
+  const [params] = useSearchParams()
   // Where the visitor was heading before sign-in; refused unless it is a plain in-app path (auth/returnPath.ts).
-  const next = safeNextPath(useSearchParams()[0].get('next'))
+  const next = safeNextPath(params.get('next'))
+  // Platform admins sign in to their own Cognito pool, which requires MFA (platform audit Phase 1b).
+  const platformMode = params.get('platform') === '1' && hasPlatformPool() && !isInteractiveLogin
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Arriving from the set-new-password screen mid-sign-in carries the MFA step in navigation state.
+  const [mfa, setMfa] = useState<MfaStep | null>(
+    () => ((location.state as { mfa?: MfaStep } | null)?.mfa ?? null),
+  )
+  const [mfaCode, setMfaCode] = useState('')
   const loading = status === 'loading'
 
   // Already signed in (in real auth) — send straight to the requested path or the role's home.
@@ -58,13 +86,18 @@ export function LoginScreen(): JSX.Element {
     event.preventDefault()
     setError(null)
     try {
-      const nextSession = await login(email, password)
+      const nextSession = await login(email, password, { pool: platformMode ? 'platform' : 'tenant' })
       navigate(next ?? homePathForRole(nextSession.role), { replace: true })
     } catch (err) {
       // Temporary password (registration / staff invite): Cognito demands a
       // permanent one before issuing tokens — hand off to the reset screen.
       if (err instanceof Error && err.name === 'NewPasswordRequiredError') {
-        navigate(`/reset-password?first=1&email=${encodeURIComponent(email)}`)
+        navigate(`/reset-password?first=1&email=${encodeURIComponent(email)}${platformMode ? '&platform=1' : ''}`)
+        return
+      }
+      const step = mfaStepFrom(err)
+      if (step) {
+        setMfa(step)
         return
       }
       if (import.meta.env.DEV) {
@@ -72,6 +105,74 @@ export function LoginScreen(): JSX.Element {
       }
       setError(loginErrorMessage(err))
     }
+  }
+
+  async function handleMfaSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault()
+    if (!mfa || !completeMfa) return
+    setError(null)
+    try {
+      const nextSession = await completeMfa(mfa.step, mfaCode)
+      navigate(next ?? homePathForRole(nextSession.role), { replace: true })
+    } catch (err) {
+      const code = err instanceof Error ? err.name : ''
+      setError(
+        code === 'CodeMismatchException' || code === 'EnableSoftwareTokenMFAException'
+          ? 'That code is not right. Check the time on your phone and try the newest code.'
+          : code === 'NotAuthorizedException'
+            ? 'This sign-in timed out. Start again with your email and password.'
+            : 'Could not check the code. Try again.',
+      )
+    }
+  }
+
+  if (mfa) {
+    return (
+      <AuthShell>
+        <FormHead
+          title={mfa.step === 'setup' ? 'Set up your authenticator' : 'Enter your code'}
+          sub={
+            mfa.step === 'setup'
+              ? 'Platform admins sign in with a second factor. Add ShipX to an authenticator app (Google Authenticator, 1Password, Authy…), then enter the 6-digit code it shows.'
+              : 'Enter the 6-digit code from your authenticator app.'
+          }
+        />
+        {error && (
+          <div style={{ marginBottom: 'var(--space-5)' }}>
+            <Banner variant="error" title="Couldn't sign in">
+              {error}
+            </Banner>
+          </div>
+        )}
+        {mfa.step === 'setup' && mfa.secret && (
+          <div style={{ marginBottom: 'var(--space-5)' }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Setup key</div>
+            <code style={{ display: 'block', wordBreak: 'break-all', fontSize: 'var(--text-md)', margin: 'var(--space-2) 0' }}>
+              {mfa.secret}
+            </code>
+            {mfa.otpauthUri && (
+              <a href={mfa.otpauthUri} className={styles.link}>
+                Open in an authenticator app on this device
+              </a>
+            )}
+          </div>
+        )}
+        <form onSubmit={(e) => void handleMfaSubmit(e)}>
+          <Field
+            label="Authenticator code"
+            name="mfa_code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            value={mfaCode}
+            onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+            required
+          />
+          <Button type="submit" variant="primary" size="lg" full loading={loading} disabled={mfaCode.length !== 6}>
+            {mfa.step === 'setup' ? 'Finish setup' : 'Verify'}
+          </Button>
+        </form>
+      </AuthShell>
+    )
   }
 
   // Entra: no in-app credentials — redirect to Entra's hosted sign-in (the
@@ -91,11 +192,13 @@ export function LoginScreen(): JSX.Element {
   return (
     <AuthShell>
       <FormHead
-        title="Sign in to ShipX"
+        title={platformMode ? 'Platform admin sign-in' : 'Sign in to ShipX'}
         sub={
-          isInteractiveLogin
-            ? "You'll be redirected to our secure sign-in screen to access your portal."
-            : 'Enter your credentials to access your portal.'
+          platformMode
+            ? 'For ShipX platform staff. You will be asked for a code from your authenticator app.'
+            : isInteractiveLogin
+              ? "You'll be redirected to our secure sign-in screen to access your portal."
+              : 'Enter your credentials to access your portal.'
         }
       />
 
@@ -182,6 +285,19 @@ export function LoginScreen(): JSX.Element {
       <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
         New customer? Use the sign-up or invite link sent by your shipping company.
       </p>
+      {hasPlatformPool() && !isInteractiveLogin && (
+        <p className={styles.footerLine} style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-xs)' }}>
+          {platformMode ? (
+            <Link to="/login" className={styles.link}>
+              Back to the standard sign-in
+            </Link>
+          ) : (
+            <Link to="/login?platform=1" className={styles.link}>
+              ShipX platform admin? Sign in here
+            </Link>
+          )}
+        </p>
+      )}
     </AuthShell>
   )
 }

@@ -133,10 +133,16 @@ locals {
       EVENT_BUS_NAME       = var.event_bus_name
       COGNITO_USER_POOL_ID = var.cognito_user_pool_id
       # The public app client: platform step-up re-authentication signs in with it (tenant_management/step_up.py).
-      COGNITO_CLIENT_ID     = var.cognito_client_id
-      ENVIRONMENT           = var.environment
-      ENCRYPTION_KMS_KEY_ID = var.encryption_kms_key_arn
-      REDIS_HOST            = var.redis_host
+      COGNITO_CLIENT_ID = var.cognito_client_id
+      # Platform admins' pool, MFA required (platform audit Phase 1b; shared/platform_identity.py).
+      COGNITO_PLATFORM_USER_POOL_ID = var.cognito_platform_user_pool_id
+      COGNITO_PLATFORM_CLIENT_ID    = var.cognito_platform_client_id
+      PLATFORM_COGNITO_ISSUER       = var.platform_cognito_issuer_url
+      PLATFORM_COGNITO_JWKS_URL     = "${var.platform_cognito_issuer_url}/.well-known/jwks.json"
+      PLATFORM_MFA_REQUIRED         = var.platform_mfa_required ? "true" : "false"
+      ENVIRONMENT                   = var.environment
+      ENCRYPTION_KMS_KEY_ID         = var.encryption_kms_key_arn
+      REDIS_HOST                    = var.redis_host
 
       # Key for the HMAC that hashes release-note pickup codes (shared/pickup_code.py). Without it no codes are issued
       # and none are required; with it, every new release note carries one.
@@ -342,8 +348,10 @@ resource "aws_iam_role_policy" "cognito_admin" {
         "cognito-idp:AdminSetUserPassword",
         "cognito-idp:AdminUserGlobalSignOut",
         "cognito-idp:CreateGroup",
+        # The platform pool (Phase 1b): looking an admin up while moving them there.
+        "cognito-idp:AdminGetUser",
       ]
-      Resource = [var.cognito_user_pool_arn]
+      Resource = [var.cognito_user_pool_arn, var.cognito_platform_user_pool_arn]
     }]
   })
 }
@@ -364,7 +372,7 @@ resource "aws_iam_role_policy" "cognito_refresh" {
         "cognito-idp:InitiateAuth",
         "cognito-idp:RevokeToken",
       ]
-      Resource = [var.cognito_user_pool_arn]
+      Resource = [var.cognito_user_pool_arn, var.cognito_platform_user_pool_arn]
     }]
   })
 }
