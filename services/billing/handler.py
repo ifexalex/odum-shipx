@@ -75,7 +75,7 @@ _DISPUTE_LIST_ALL_ROLES = (
     UserRole.TENANT_ADMIN,
     UserRole.CHINA_OFFICE_STAFF,
 )
-_ACKNOWLEDGE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
+_ACKNOWLEDGE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 _RESOLVE_ROLES = (
     UserRole.NIGERIA_OFFICE_STAFF,
     UserRole.CHINA_OFFICE_STAFF,
@@ -88,7 +88,7 @@ _CHARGE_WRITE_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 _CHARGE_READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
 _CHARGE_DELETE_ROLES = (UserRole.TENANT_ADMIN,)
 _STORAGE_FEE_READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
-_CANCEL_BILLING_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+_CANCEL_BILLING_ROLES = (UserRole.TENANT_ADMIN,)
 
 
 # ---------------------------------------------------------------------------
@@ -289,10 +289,7 @@ def _dispatch(event: dict[str, Any], method: str, path: str, ctx: Any, request_i
     # customers, per-container billing). Tenant-admin only; SQL-computed.
     if segment == "report":
         if method == "GET":
-            # Same tenant-wide-aggregate data class as /billing/stats (which
-            # both staff roles already read); the reports *page* is tenant-admin
-            # gated in the UI route table.
-            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            ctx.assert_role(UserRole.TENANT_ADMIN)
             return success(
                 service.get_tenant_report(
                     ctx.tenant_id,
@@ -461,7 +458,7 @@ def _billing_routes(
 
         if action == "storage-fees" and sub_id == "waive" and method == "POST":
             # POST /v1/billing/{billing-id}/storage-fees/waive
-            ctx.assert_role(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
+            ctx.assert_role(UserRole.TENANT_ADMIN)
             body = _parse_body(event)
             reason = body.get("reason", "")
             result = service.waive_storage_fees(

@@ -216,7 +216,7 @@ class TestGenerateReleaseNote:
             patch("services.payment_release.service.publish_event"),
         ):
             result = service.generate_release_note(
-                TENANT_ID, self._req(release_with_outstanding=True), actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF)
+                TENANT_ID, self._req(release_with_outstanding=True), actor_id="u", ctx=_ctx(UserRole.TENANT_ADMIN)
             )
             assert result["id"] == "note-001"
 
@@ -278,7 +278,7 @@ class TestGenerateReleaseNote:
             patch.object(service.repo, "create_release_note", return_value=release_note),
             patch("services.payment_release.service.publish_event"),
         ):
-            result = service.generate_release_note(TENANT_ID, req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+            result = service.generate_release_note(TENANT_ID, req, actor_id="u", ctx=_ctx(UserRole.TENANT_ADMIN))
 
         assert result["customer_name"] == billing["customer_name"]
         assert result["container_number"] == billing["container_number"]
@@ -654,7 +654,7 @@ class TestInitializeOnlinePayment:
         self,
         billing=None,
         customer=None,
-        callback="https://app.example.com/cb",
+        callback="https://app.shipx.test/cb",
         init_result=None,
         paystack_secret="sk_test_tenant_own_key",
     ):
@@ -953,14 +953,14 @@ class TestConfirmOnlinePayment:
 
     def test_rejects_when_caller_is_not_the_billing_owner(self):
         from services.payment_release import service
-        from shared.exceptions import InsufficientPermissionsError
+        from shared.exceptions import ResourceNotFoundError
 
         billing = self._billing()
         with (
             patch.object(service.repo, "get_billing_by_id", return_value=billing),
             patch.object(service.repo, "get_customer_by_user_id", return_value={"id": "somebody-else"}),
         ):
-            with pytest.raises(InsufficientPermissionsError):
+            with pytest.raises(ResourceNotFoundError):
                 service.confirm_online_payment(TENANT_ID, "billing-001", "billing-001.abc123", self._ctx())
 
     def test_rejects_when_tenant_has_no_paystack_configured(self):
@@ -1761,7 +1761,7 @@ class TestFmtReleaseNoteFieldCompleteness:
             patch.object(service.repo, "create_release_note", return_value=release_note),
             patch("services.payment_release.service.publish_event"),
         ):
-            result = service.generate_release_note(TENANT_ID, req, actor_id="u", ctx=_ctx(UserRole.NIGERIA_OFFICE_STAFF))
+            result = service.generate_release_note(TENANT_ID, req, actor_id="u", ctx=_ctx(UserRole.TENANT_ADMIN))
 
         assert result["debt_due_date"] == "2026-09-30"
 

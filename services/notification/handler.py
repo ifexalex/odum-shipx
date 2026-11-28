@@ -498,6 +498,7 @@ def http_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 actor_id=tenant_ctx.user_id,
                 method=method,
                 path=path,
+                body=event.get("body"),
             )
             if cached:
                 return cached
@@ -523,6 +524,7 @@ def http_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 actor_id=tenant_ctx.user_id,
                 method=method,
                 path=path,
+                body=event.get("body"),
             )
 
         record_usage(tenant_ctx.tenant_id, "api_calls", request_id=request_id)
@@ -637,12 +639,12 @@ def _dispatch_staff_notifications(
 
     # PATCH /v1/notifications/staff/{id}/read
     if sub and action == "read" and method == "PATCH":
-        result = service.mark_staff_notification_read(ctx.tenant_id, sub, ctx.user_id)
+        result = service.mark_staff_notification_read(ctx.tenant_id, sub, ctx.user_id, role=str(ctx.role))
         return success(result, request_id=request_id)
 
     # DELETE /v1/notifications/staff/{id} — clear one
     if sub and action is None and method == "DELETE":
-        result = service.dismiss_staff_notification(ctx.tenant_id, sub, ctx.user_id)
+        result = service.dismiss_staff_notification(ctx.tenant_id, sub, ctx.user_id, role=str(ctx.role))
         return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))
@@ -715,12 +717,12 @@ def _dispatch_customer_notifications(
 
     # PATCH /v1/notifications/customer/{id}/read
     if sub and action == "read" and method == "PATCH":
-        result = service.mark_staff_notification_read(ctx.tenant_id, sub, ctx.user_id)
+        result = service.mark_staff_notification_read(ctx.tenant_id, sub, ctx.user_id, role=str(UserRole.CUSTOMER))
         return success(result, request_id=request_id)
 
     # DELETE /v1/notifications/customer/{id} — clear one
     if sub and action is None and method == "DELETE":
-        result = service.dismiss_staff_notification(ctx.tenant_id, sub, ctx.user_id)
+        result = service.dismiss_staff_notification(ctx.tenant_id, sub, ctx.user_id, role=str(UserRole.CUSTOMER))
         return success(result, request_id=request_id)
 
     raise ResourceNotFoundError("route", "/".join(parts))

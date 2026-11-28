@@ -142,13 +142,19 @@ def create_overpayment_refund(
     reason: str,
     *,
     refund_type: str = "overpayment",
+    requested_by: str | None = None,
 ) -> dict[str, Any] | None:
     """Open a ``pending_review`` refund request for money the customer overpaid."""
     return execute_write_with_tenant(
         tenant_id,
         """
-        INSERT INTO refund_request (tenant_id, customer_id, billing_id, refund_type, amount_ngn, reason, status)
-        VALUES (%(tenant_id)s, %(customer_id)s, %(billing_id)s, %(refund_type)s, %(amount)s, %(reason)s, 'pending_review')
+        INSERT INTO refund_request (
+            tenant_id, customer_id, billing_id, refund_type, amount_ngn, reason, status, requested_by
+        )
+        VALUES (
+            %(tenant_id)s, %(customer_id)s, %(billing_id)s, %(refund_type)s,
+            %(amount)s, %(reason)s, 'pending_review', %(requested_by)s
+        )
         RETURNING *
         """,
         {
@@ -158,6 +164,7 @@ def create_overpayment_refund(
             "refund_type": refund_type,
             "amount": amount_ngn,
             "reason": reason,
+            "requested_by": requested_by,
         },
     )
 
@@ -221,6 +228,7 @@ def adjust_billing_and_refund_overpayment(
     misc_delta: Decimal = Decimal("0"),
     *,
     refund_type: str = "overpayment",
+    requested_by: str | None = None,
 ) -> tuple[dict[str, Any], Decimal]:
     """`adjust_billing`, plus a refund request if it left the customer newly overpaid.
 
@@ -236,5 +244,12 @@ def adjust_billing_and_refund_overpayment(
         raise RuntimeError(f"billing {billing_id} not found in tenant")
     overpayment = new_overpayment(billing, total_delta)
     if overpayment > 0:
-        create_overpayment_refund(tenant_id, billing, overpayment, reason, refund_type=refund_type)
+        create_overpayment_refund(
+            tenant_id,
+            billing,
+            overpayment,
+            reason,
+            refund_type=refund_type,
+            requested_by=requested_by,
+        )
     return billing, overpayment

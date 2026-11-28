@@ -144,7 +144,7 @@ def _notify_escalation(tenant_id: str, dispute: dict[str, Any]) -> None:
         SELECT DISTINCT tu.email, tu.locale
         FROM tenant_user tu
         LEFT JOIN tenant_user_role tur
-          ON tur.user_id = tu.id AND tur.tenant_id = tu.tenant_id
+          ON tur.tenant_user_id = tu.id AND tur.tenant_id = tu.tenant_id
         WHERE tu.tenant_id = %s
           AND (
               tu.role IN ('tenant_admin', 'china_office_staff')

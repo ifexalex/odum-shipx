@@ -19,6 +19,7 @@ from shared.exceptions import (
 )
 from shared.metering import record_usage
 from shared.providers import get_identity_provider
+from shared.tier_limits import get_effective_limits
 
 from . import repository as repo
 from .models import (
@@ -190,18 +191,31 @@ def update_user(
     new_primary: str | None = primary_role or (roles[0] if roles else None)
 
     # Guard against removing tenant_admin from the sole remaining active admin
-    # (prevents permanent tenant lockout).
+    # (prevents permanent tenant lockout) and enforce staff seat quota when
+    # promoting a customer-only account to a staff role.
     if roles is not None:
-        existing_roles = set(existing.get("roles") or [existing.get("role")])
+        existing_roles = {r for r in (existing.get("roles") or [existing.get("role")]) if r}
+        new_roles_set = set(roles)
         if (
             "tenant_admin" in existing_roles
-            and "tenant_admin" not in set(roles)
+            and "tenant_admin" not in new_roles_set
             and repo.count_active_tenant_admins(tenant_id, exclude_user_id=user_id) < 1
         ):
             raise BusinessRuleViolationError(
                 "Cannot remove tenant_admin from the sole remaining active administrator",
                 rule_id="LAST_TENANT_ADMIN",
             )
+        had_staff_role = bool(existing_roles - {"customer"})
+        will_have_staff_role = bool(new_roles_set - {"customer"})
+        if existing.get("status") == "active" and not had_staff_role and will_have_staff_role:
+            tenant = get_tenant(tenant_id)
+            limit = int(
+                get_effective_limits(tenant["subscription_tier"], tenant_id=tenant_id).get("max_users")
+                or TIER_USER_LIMITS.get(tenant["subscription_tier"], 10)
+            )
+            current_count = repo.count_active_users(tenant_id)
+            if current_count >= limit:
+                raise UsageLimitExceededError("users", current_count, limit)
 
     updated = existing
     if updates:
@@ -328,11 +342,16 @@ def reactivate_user(
     if existing["status"] != "deactivated":
         raise BusinessRuleViolationError(f"User is not deactivated (status: {existing['status']})")
 
-    tenant = get_tenant(tenant_id)
-    limit = TIER_USER_LIMITS.get(tenant["subscription_tier"], 10)
-    current_count = repo.count_active_users(tenant_id)
-    if current_count >= limit:
-        raise UsageLimitExceededError("users", current_count, limit)
+    existing_roles = {r for r in (existing.get("roles") or [existing.get("role")]) if r}
+    if bool(existing_roles - {"customer"}):
+        tenant = get_tenant(tenant_id)
+        limit = int(
+            get_effective_limits(tenant["subscription_tier"], tenant_id=tenant_id).get("max_users")
+            or TIER_USER_LIMITS.get(tenant["subscription_tier"], 10)
+        )
+        current_count = repo.count_active_users(tenant_id)
+        if current_count >= limit:
+            raise UsageLimitExceededError("users", current_count, limit)
 
     cognito = get_identity_provider()
     if existing.get("email"):

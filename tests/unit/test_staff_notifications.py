@@ -230,7 +230,7 @@ class TestStaffNotificationHandler:
             resp = handler.http_handler(self._event("PATCH", "/v1/notifications/staff/n1/read"), None)
 
         assert resp["statusCode"] == 200
-        mock_mark.assert_called_once_with(TENANT_ID, "n1", USER_ID)
+        mock_mark.assert_called_once_with(TENANT_ID, "n1", USER_ID, role="nigeria_office_staff")
 
     def test_customer_role_is_forbidden(self):
         from services.notification import handler
@@ -304,7 +304,7 @@ class TestCustomerNotificationHandler:
             resp = handler.http_handler(self._event("PATCH", "/v1/notifications/customer/n1/read"), None)
 
         assert resp["statusCode"] == 200
-        mock_mark.assert_called_once_with(TENANT_ID, "n1", USER_ID)
+        mock_mark.assert_called_once_with(TENANT_ID, "n1", USER_ID, role="customer")
 
     def test_mark_all_read_route(self):
         from services.notification import handler, service
@@ -390,7 +390,7 @@ class TestStaffNotificationHandlerDismiss:
             resp = handler.http_handler(self._event("DELETE", "/v1/notifications/staff/n1"), None)
 
         assert resp["statusCode"] == 200
-        mock_dismiss.assert_called_once_with(TENANT_ID, "n1", USER_ID)
+        mock_dismiss.assert_called_once_with(TENANT_ID, "n1", USER_ID, role="nigeria_office_staff")
 
     def test_delete_clear_all_calls_dismiss_all(self):
         from services.notification import handler, service
@@ -416,7 +416,7 @@ class TestStaffNotificationHandlerDismiss:
             resp = handler.http_handler(self._event("DELETE", "/v1/notifications/customer/n1"), None)
 
         assert resp["statusCode"] == 200
-        mock_dismiss.assert_called_once_with(TENANT_ID, "n1", USER_ID)
+        mock_dismiss.assert_called_once_with(TENANT_ID, "n1", USER_ID, role="customer")
 
 
 class TestSendAnnouncement:

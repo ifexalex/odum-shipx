@@ -1,4 +1,5 @@
-import type { JSX } from 'react'
+import { useContext, type JSX } from 'react'
+import { SessionContext } from '../auth/SessionContext'
 import { Icon, LinesSkeleton, ErrorState } from '../design/components'
 import {
   useClearAllStaffNotif,
@@ -30,14 +31,21 @@ function NotificationRow({
   n,
   onMarkRead,
   onDismiss,
+  readOnly,
 }: {
   n: StaffNotification
   onMarkRead: (id: string) => void
   onDismiss: (id: string) => void
+  readOnly: boolean
 }): JSX.Element {
   return (
     <div className={[styles.row, n.is_read ? styles.rowRead : styles.rowUnread].join(' ')}>
-      <button type="button" className={styles.rowMain} onClick={() => !n.is_read && onMarkRead(n.id)}>
+      <button
+        type="button"
+        className={styles.rowMain}
+        disabled={readOnly}
+        onClick={() => !readOnly && !n.is_read && onMarkRead(n.id)}
+      >
         <span className={styles.dotSlot}>{!n.is_read && <span className={styles.unreadDot} />}</span>
         <span className={styles.rowBody}>
           <span className={styles.rowTitle}>{n.title}</span>
@@ -45,17 +53,19 @@ function NotificationRow({
           <span className={styles.rowTime}>{timeAgo(n.created_at)}</span>
         </span>
       </button>
-      <button
-        type="button"
-        aria-label="Clear notification"
-        className={styles.clearBtn}
-        onClick={(e) => {
-          e.stopPropagation()
-          onDismiss(n.id)
-        }}
-      >
-        <Icon name="x" size={12} />
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          aria-label="Clear notification"
+          className={styles.clearBtn}
+          onClick={(e) => {
+            e.stopPropagation()
+            onDismiss(n.id)
+          }}
+        >
+          <Icon name="x" size={12} />
+        </button>
+      )}
     </div>
   )
 }
@@ -77,6 +87,8 @@ function NotificationRow({
  * `pages/staff/AnnouncementsPage.tsx`.
  */
 export function StaffNotificationPanel({ open, onClose }: StaffNotificationPanelProps): JSX.Element | null {
+  const sessionCtx = useContext(SessionContext)
+  const readOnly = Boolean(sessionCtx?.session?.readOnly)
   const { data, isLoading, error, refetch } = useStaffNotifList({ limit: 20 }, open)
   const markRead = useMarkStaffNotifRead()
   const markAllRead = useMarkAllStaffNotifRead()
@@ -94,28 +106,30 @@ export function StaffNotificationPanel({ open, onClose }: StaffNotificationPanel
       <div className={styles.panel} role="dialog" aria-label="Notifications">
         <div className={styles.header}>
           <span className={styles.headerTitle}>Notifications</span>
-          <div className={styles.headerActions}>
-            {hasUnread && (
-              <button
-                type="button"
-                className={styles.markAllBtn}
-                onClick={() => markAllRead.mutate()}
-                disabled={markAllRead.isPending}
-              >
-                Mark all read
-              </button>
-            )}
-            {items.length > 0 && (
-              <button
-                type="button"
-                className={styles.markAllBtn}
-                onClick={() => clearAll.mutate()}
-                disabled={clearAll.isPending}
-              >
-                Clear all
-              </button>
-            )}
-          </div>
+          {!readOnly && (
+            <div className={styles.headerActions}>
+              {hasUnread && (
+                <button
+                  type="button"
+                  className={styles.markAllBtn}
+                  onClick={() => markAllRead.mutate()}
+                  disabled={markAllRead.isPending}
+                >
+                  Mark all read
+                </button>
+              )}
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.markAllBtn}
+                  onClick={() => clearAll.mutate()}
+                  disabled={clearAll.isPending}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className={styles.list}>
           {isLoading && <LinesSkeleton label="Loading notifications" />}
@@ -133,6 +147,7 @@ export function StaffNotificationPanel({ open, onClose }: StaffNotificationPanel
             <NotificationRow
               key={n.id}
               n={n}
+              readOnly={readOnly}
               onMarkRead={(id) => markRead.mutate(id)}
               onDismiss={(id) => dismiss.mutate(id)}
             />

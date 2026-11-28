@@ -41,10 +41,10 @@ logger = logging.getLogger(__name__)
 # billing page, always 403'd on this check alone. See create_refund()'s
 # docstring in services/refunds/service.py for the full account, including
 # the customer_id-derivation bug that would have hit next.
-_CREATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
+_CREATE_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN, UserRole.CUSTOMER)
 _LIST_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 _READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF, UserRole.CUSTOMER)
-_REVIEW_ROLES = (UserRole.NIGERIA_OFFICE_STAFF,)
+_REVIEW_ROLES = (UserRole.NIGERIA_OFFICE_STAFF, UserRole.TENANT_ADMIN)
 _APPROVE_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 _REJECT_ROLES = (UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
 
