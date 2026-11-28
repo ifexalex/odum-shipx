@@ -121,7 +121,7 @@ def step_up(
     Args:
         ctx: The platform caller.
         email: The caller's directory email (the Cognito username). Never taken from the request.
-        password: Cognito and local: the caller's password.
+        password: What the caller signs in with (Cognito, and the local stand-in).
         mfa_code: Cognito: the authenticator code, when the pool requires it.
         id_token: Entra: an ID token from a sign-in with ``prompt=login``.
         ip_address: For the audit row.

@@ -5,6 +5,7 @@ See the "ShipX Platform Admin Console: Audit and Redesign Plan" doc and ``07_api
 """
 
 import json
+import secrets
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -29,6 +30,8 @@ from shared.tenant_context import TenantContext, UserRole
 TENANT_ID = "11111111-1111-1111-1111-111111111111"
 REQUESTER = "aaaaaaaa-0000-0000-0000-000000000001"
 APPROVER = "aaaaaaaa-0000-0000-0000-000000000002"
+# A throwaway sign-in value for the mocked Cognito calls.
+_SIGN_IN = secrets.token_hex(8)
 
 
 def _ctx(role: str = "owner", platform_user_id: str = REQUESTER, user_id: str = "sub-requester") -> TenantContext:
@@ -364,11 +367,13 @@ class TestStepUpVerification:
     def test_the_local_password_works_only_in_local_and_test(self, signing_secret, monkeypatch):
         from services.tenant_management import step_up
 
+        # Random per run, so no fixed credential-looking literal sits in the repository.
+        local_value, other_value = secrets.token_hex(8), secrets.token_hex(8)
         monkeypatch.setenv("ENVIRONMENT", "local")
-        monkeypatch.setenv("STEP_UP_LOCAL_PASSWORD", "let-me-in")
-        assert step_up.step_up(_ctx(), "a@x.test", password="let-me-in", mfa_code=None, id_token=None)["step_up_token"]
+        monkeypatch.setenv("STEP_UP_LOCAL_PASSWORD", local_value)
+        assert step_up.step_up(_ctx(), "a@x.test", password=local_value, mfa_code=None, id_token=None)["step_up_token"]
         with pytest.raises(step_up.StepUpFailedError):
-            step_up.step_up(_ctx(), "a@x.test", password="wrong", mfa_code=None, id_token=None)
+            step_up.step_up(_ctx(), "a@x.test", password=other_value, mfa_code=None, id_token=None)
 
         monkeypatch.setenv("ENVIRONMENT", "prod")
         assert step_up._local_password() is None
@@ -392,8 +397,8 @@ class TestStepUpVerification:
         step_up = self._cognito(monkeypatch, client)
 
         with pytest.raises(step_up.StepUpCodeRequiredError):
-            step_up.step_up(_ctx(), "a@x.test", password="pw", mfa_code=None, id_token=None)
-        result = step_up.step_up(_ctx(), "a@x.test", password="pw", mfa_code="123456", id_token=None)
+            step_up.step_up(_ctx(), "a@x.test", password=_SIGN_IN, mfa_code=None, id_token=None)
+        result = step_up.step_up(_ctx(), "a@x.test", password=_SIGN_IN, mfa_code="123456", id_token=None)
         assert result["step_up_token"]
         assert client.initiate_auth.call_args.kwargs["AuthParameters"]["USERNAME"] == "a@x.test"
         client.revoke_token.assert_called_with(Token="rt", ClientId="client-1")
@@ -407,7 +412,7 @@ class TestStepUpVerification:
         }
         step_up = self._cognito(monkeypatch, client)
         with pytest.raises(step_up.StepUpFailedError):
-            step_up.step_up(_ctx(), "a@x.test", password="pw", mfa_code=None, id_token=None)
+            step_up.step_up(_ctx(), "a@x.test", password=_SIGN_IN, mfa_code=None, id_token=None)
         client.revoke_token.assert_called_once()
 
     def test_a_wrong_password_counts_toward_the_lockout(self, signing_secret, monkeypatch):
@@ -420,7 +425,7 @@ class TestStepUpVerification:
             patch("services.tenant_management.step_up.rate_limit.record_failure") as failure,
             pytest.raises(step_up.StepUpFailedError),
         ):
-            step_up.step_up(_ctx(), "a@x.test", password="bad", mfa_code=None, id_token=None)
+            step_up.step_up(_ctx(), "a@x.test", password=_SIGN_IN, mfa_code=None, id_token=None)
         failure.assert_called_once()
 
     def test_entra_needs_a_fresh_sign_in_for_the_same_person(self, signing_secret, monkeypatch):
