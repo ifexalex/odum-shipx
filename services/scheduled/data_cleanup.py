@@ -26,6 +26,7 @@ import boto3
 from shared import tenant_export
 from shared.audit import log_audit
 from shared.db import execute_with_tenant, execute_write_with_tenant, execute_write_with_tenant_many, tenant_transaction
+from shared.job_runs import tracked_job
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing, record_failure
 from shared.providers import get_storage_provider
@@ -60,6 +61,7 @@ def _get_cognito() -> Any:
 # ---------------------------------------------------------------------------
 
 
+@tracked_job("data_cleanup")
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     clear_log_context()
     bind_log_context(request_id=getattr(context, "aws_request_id", None))

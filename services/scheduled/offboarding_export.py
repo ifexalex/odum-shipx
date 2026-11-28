@@ -31,6 +31,7 @@ from uuid import UUID
 from shared import tenant_export
 from shared.db import execute_with_tenant
 from shared.encryption import decrypt_field
+from shared.job_runs import tracked_job
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing, record_failure
 from shared.platform_audit import insert_platform_audit
@@ -66,6 +67,7 @@ Uploaded files (photos, documents) are not in this archive; their storage keys a
 """
 
 
+@tracked_job("offboarding_export")
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, int]:
     """Write every export that is due, until none is left or the time budget is spent."""
     clear_log_context()

@@ -17,9 +17,12 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from shared.db import execute_with_tenant, execute_write_with_tenant, tenant_transaction
+from shared.job_runs import tracked_job
 from shared.logging_config import bind_log_context, clear_log_context, setup_logging
 from shared.observability import init_tracing, record_failure
 from shared.tenant_context import PLATFORM_TENANT_ID
+
+from . import tenant_metrics
 
 setup_logging()
 init_tracing()
@@ -32,6 +35,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+@tracked_job("usage_aggregation")
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     clear_log_context()
     bind_log_context(request_id=getattr(context, "aws_request_id", None))
@@ -53,12 +57,25 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             record_failure("scheduled_job_step")
             errors += 1
 
+    # Daily tenant metrics (platform audit Phase 1c): yesterday's and today's rows, after the usage records above are
+    # consolidated, then the job-run history beyond its retention window.
+    metrics = tenant_metrics.refresh_recent()
+    pruned = 0
+    try:
+        pruned = tenant_metrics.prune_job_runs()
+    except Exception:
+        logger.exception("Pruning old job_run rows failed")
+        errors += 1
+
     logger.info(
-        "Usage aggregation job done: groups_aggregated=%d errors=%d",
+        "Usage aggregation job done: groups_aggregated=%d errors=%d metric_rows=%d metric_errors=%d job_runs_pruned=%d",
         aggregated,
         errors,
+        metrics["metric_rows"],
+        metrics["metric_errors"],
+        pruned,
     )
-    return {"groups_aggregated": aggregated, "errors": errors}
+    return {"groups_aggregated": aggregated, "errors": errors, **metrics, "job_runs_pruned": pruned}
 
 
 # ---------------------------------------------------------------------------

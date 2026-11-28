@@ -667,3 +667,5 @@ Rule: a `try/except` that logs and carries on (so a request or a job survives) m
 - **Audit.** Platform audit rows carry `before_state` / `after_state` with secrets masked, and the request id.
 
 - **MFA for platform admins (Phase 1b).** On AWS platform admins sign in only to the platform Cognito pool, which requires TOTP of every user, and API Gateway's `/v1/platform/*` authorizer accepts only that pool. On Entra a Conditional Access policy requires MFA for the `platform_admin` group, and the backend checks `amr`/`acrs`. `PLATFORM_MFA_REQUIRED` makes the backend refuse any platform request without it.
+
+- **Metrics and job history hold counts only (Phase 1c).** `tenant_metrics_daily` and `job_run` never store a name, email or phone number; a failed job records its exception class, not its message.

@@ -364,3 +364,7 @@ Canonical `tenant_isolation` policy (`FOR ALL`, PLATFORM-aware, USING and WITH C
 ## `platform_user` and `platform_approval` (migration 076, 2026-11-28)
 
 Both are `ENABLE` + `FORCE ROW LEVEL SECURITY` with the `platform_only` policy (`app.current_tenant_id = 'PLATFORM'` for `USING` and `WITH CHECK`), like `platform_audit_log`. `logistics_app` has `SELECT, INSERT, UPDATE`; `DELETE` is revoked explicitly, since the default privileges from 059 would otherwise grant it. A tenant-scoped request can neither read the directory nor see an approval. The seed (`scripts/seed.py`) inserts the local owner and a second admin.
+
+## `tenant_metrics_daily` and `job_run` (migration 078, 2026-11-28)
+
+`tenant_metrics_daily` has the `tenant_or_platform` policy (the tenant's own rows, or every row in the `PLATFORM` scope); `job_run` has `platform_only`. Both are `FORCE`d. `logistics_app` has full DML on both: the metrics are upserted hourly and `job_run` is pruned after 180 days. Neither holds a name, email or phone number.

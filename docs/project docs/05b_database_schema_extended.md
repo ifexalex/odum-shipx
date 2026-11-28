@@ -44,6 +44,10 @@ Create these tables (all DDL is copied verbatim from the backend engineering spe
 
 4. **`platform_approval`** (migration 076) — Two-person requests for dangerous platform actions (decision D4). `action` (`offboard_tenant|gateway_secret_change|maintenance_on|plan_price_change|data_cleanup_rerun|admin_transfer`), `target_tenant_id → tenant(id) ON DELETE SET NULL`, `target_label`, `payload JSONB` (secrets masked; includes a `summary`), `secret_payload TEXT` (Fernet-encrypted via `shared/encryption.py`), `payload_hash` (SHA-256 of the canonical payload, checked before running), `reason`, `status` (`pending|scheduled|approved|executed|failed|rejected|cancelled|expired`), `requested_by` / `decided_by → platform_user(id)` with `CHECK (decided_by IS NULL OR decided_by <> requested_by)`, `requested_at`, `decided_at`, `decision_note`, `expires_at` (24 h), `execute_after` (required when `scheduled`), `executed_at`, `error`. Unique partial index: one open (`pending`/`scheduled`) request per `(action, target_label)`. Platform-only RLS; no `DELETE` for the app role. The 90-day cleanup anonymises a deleted tenant's rows.
 
+5. **`tenant_metrics_daily`** (migration 078, platform audit Phase 1c) — One row per tenant per UTC day, counts only: `customers_total`, `customers_new`, `containers_created`, `containers_processed`, `api_calls`, `storage_bytes`, `{sms,whatsapp,email}_{sent,failed}`, `staff_seats`, `last_activity_at`, `computed_at`; PK `(tenant_id, metric_date)`, FK `tenant ON DELETE CASCADE`. Definitions in `services/scheduled/tenant_metrics.py`. RLS `tenant_or_platform`.
+
+6. **`job_run`** (migration 078) — One row per scheduled-job run: `job`, `started_at`, `finished_at`, `status` (`running|succeeded|failed`), `trigger` (`schedule|manual`), `items_processed`, `failures`, `result JSONB` (the handler's counts), `error_summary` (the exception class only), `request_id`. Index `(job, started_at DESC)`. Platform-only RLS; pruned after 180 days.
+
 **All table DDL should be copied exactly from the backend engineering specification.** Refer to sections 1.2 and 1.3 of that document.
 
 ## Additional Schema Changes (Migrations 010–014)

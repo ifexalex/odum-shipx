@@ -159,4 +159,12 @@ For each release_note with status = 'active' AND valid_until IS NOT NULL AND val
 
 ### `platform_approvals` — every 15 minutes (platform audit Phase 1, 2026-11-28)
 
+### Every run is recorded (platform audit Phase 1c, 2026-11-28)
+
+Each scheduled `lambda_handler` is wrapped with `shared.job_runs.tracked_job("<job>")`: a `job_run` row opens as `running` and closes as `succeeded` or `failed`, with the handler's counts (integers whose key names an error, failure or refusal count as failures; the rest as items) and, on failure, the exception's class name only. Recording is best effort and never changes what the job does. An event with `"trigger": "manual"` is recorded as a manual run (Phase 3 adds the console's re-run). `tests/unit/test_platform_admin_phase1c.py` fails if a job in `services/scheduled/run.JOBS` is not wrapped under its own name.
+
+### Daily tenant metrics, in `usage_aggregation` (Phase 1c)
+
+After consolidating usage records, the hourly job calls `tenant_metrics.refresh_recent()`: it upserts yesterday's and today's `tenant_metrics_daily` rows for every active or suspended tenant, reading each tenant in its own RLS scope, then deletes `job_run` rows older than 180 days. The result gains `metric_rows`, `metric_errors` and `job_runs_pruned`. Days before the table existed: `python3 scripts/backfill_tenant_metrics.py --days 90` (1–730; idempotent).
+
 `services/scheduled/platform_approvals.py` calls `services.tenant_management.approvals.run_due()`: it runs each `scheduled` approval whose `execute_after` has passed (a sole admin's offboarding, 24 hours after the request, as the requester) and moves undecided `pending` requests past `expires_at` to `expired`. Returns `{executed, failed, expired}`; a failed action is recorded on its row and counted as `scheduled_job_step`. AWS: EventBridge `rate(15 minutes)` → Lambda `platform-approvals`; Azure: Container App Job `*/15 * * * *`. The 90-day cleanup also anonymises a deleted tenant's approvals now (payload, reason, secret and target cleared; open ones cancelled). Tests: `tests/unit/test_platform_admin_phase1.py::TestScheduledRun`.

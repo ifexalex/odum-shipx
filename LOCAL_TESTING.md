@@ -1096,6 +1096,8 @@ Fixed `tenant_user.id` UUIDs in `scripts/seed.py` match these emails 1:1 with th
 
 **Platform admin MFA (platform audit Phase 1b).** Locally there is no platform Cognito pool: `PLATFORM_MFA_REQUIRED` and `PLATFORM_COGNITO_ISSUER` are unset, so the header shim and Moto-Cognito platform logins work as before and the login screen shows no platform admin sign-in (`VITE_COGNITO_PLATFORM_*` unset). To try the MFA screens against a real AWS dev pool, set `VITE_COGNITO_PLATFORM_USER_POOL_ID` / `VITE_COGNITO_PLATFORM_CLIENT_ID` in `frontend/.env.local` and open `/login?platform=1`.
 
+**Daily tenant metrics (Phase 1c).** `python3 scripts/backfill_tenant_metrics.py --days 30` fills `tenant_metrics_daily` for the seeded tenants; every scheduled job you run (`python -m services.scheduled.run --job usage_aggregation`) also writes a `job_run` row.
+
 **Platform admin login** — one cross-tenant account, no tenant scope:
 
 | Email | Password | Cognito group |

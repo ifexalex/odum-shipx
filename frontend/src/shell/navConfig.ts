@@ -76,20 +76,37 @@ const BILLING_CLAIMS_GROUP: NavLinkGroup = {
   ],
 }
 
+/**
+ * The platform console's 8 areas, in sidebar order (platform audit target design, Phase 1c). An area with no page built
+ * yet is left out rather than shown empty: Revenue arrives in Phase 4, Operations in Phase 3, Support in Phases 2–3.
+ * Plans and limits has its own area; its page is still the Plans tab of Platform settings until Phase 4.
+ */
+export const PLATFORM_AREAS: NavLinkGroup[] = [
+  { group: 'Overview', items: [{ icon: 'grid', label: 'Overview', path: '/platform/dashboard' }] },
+  {
+    group: 'Tenants',
+    items: [
+      { icon: 'building', label: 'Tenants', path: '/platform/tenants' },
+      { icon: 'mail', label: 'Onboarding requests', path: '/platform/onboarding-requests' },
+    ],
+  },
+  { group: 'Revenue', items: [] },
+  { group: 'Plans', items: [{ icon: 'pie', label: 'Plans and limits', path: '/platform/settings/plans' }] },
+  { group: 'Operations', items: [] },
+  { group: 'Support', items: [] },
+  {
+    group: 'Security',
+    items: [
+      { icon: 'check', label: 'Approvals', path: '/platform/approvals' },
+      { icon: 'users', label: 'Platform admins', path: '/platform/admins' },
+      { icon: 'log', label: 'Audit log', path: '/platform/audit-log' },
+    ],
+  },
+  { group: 'Settings', items: [{ icon: 'settings', label: 'Settings', path: '/platform/settings' }] },
+]
+
 export const navConfig: Record<UserRole, NavLinkGroup[]> = {
-  platform_admin: [
-    {
-      items: [
-        { icon: 'grid', label: 'Dashboard', path: '/platform/dashboard' },
-        { icon: 'mail', label: 'Onboarding requests', path: '/platform/onboarding-requests' },
-        { icon: 'building', label: 'Tenants', path: '/platform/tenants' },
-        { icon: 'check', label: 'Approvals', path: '/platform/approvals' },
-        { icon: 'users', label: 'Platform admins', path: '/platform/admins' },
-        { icon: 'settings', label: 'Settings', path: '/platform/settings' },
-        { icon: 'log', label: 'Audit log', path: '/platform/audit-log' },
-      ],
-    },
-  ],
+  platform_admin: PLATFORM_AREAS.filter((area) => area.items.length > 0),
   tenant_admin: [
     {
       group: 'Overview',
