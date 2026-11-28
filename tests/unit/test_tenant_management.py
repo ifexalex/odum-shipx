@@ -1270,7 +1270,7 @@ class TestAnonymiseCustomerLogin:
 
     def test_an_already_deactivated_login_is_not_revoked_again(self):
         calls: list[str] = []
-        revoke, _ = self._anonymise(self._customer(), _user(id="user-cust", status="deactivated"), calls=calls)
+        revoke, _ = self._anonymise(self._customer(), _user(id="user-cust", role="customer", status="deactivated"), calls=calls)
         assert calls == ["scrub", "erase"], "already deactivated: not revoked again, but its personal data is still erased"
         revoke.assert_not_called()
 

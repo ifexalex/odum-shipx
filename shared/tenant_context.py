@@ -52,6 +52,16 @@ class TenantContext:
         """True when the caller holds solely the CUSTOMER role (no staff or admin role)."""
         return self.roles == frozenset({UserRole.CUSTOMER})
 
+    def must_scope_to_customer(self, *staff_roles: UserRole) -> bool:
+        """True when the caller must be restricted to their own customer records on this endpoint.
+
+        Prevents multi-role privilege escalation (e.g. ``{warehouse_attendant, customer}`` passing
+        a route's ``assert_role(TENANT_ADMIN, NIGERIA_OFFICE_STAFF, CUSTOMER)`` via ``CUSTOMER``
+        and then bypassing ownership because ``is_customer_only`` is ``False``).
+        Pass no ``staff_roles`` on customer-only endpoints to scope unconditionally.
+        """
+        return not (bool(staff_roles) and self.has_role(*staff_roles))
+
     def assert_role(self, *allowed_roles: UserRole) -> None:
         """Raise InsufficientPermissionsError if none of the user's roles are allowed."""
         from shared.exceptions import InsufficientPermissionsError

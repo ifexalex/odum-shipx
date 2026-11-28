@@ -68,7 +68,10 @@ def search(tenant_id: str, query: str, ctx: Any) -> dict[str, Any]:
     if UserRole.PLATFORM_ADMIN in roles:
         raise InsufficientPermissionsError("Search is not available for this role")
 
-    allowed_kinds = {kind for r in roles for kind in _KINDS.get(r, ())}
+    staff_roles = roles - {UserRole.CUSTOMER}
+    staff_kinds = {kind for r in staff_roles for kind in _KINDS.get(r, ())}
+    customer_only_kinds = set(_KINDS[UserRole.CUSTOMER]) - staff_kinds if UserRole.CUSTOMER in roles else set()
+    allowed_kinds = staff_kinds | customer_only_kinds
     if not allowed_kinds:
         raise InsufficientPermissionsError("Search is not available for this role")
     kinds = tuple(k for k in ("container", "shipment", "invoice", "release_note", "customer") if k in allowed_kinds)
@@ -80,15 +83,20 @@ def search(tenant_id: str, query: str, ctx: Any) -> dict[str, Any]:
         return {"query": text, "results": []}
 
     pattern = _like_pattern(text)
-    digits = _phone_pattern(text) if bool(roles & _PHONE_LOOKUP_ROLES) else ""
+    digits = _phone_pattern(text) if bool(staff_roles & _PHONE_LOOKUP_ROLES) else ""
 
-    customer_id: str | None = None
-    if roles == frozenset({UserRole.CUSTOMER}):
-        customer_id = repo.get_customer_id_for_user(tenant_id, ctx.user_id)
-        if customer_id is None:
+    own_customer_id: str | None = None
+    if customer_only_kinds:
+        own_customer_id = repo.get_customer_id_for_user(tenant_id, ctx.user_id)
+        if own_customer_id is None and not staff_kinds:
             return {"query": text, "results": []}
-    staff = customer_id is None
-    by_phone = bool(digits)
+
+    def _scope(kind: str) -> tuple[str | None, bool, bool] | None:
+        if kind in staff_kinds:
+            return None, True, bool(digits)
+        if own_customer_id is None:
+            return None
+        return own_customer_id, False, False
 
     found: list[dict[str, Any]] = []
     if "container" in kinds:
@@ -96,35 +104,44 @@ def search(tenant_id: str, query: str, ctx: Any) -> dict[str, Any]:
             # The status is its own field; repeating it in the subtitle shows the raw value ("in_transit") beside the label.
             found.append(_result("container", row, row["container_number"], _join(row.get("vessel_name"))))
     if "shipment" in kinds:
-        for row in repo.search_shipments(
-            tenant_id, text, pattern, digits, PER_KIND_LIMIT, customer_id=customer_id, by_name=staff, by_phone=by_phone
-        ):
-            found.append(
-                _result(
-                    "shipment",
-                    row,
-                    row.get("reference") or "Packing list",
-                    _join(row.get("customer_name"), row.get("container_number")),
+        scope = _scope("shipment")
+        if scope is not None:
+            cid, by_name, by_phone = scope
+            for row in repo.search_shipments(
+                tenant_id, text, pattern, digits, PER_KIND_LIMIT, customer_id=cid, by_name=by_name, by_phone=by_phone
+            ):
+                found.append(
+                    _result(
+                        "shipment",
+                        row,
+                        row.get("reference") or "Packing list",
+                        _join(row.get("customer_name"), row.get("container_number")),
+                    )
                 )
-            )
     if "invoice" in kinds:
-        for row in repo.search_invoices(
-            tenant_id, text, pattern, digits, PER_KIND_LIMIT, customer_id=customer_id, by_name=staff, by_phone=by_phone
-        ):
-            title = row.get("invoice_number") or "Invoice"
-            found.append(_result("invoice", row, title, _join(row.get("customer_name"), row.get("container_number"))))
+        scope = _scope("invoice")
+        if scope is not None:
+            cid, by_name, by_phone = scope
+            for row in repo.search_invoices(
+                tenant_id, text, pattern, digits, PER_KIND_LIMIT, customer_id=cid, by_name=by_name, by_phone=by_phone
+            ):
+                title = row.get("invoice_number") or "Invoice"
+                found.append(_result("invoice", row, title, _join(row.get("customer_name"), row.get("container_number"))))
     if "release_note" in kinds:
-        for row in repo.search_release_notes(
-            tenant_id, text, pattern, digits, PER_KIND_LIMIT, customer_id=customer_id, by_name=staff, by_phone=by_phone
-        ):
-            found.append(
-                _result(
-                    "release_note", row, row["reference_number"], _join(row.get("customer_name"), row.get("container_number"))
+        scope = _scope("release_note")
+        if scope is not None:
+            cid, by_name, by_phone = scope
+            for row in repo.search_release_notes(
+                tenant_id, text, pattern, digits, PER_KIND_LIMIT, customer_id=cid, by_name=by_name, by_phone=by_phone
+            ):
+                found.append(
+                    _result(
+                        "release_note", row, row["reference_number"], _join(row.get("customer_name"), row.get("container_number"))
+                    )
                 )
-            )
     if "customer" in kinds:
-        for row in repo.search_customers(tenant_id, text, pattern, digits, PER_KIND_LIMIT, by_phone=by_phone):
-            found.append(_result("customer", row, row["name"], row.get("phone") if by_phone else None))
+        for row in repo.search_customers(tenant_id, text, pattern, digits, PER_KIND_LIMIT, by_phone=bool(digits)):
+            found.append(_result("customer", row, row["name"], row.get("phone") if digits else None))
 
     # Exact matches first, then in the order the kinds are listed; the sort is stable, so each kind keeps its own ranking.
     found.sort(key=lambda r: (not r.pop("_exact"), _KIND_ORDER[r["kind"]]))

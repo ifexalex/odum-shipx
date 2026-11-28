@@ -109,7 +109,13 @@ def _bale_type_for(package_unit: str | None, cbm: Decimal) -> str | None:
     return "BIG BALE" if cbm >= _BIG_BALE_CBM else "SMALL BALE"
 
 
+_PL_STAFF_READ_ROLES = (UserRole.TENANT_ADMIN, UserRole.CHINA_OFFICE_STAFF, UserRole.NIGERIA_OFFICE_STAFF)
+
+
 def _is_customer_only(ctx: Any) -> bool:
+    must_scope = getattr(ctx, "must_scope_to_customer", None)
+    if callable(must_scope):
+        return bool(must_scope(*_PL_STAFF_READ_ROLES))
     return bool(getattr(ctx, "is_customer_only", ctx.role == UserRole.CUSTOMER))
 
 

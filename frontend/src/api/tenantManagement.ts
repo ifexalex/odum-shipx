@@ -715,6 +715,13 @@ export const platformApi = {
       body: {},
     }),
 
+  /** Revoke an active impersonation session server-side and record IMPERSONATION_END. */
+  endImpersonation: (sessionId: string) =>
+    apiRequest<{ session_id: string; ended_at?: string }>({
+      method: 'DELETE',
+      path: `/v1/platform/impersonation/${sessionId}`,
+    }),
+
   /** Cross-tenant aggregates for the platform dashboard (2.1). */
   dashboard: () =>
     apiRequest<PlatformDashboardStats>({ method: 'GET', path: '/v1/platform/dashboard' }),

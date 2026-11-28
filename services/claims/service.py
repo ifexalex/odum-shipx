@@ -111,7 +111,7 @@ def file_claim(
     For CUSTOMER role: customer_id is derived from ctx.user_id.
     For staff roles: customer_id_override (from request body) is used.
     """
-    is_customer = ctx.is_customer_only
+    is_customer = ctx.must_scope_to_customer(UserRole.NIGERIA_OFFICE_STAFF)
     if is_customer:
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer:
@@ -211,7 +211,7 @@ def list_claims(
     sort_field: str = "created_at",
     sort_direction: str = "DESC",
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    if ctx.is_customer_only:
+    if ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer:
             return [], None, False
@@ -237,7 +237,7 @@ def _claim_for_actor(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
     claim = repo.get_damage_claim_by_id(tenant_id, claim_id)
     if not claim:
         raise ResourceNotFoundError("damage_claim", claim_id)
-    if ctx.is_customer_only:
+    if ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF):
         customer = repo.get_customer_by_user_id(tenant_id, ctx.user_id)
         if not customer or str(customer["id"]) != str(claim["customer_id"]):
             raise ResourceNotFoundError("damage_claim", claim_id)
@@ -252,10 +252,11 @@ def get_claim(tenant_id: str, claim_id: str, ctx: Any) -> dict[str, Any]:
     """
     claim = _claim_for_actor(tenant_id, claim_id, ctx)
     canonical_id = str(claim["id"])
+    for_customer = ctx.must_scope_to_customer(UserRole.TENANT_ADMIN, UserRole.NIGERIA_OFFICE_STAFF)
     return {
         **_fmt_claim(claim),
         "evidence": _evidence_links(tenant_id, canonical_id),
-        **_fmt_outcome(repo.get_claim_outcome(tenant_id, canonical_id), for_customer=ctx.is_customer_only),
+        **_fmt_outcome(repo.get_claim_outcome(tenant_id, canonical_id), for_customer=for_customer),
     }
 
 

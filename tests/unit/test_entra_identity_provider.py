@@ -58,28 +58,21 @@ class TestUserLifecycle:
         assert "creationType" not in body
         assert body["userPrincipalName"] == "c_gmail.com@tenant.onmicrosoft.com"
 
-    def test_create_reuses_existing_user_on_conflict(self):
-        # A duplicate UPN/identity (Graph 409, or 400 ObjectConflict mapped to
-        # DuplicateResourceError) is idempotent: resolve the existing oid and
-        # reconcile the role group rather than failing provisioning.
+    def test_create_propagates_duplicate_resource_error_on_conflict(self):
+        # Security (audit C-2): never silently reuse an existing Entra directory
+        # account on conflict — platform admins have no tenant_user row, so reusing
+        # an existing oid would let a public signup or tenant admin hijack/delete a
+        # platform_admin account. Propagate DuplicateResourceError (matching Cognito).
         p = _provider_with_stubbed_graph(local=False)
         p.sync_user_groups = MagicMock()  # noqa: SLF001
         p._resolve_user_id = MagicMock(return_value="existing-oid")  # noqa: SLF001
         p._graph.side_effect = DuplicateResourceError("user", "/users")  # noqa: SLF001
 
-        uid = p.create_user("c@gmail.com", "Cy", "t1", "tenant_admin")
-
-        assert uid == "existing-oid"
-        p._resolve_user_id.assert_called_once_with("c_gmail.com@tenant.onmicrosoft.com")  # noqa: SLF001
-        p.sync_user_groups.assert_called_once_with("existing-oid", "t1", {"tenant_admin"})  # noqa: SLF001
-
-    def test_create_raises_when_conflicting_user_unresolvable(self):
-        p = _provider_with_stubbed_graph(local=False)
-        p.sync_user_groups = MagicMock()  # noqa: SLF001
-        p._resolve_user_id = MagicMock(return_value="")  # noqa: SLF001
-        p._graph.side_effect = DuplicateResourceError("user", "/users")  # noqa: SLF001
-        with pytest.raises(ExternalServiceError):
+        with pytest.raises(DuplicateResourceError):
             p.create_user("c@gmail.com", "Cy", "t1", "tenant_admin")
+
+        p._resolve_user_id.assert_not_called()  # noqa: SLF001
+        p.sync_user_groups.assert_not_called()  # noqa: SLF001
 
     def test_local_account_requires_user_domain(self):
         p = _provider_with_stubbed_graph(local=True)

@@ -248,23 +248,12 @@ class EntraIdentityProvider:
                 "mail": email,
                 "passwordProfile": {"password": password, "forceChangePasswordNextSignIn": force_change},
             }
-        from shared.exceptions import DuplicateResourceError, ExternalServiceError
-
-        try:
-            created = self._graph("POST", "/users", body)
-            sub = str(created["id"])
-        except DuplicateResourceError as exc:
-            # The directory user already exists (e.g. a retried provisioning, or the
-            # same person already administers another tenant). Entra is a shared
-            # directory with globally-unique UPNs/identities, while ShipX scopes a
-            # user to a tenant via the {tenant_id}:{role} group — so reusing the
-            # existing object id and just reconciling the group is the correct,
-            # idempotent behaviour, not an error.
-            key = email if self._local_accounts else self._upn(email)
-            sub = self._resolve_user_id(key)
-            if not sub:
-                raise ExternalServiceError("Entra", f"user {key} reported as existing but could not be resolved") from exc
-            logger.info("Entra user already existed; reusing oid=%s tenant_id=%s role=%s", sub, tenant_id, role)
+        # Never silently reuse an existing Entra directory account during tenant-scoped
+        # provisioning: platform admins have no `tenant_user` row, so reusing an existing
+        # account's oid lets a public signup or tenant admin hijack/disable/delete a
+        # platform_admin account. Propagate DuplicateResourceError (matching Cognito).
+        created = self._graph("POST", "/users", body)
+        sub = str(created["id"])
         # Reconcile the role group by object id (works for local + member accounts).
         # Best-effort: on Entra the authoritative role is `tenant_user.role`, read by
         # the claims provider — the group is a secondary signal, and a freshly created

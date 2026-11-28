@@ -12,34 +12,48 @@ function formatCountdown(ms: number): string {
 
 export function ImpersonationBanner(): JSX.Element | null {
   const { session, exitImpersonation } = useSession()
-  const [remaining, setRemaining] = useState<number>(0)
+  const [now, setNow] = useState<number>(() => Date.now())
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!session?.readOnly) return
 
-    function tick(): void {
-      setRemaining(session!.expiresAt - Date.now())
+    const expiresAt = session.expiresAt
+    let exited = false
+
+    const handleTick = (): void => {
+      const current = Date.now()
+      setNow(current)
+      if (current >= expiresAt && !exited) {
+        exited = true
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current)
+          intervalRef.current = null
+        }
+        exitImpersonation()
+      }
     }
 
-    tick()
-    intervalRef.current = setInterval(tick, 1000)
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [session])
-
-  // Auto-exit once the countdown reaches zero
-  useEffect(() => {
-    if (session?.readOnly && remaining <= 0 && intervalRef.current !== null) {
+    if (Date.now() >= expiresAt) {
+      exited = true
       exitImpersonation()
+      return
     }
-  }, [remaining, session, exitImpersonation])
+
+    intervalRef.current = setInterval(handleTick, 1000)
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [session, exitImpersonation])
 
   if (!session?.readOnly) return null
 
   const displayName = session.tenantName ?? session.tenantId
   const startedBy = session.impersonatedBy ?? 'platform admin'
+  const countdownMs = Math.max(0, session.expiresAt - now)
 
   return (
     <div className={styles.banner} role="alert" aria-live="polite">
@@ -54,7 +68,7 @@ export function ImpersonationBanner(): JSX.Element | null {
       </span>
       <span className={styles.countdown}>
         <Icon name="clock" size={13} color="#fff" />
-        Ends in {formatCountdown(remaining)}
+        Ends in {formatCountdown(countdownMs)}
       </span>
       <button type="button" className={styles.exitBtn} onClick={exitImpersonation}>
         <Icon name="logout" size={14} color="var(--color-accent-deep)" />

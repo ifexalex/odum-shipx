@@ -72,8 +72,10 @@ def create_customer(
     # Accept both "full_name" and "name" — normalise to "name" for storage
     if "full_name" in data and "name" not in data:
         data = {**data, "name": data["full_name"]}
-    data = _normalize_customer_phones(tenant_id, data)
-    customer = repo.create_customer(tenant_id, data)
+    # Never allow HTTP callers to arbitrarily link customer.user_id or spoof consent_given_at.
+    sanitized = {k: v for k, v in data.items() if k not in ("user_id", "consent_given_at")}
+    sanitized = _normalize_customer_phones(tenant_id, sanitized)
+    customer = repo.create_customer(tenant_id, sanitized)
     if customer is None:
         raise RuntimeError("create_customer returned None unexpectedly")
     log_audit(
@@ -118,7 +120,7 @@ def get_customer(
     if not customer:
         raise ResourceNotFoundError("customer", customer_id)
     # Customer role users may only access their own record
-    if is_customer_role and requesting_user_id and str(customer.get("user_id")) != requesting_user_id:
+    if is_customer_role and (not requesting_user_id or str(customer.get("user_id")) != requesting_user_id):
         raise ResourceNotFoundError("customer", customer_id)
     return customer
 
@@ -167,10 +169,15 @@ def anonymise_customer(
     before_masked = {k: ("***" if k in _pii_fields else v) for k, v in customer.items()}
 
     # The erased person must not keep a working login: the tenant_user row and the identity-provider
-    # account are where their identity still lives. The record's link to it is cleared by the erasure,
-    # so read it first, and cut access before erasing so a failure leaves a customer that can be retried.
+    # account are where their identity still lives. Never allow customer erasure to deactivate or
+    # delete a staff/tenant_admin login (which would bypass SELF_DEACTIVATION_FORBIDDEN and LAST_TENANT_ADMIN).
     login = repo.get_user_by_id(tenant_id, str(customer["user_id"])) if customer.get("user_id") else None
-    if login is not None and login["status"] != "deactivated":
+    login_roles: set[str] = set()
+    if login is not None:
+        raw_roles = login.get("roles") or ([login.get("role")] if login.get("role") else [])
+        login_roles = {str(r) for r in raw_roles if r}
+    has_non_customer_role = bool(login_roles - {"customer"})
+    if login is not None and not has_non_customer_role and login["status"] != "deactivated":
         _revoke_login(tenant_id, login)
         log_audit(
             tenant_id=tenant_id,
@@ -183,7 +190,7 @@ def anonymise_customer(
             after_state={"status": "deactivated", "reason": "customer_erasure"},
             ip_address=ip_address,
         )
-    if login is not None and not str(login["email"]).endswith(_ERASED_EMAIL_DOMAIN):
+    if login is not None and not has_non_customer_role and not str(login["email"]).endswith(_ERASED_EMAIL_DOMAIN):
         _erase_login_identity(tenant_id, login)
 
     repo.delete_unconsumed_invites_for_customer(tenant_id, customer_id)
@@ -207,6 +214,7 @@ def export_customer_data(
     customer_id: str,
     requesting_user_id: str | None = None,
     is_customer_role: bool = False,
+    ip_address: str | None = None,
 ) -> dict[str, Any]:
     """Return all data held for a customer (GDPR Art. 20 — right to portability).
 
@@ -218,7 +226,7 @@ def export_customer_data(
     customer = repo.get_customer_by_id(tenant_id, customer_id)
     if not customer:
         raise ResourceNotFoundError("customer", customer_id)
-    if is_customer_role and requesting_user_id and str(customer.get("user_id")) != requesting_user_id:
+    if is_customer_role and (not requesting_user_id or str(customer.get("user_id")) != requesting_user_id):
         raise ResourceNotFoundError("customer", customer_id)
     data = repo.get_customer_full_export_data(tenant_id, customer_id)
     exported_at = datetime.now(UTC).isoformat()
@@ -235,6 +243,7 @@ def export_customer_data(
         actor_id=requesting_user_id or None,
         actor_role=actor_role,
         after_state={"exported_at": exported_at, "record_count": len(data.get("shipments", []))},
+        ip_address=ip_address,
     )
     return data
 
@@ -255,6 +264,8 @@ def update_customer(
             rule_id="UNSUPPORTED_LOCALE",
         )
     existing = get_customer(tenant_id, customer_id)
+    # Never allow HTTP API callers to arbitrarily re-link customer.user_id.
+    updates = {k: v for k, v in updates.items() if k != "user_id"}
     if not updates:
         return existing
     updates = _normalize_customer_phones(tenant_id, updates)
@@ -766,7 +777,10 @@ def accept_customer_invite(
             repo.ensure_primary_user_role(tenant_id, str(portal_user["id"]), "customer")
 
             updated_customer = repo.update_customer(
-                tenant_id, customer_id, {"email": req.email, "user_id": str(portal_user["id"])}
+                tenant_id,
+                customer_id,
+                {"email": req.email, "user_id": str(portal_user["id"])},
+                allow_internal=True,
             )
             if updated_customer is None:
                 raise RuntimeError("update_customer returned None unexpectedly")
